@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package soul;
+
+// Soul Agent API — the bridge between OpenSoma and the Soul daemon.
+service SoulService {
+    // Bidirectional heartbeat stream
+    rpc Heartbeat(stream HeartbeatRequest) returns (stream HeartbeatResponse);
+
+    // Upload collected events in batch
+    rpc UploadEvents(UploadEventsRequest) returns (UploadEventsResponse);
+
+    // Stream events in real-time
+    rpc StreamEvents(stream EventStream) returns (stream SoulCommand);
+}
+
+message HeartbeatRequest {
+    string node_id = 1;
+    int64 timestamp_ms = 2;
+    NodeStatus status = 3;
+    map<string, string> metadata = 4;
+}
+
+message HeartbeatResponse {
+    int64 server_timestamp_ms = 1;
+    bool ok = 2;
+    string message = 3;
+}
+
+enum NodeStatus {
+    NODE_STATUS_UNKNOWN = 0;
+    NODE_STATUS_HEALTHY = 1;
+    NODE_STATUS_DEGRADED = 2;
+    NODE_STATUS_ERROR = 3;
+}
+
+message UploadEventsRequest {
+    string node_id = 1;
+    repeated CollectedEvent events = 2;
+    string cursor = 3;  // For resuming incremental uploads
+}
+
+message UploadEventsResponse {
+    int64 accepted = 1;
+    int64 rejected = 2;
+    string new_cursor = 3;
+    repeated string reject_reasons = 4;
+}
+
+message CollectedEvent {
+    string id = 1;
+    string source = 2;       // e.g. "file:/var/data/input/chat.json"
+    string event_type = 3;   // e.g. "message", "file_change", "connector_event"
+    int64 timestamp_ms = 4;
+    bytes payload = 5;       // Serialized event data (JSON)
+    map<string, string> tags = 6;
+}
+
+message EventStream {
+    string node_id = 1;
+    oneof payload {
+        CollectedEvent event = 2;
+        StreamControl control = 3;
+    }
+}
+
+enum StreamControl {
+    STREAM_RESUME = 0;
+    STREAM_PAUSE = 1;
+}
+
+message SoulCommand {
+    oneof command {
+        PingCommand ping = 1;
+        ConfigUpdate config_update = 2;
+    }
+}
+
+message PingCommand {}
+
+message ConfigUpdate {
+    bytes config_toml = 1;
+}

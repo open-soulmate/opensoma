@@ -1,0 +1,65 @@
+# OpenSoma Configuration
+# Copy to config.toml and edit.
+
+[daemon]
+node_id = "soma-node-001"
+log_level = "info"
+data_dir = "/var/lib/opensoma"
+
+[soul]
+# Soul agent gRPC endpoint
+endpoint = "http://soul.local:50051"
+# Heartbeat interval in seconds
+heartbeat_interval = 30
+# Connection timeout in seconds
+connect_timeout = 10
+
+[collector]
+# Directories to watch for new/changed files
+watch_dirs = ["/var/data/input"]
+# File patterns to include (glob)
+include = ["*.json", "*.csv", "*.txt", "*.log"]
+# File patterns to exclude
+exclude = ["*.tmp", "*.swp"]
+# Debounce duration in milliseconds
+debounce_ms = 500
+
+[connector.feishu]
+enabled = false
+app_id = ""
+app_secret = ""
+# Webhook URL for receiving events
+webhook_path = "/api/feishu/webhook"
+
+[connector.dingtalk]
+enabled = false
+app_key = ""
+app_secret = ""
+# Robot webhook URL
+robot_webhook = ""
+
+[connector.wecom]
+enabled = false
+corp_id = ""
+agent_id = ""
+secret = ""
+
+[processor]
+# Normalize all timestamps to UTC
+normalize_timestamps = true
+# Maximum event size in bytes
+max_event_size = 1048576
+# Deduplication window in seconds
+dedup_window_secs = 300
+
+[sync]
+# Upload batch size
+batch_size = 50
+# Upload interval in seconds
+upload_interval = 10
+# Max retries for failed uploads
+max_retries = 5
+# Initial retry backoff in milliseconds
+retry_backoff_ms = 1000
+# Local cache size limit in megabytes
+cache_size_mb = 512
