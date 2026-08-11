@@ -61,6 +61,9 @@ pub struct FeishuConfig {
     pub app_secret: String,
     #[serde(default = "default_feishu_webhook")]
     pub webhook_path: String,
+    /// Folder token to poll for documents (optional)
+    #[serde(default)]
+    pub folder_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

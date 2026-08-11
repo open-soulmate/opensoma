@@ -30,6 +30,8 @@ app_id = ""
 app_secret = ""
 # Webhook URL for receiving events
 webhook_path = "/api/feishu/webhook"
+# Folder token to poll for documents (empty = disabled)
+folder_token = ""
 
 [connector.dingtalk]
 enabled = false
