@@ -2,6 +2,7 @@ mod config;
 mod heartbeat;
 mod collector;
 mod connector;
+mod plugins;
 mod processor;
 mod sync;
 mod grpc;
