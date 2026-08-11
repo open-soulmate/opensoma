@@ -62,6 +62,8 @@ pub struct ConnectorConfig {
     pub git: Option<GitConfig>,
     #[serde(default)]
     pub obsidian: Option<ObsidianConfig>,
+    #[serde(default)]
+    pub webhook: Option<WebhookConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -167,6 +169,20 @@ pub struct ObsidianConfig {
     /// Debounce duration in milliseconds (default 500)
     #[serde(default = "default_obsidian_debounce")]
     pub debounce_ms: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WebhookConfig {
+    pub enabled: bool,
+    /// Listen address, e.g. "0.0.0.0:9800"
+    #[serde(default = "default_webhook_listen")]
+    pub listen: String,
+    /// Shared secret for HMAC signature verification
+    #[serde(default)]
+    pub secret: Option<String>,
+    /// Allowed origin prefixes for validation (e.g. "https://open.feishu.cn")
+    #[serde(default)]
+    pub allowed_origins: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -392,4 +408,19 @@ fn default_imap_port() -> u16 {
 }
 fn default_inbox_folder() -> String {
     "INBOX".into()
+}
+fn default_notion_interval() -> u64 {
+    120
+}
+fn default_git_branch() -> String {
+    "main".into()
+}
+fn default_git_interval() -> u64 {
+    300
+}
+fn default_obsidian_debounce() -> u64 {
+    500
+}
+fn default_webhook_listen() -> String {
+    "0.0.0.0:9800".into()
 }

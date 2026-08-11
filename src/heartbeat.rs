@@ -1,38 +1,31 @@
-use reqwest::Client;
 use serde::Serialize;
 use std::time::Duration;
 use sysinfo::System;
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
-/// Heartbeat payload sent to Soul via HTTP POST.
+use crate::grpc::client::SoulClient;
+
+/// Heartbeat payload logged locally and sent to Soul.
 #[derive(Debug, Serialize)]
-struct HeartbeatPayload {
-    node_id: String,
-    timestamp_ms: i64,
-    hostname: String,
-    ip: String,
-    cpu_usage: f32,
-    memory_total_mb: u64,
-    memory_used_mb: u64,
-    disk_total_mb: u64,
-    disk_used_mb: u64,
-}
-
-/// Response from the Soul heartbeat endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct HeartbeatResponse {
-    ok: bool,
-    message: Option<String>,
+pub struct HeartbeatPayload {
+    pub node_id: String,
+    pub timestamp_ms: i64,
+    pub hostname: String,
+    pub ip: String,
+    pub cpu_usage: f32,
+    pub memory_total_mb: u64,
+    pub memory_used_mb: u64,
+    pub disk_total_mb: u64,
+    pub disk_used_mb: u64,
 }
 
 /// Start the heartbeat loop. Every `interval` seconds, collects node status
-/// (hostname, ip, cpu, memory, disk) and POSTs to Soul at `/api/agent/heartbeat`.
+/// (hostname, ip, cpu, memory, disk) and sends a heartbeat to Soul via gRPC.
 pub fn start(
     node_id: String,
     interval: u64,
-    soul_endpoint: String,
-    http_client: Client,
+    client: SoulClient,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(interval));
@@ -49,19 +42,20 @@ pub fn start(
             interval, node_id, hostname, local_ip
         );
 
-        let url = format!("{}/api/agent/heartbeat", soul_endpoint);
-
         loop {
             ticker.tick().await;
 
             let status = collect_node_status(&node_id, &hostname, &local_ip);
 
-            match http_client.post(&url).json(&status).send().await {
+            match client.heartbeat(&node_id).await {
                 Ok(resp) => {
-                    if resp.status().is_success() {
-                        info!("Heartbeat OK — cpu={:.1}%, mem={}/{}MB", status.cpu_usage, status.memory_used_mb, status.memory_total_mb);
+                    if resp.ok {
+                        info!(
+                            "Heartbeat OK — cpu={:.1}%, mem={}/{}MB",
+                            status.cpu_usage, status.memory_used_mb, status.memory_total_mb
+                        );
                     } else {
-                        warn!("Heartbeat rejected — status={}", resp.status());
+                        error!("Heartbeat rejected: {}", resp.message);
                     }
                 }
                 Err(e) => {
@@ -73,7 +67,7 @@ pub fn start(
 }
 
 /// Collect current node status: CPU, memory, disk usage.
-fn collect_node_status(node_id: &str, hostname: &str, ip: &str) -> HeartbeatPayload {
+pub fn collect_node_status(node_id: &str, hostname: &str, ip: &str) -> HeartbeatPayload {
     let mut sys = System::new_all();
     sys.refresh_all();
 
@@ -81,7 +75,6 @@ fn collect_node_status(node_id: &str, hostname: &str, ip: &str) -> HeartbeatPayl
     let memory_total_mb = sys.total_memory() / 1024 / 1024;
     let memory_used_mb = sys.used_memory() / 1024 / 1024;
 
-    // Sum disk usage across all mounted filesystems
     let mut disk_total_mb: u64 = 0;
     let mut disk_used_mb: u64 = 0;
     for disk in &sys.disks() {

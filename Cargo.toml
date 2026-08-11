@@ -28,6 +28,9 @@ toml = "0.8"
 # HTTP client (for connectors)
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
+# HTTP server (for webhook receiver)
+axum = "0.7"
+
 # File system watching
 notify = "7"
 notify-debouncer-mini = "0.5"
