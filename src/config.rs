@@ -52,6 +52,10 @@ pub struct ConnectorConfig {
     pub dingtalk: Option<DingtalkConfig>,
     #[serde(default)]
     pub wecom: Option<WecomConfig>,
+    #[serde(default)]
+    pub rss: Option<RssConfig>,
+    #[serde(default)]
+    pub email: Option<EmailConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -71,7 +75,12 @@ pub struct DingtalkConfig {
     pub enabled: bool,
     pub app_key: String,
     pub app_secret: String,
+    pub agent_id: String,
+    #[serde(default)]
     pub robot_webhook: String,
+    /// Polling interval in seconds for approval and message data (default 60)
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval_secs: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -80,6 +89,47 @@ pub struct WecomConfig {
     pub corp_id: String,
     pub agent_id: String,
     pub secret: String,
+    /// Polling interval in seconds (default 60)
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RssConfig {
+    pub enabled: bool,
+    pub feeds: Vec<RssFeedConfig>,
+    /// Polling interval in seconds (default 300)
+    #[serde(default = "default_rss_interval")]
+    pub poll_interval_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RssFeedConfig {
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EmailConfig {
+    pub enabled: bool,
+    pub accounts: Vec<EmailAccountConfig>,
+    /// Polling interval in seconds (default 120)
+    #[serde(default = "default_email_interval")]
+    pub poll_interval_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EmailAccountConfig {
+    pub name: String,
+    pub imap_server: String,
+    #[serde(default = "default_imap_port")]
+    pub imap_port: u16,
+    pub username: String,
+    pub password: String,
+    #[serde(default = "default_inbox_folder")]
+    pub folder: String,
+    #[serde(default)]
+    pub tls: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -110,9 +160,74 @@ impl AppConfig {
     pub fn load(path: &str) -> Result<Self> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read config file: {}", path))?;
-        let config: AppConfig =
+        let mut config: AppConfig =
             toml::from_str(&content).with_context(|| "Failed to parse config TOML")?;
+        config.apply_env_overrides();
         Ok(config)
+    }
+
+    /// Override config values from environment variables.
+    /// Convention: `OPENSOMA_<SECTION>_<FIELD>` in uppercase.
+    /// Examples:
+    ///   OPENSOMA_DAEMON_NODE_ID
+    ///   OPENSOMA_SOUL_ENDPOINT
+    ///   OPENSOMA_CONNECTOR_DINGTALK_APP_KEY
+    ///   OPENSOMA_CONNECTOR_WECOM_SECRET
+    ///   OPENSOMA_CONNECTOR_EMAIL_ACCOUNTS (JSON array)
+    fn apply_env_overrides(&mut self) {
+        if let Ok(v) = std::env::var("OPENSOMA_DAEMON_NODE_ID") {
+            self.daemon.node_id = v;
+        }
+        if let Ok(v) = std::env::var("OPENSOMA_DAEMON_LOG_LEVEL") {
+            self.daemon.log_level = v;
+        }
+        if let Ok(v) = std::env::var("OPENSOMA_DAEMON_DATA_DIR") {
+            self.daemon.data_dir = v;
+        }
+        if let Ok(v) = std::env::var("OPENSOMA_SOUL_ENDPOINT") {
+            self.soul.endpoint = v;
+        }
+        if let Ok(v) = std::env::var("OPENSOMA_SOUL_HEARTBEAT_INTERVAL") {
+            if let Ok(n) = v.parse() {
+                self.soul.heartbeat_interval = n;
+            }
+        }
+
+        // Feishu overrides
+        if let Some(ref mut fc) = self.connector.feishu {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_FEISHU_APP_ID") {
+                fc.app_id = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_FEISHU_APP_SECRET") {
+                fc.app_secret = v;
+            }
+        }
+
+        // DingTalk overrides
+        if let Some(ref mut dc) = self.connector.dingtalk {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_DINGTALK_APP_KEY") {
+                dc.app_key = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_DINGTALK_APP_SECRET") {
+                dc.app_secret = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_DINGTALK_AGENT_ID") {
+                dc.agent_id = v;
+            }
+        }
+
+        // WeCom overrides
+        if let Some(ref mut wc) = self.connector.wecom {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_WECOM_CORP_ID") {
+                wc.corp_id = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_WECOM_SECRET") {
+                wc.secret = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_WECOM_AGENT_ID") {
+                wc.agent_id = v;
+            }
+        }
     }
 }
 
@@ -225,4 +340,19 @@ fn default_retry_backoff() -> u64 {
 }
 fn default_cache_size() -> u64 {
     512
+}
+fn default_poll_interval() -> u64 {
+    60
+}
+fn default_rss_interval() -> u64 {
+    300
+}
+fn default_email_interval() -> u64 {
+    120
+}
+fn default_imap_port() -> u16 {
+    993
+}
+fn default_inbox_folder() -> String {
+    "INBOX".into()
 }
