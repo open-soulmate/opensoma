@@ -56,6 +56,12 @@ pub struct ConnectorConfig {
     pub rss: Option<RssConfig>,
     #[serde(default)]
     pub email: Option<EmailConfig>,
+    #[serde(default)]
+    pub notion: Option<NotionConfig>,
+    #[serde(default)]
+    pub git: Option<GitConfig>,
+    #[serde(default)]
+    pub obsidian: Option<ObsidianConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,6 +136,37 @@ pub struct EmailAccountConfig {
     pub folder: String,
     #[serde(default)]
     pub tls: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NotionConfig {
+    pub enabled: bool,
+    pub integration_token: String,
+    pub database_id: String,
+    /// Polling interval in seconds (default 120)
+    #[serde(default = "default_notion_interval")]
+    pub poll_interval_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GitConfig {
+    pub enabled: bool,
+    pub repo_url: String,
+    #[serde(default = "default_git_branch")]
+    pub branch: String,
+    pub local_path: String,
+    /// Polling interval in seconds (default 300)
+    #[serde(default = "default_git_interval")]
+    pub poll_interval_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ObsidianConfig {
+    pub enabled: bool,
+    pub vault_path: String,
+    /// Debounce duration in milliseconds (default 500)
+    #[serde(default = "default_obsidian_debounce")]
+    pub debounce_ms: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
