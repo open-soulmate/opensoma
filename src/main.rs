@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
     );
 
     // Start collectors (file watcher)
-    let (collector_tx, collector_handle) = collector::start_all(&config.collector).await?;
+    let collector_handle = collector::start_all(&config.collector, raw_tx.clone()).await?;
 
     // Start connectors (feishu, dingtalk, wecom)
     let connector_handle = connector::start_all(&config.connector, raw_tx.clone()).await?;

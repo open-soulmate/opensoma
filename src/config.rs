@@ -290,6 +290,7 @@ pub fn watch_config(path: &str) -> Result<(tokio::task::JoinHandle<()>, watch::R
     let initial = AppConfig::load(path)?;
     let (tx, rx) = watch::channel(Arc::new(initial));
     let path_buf = Path::new(path).to_path_buf();
+    let path_owned = path.to_string();
 
     let handle = tokio::spawn(async move {
         use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -318,17 +319,15 @@ pub fn watch_config(path: &str) -> Result<(tokio::task::JoinHandle<()>, watch::R
 
         loop {
             match notify_rx.recv() {
-                Ok(Ok(events)) => {
-                    for event in events {
-                        if event.paths.iter().any(|p| p == &path_buf) {
-                            match AppConfig::load(path) {
-                                Ok(new_config) => {
-                                    info!("Config reloaded successfully.");
-                                    let _ = tx.send(Arc::new(new_config));
-                                }
-                                Err(e) => {
-                                    warn!("Config reload failed (keeping previous): {}", e);
-                                }
+                Ok(Ok(event)) => {
+                    if event.paths.iter().any(|p| p == &path_buf) {
+                        match AppConfig::load(&path_owned) {
+                            Ok(new_config) => {
+                                info!("Config reloaded successfully.");
+                                let _ = tx.send(Arc::new(new_config));
+                            }
+                            Err(e) => {
+                                warn!("Config reload failed (keeping previous): {}", e);
                             }
                         }
                     }

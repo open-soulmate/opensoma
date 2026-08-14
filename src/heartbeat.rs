@@ -77,7 +77,8 @@ pub fn collect_node_status(node_id: &str, hostname: &str, ip: &str) -> Heartbeat
 
     let mut disk_total_mb: u64 = 0;
     let mut disk_used_mb: u64 = 0;
-    for disk in &sys.disks() {
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    for disk in disks.iter() {
         disk_total_mb += disk.total_space() / 1024 / 1024;
         disk_used_mb += (disk.total_space() - disk.available_space()) / 1024 / 1024;
     }

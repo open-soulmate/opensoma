@@ -78,10 +78,8 @@ pub async fn start_watcher(
                         }
                     }
                 }
-                Err(errors) => {
-                    for e in errors {
-                        error!("File watch error: {}", e);
-                    }
+                Err(e) => {
+                    error!("File watch error: {}", e);
                 }
             }
         }

@@ -20,7 +20,7 @@ pub struct VideoConfig {
 fn default_frame_interval() -> u64 {
     5
 }
-fn default_max_frames() -> u64 {
+fn default_max_frames() -> usize {
     60
 }
 fn default_frame_analyzer() -> String {
