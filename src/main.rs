@@ -31,8 +31,13 @@ async fn main() -> Result<()> {
     // Initialize local cache (sled)
     let cache = sync::cache::Cache::open(&config.daemon.data_dir)?;
 
-    // Build gRPC client
+    // Build HTTP client (replaces gRPC)
     let grpc_client = grpc::client::SoulClient::new(&config.soul).await?;
+
+    // Register this node with Soul's Nerve bus
+    if let Err(e) = grpc_client.register_node(&config.daemon.node_id, "soma").await {
+        tracing::warn!("Node registration failed (will retry via heartbeat): {}", e);
+    }
 
     // Channel wiring: collector → processor → sync
     // Channel 1: raw events from collectors/connectors

@@ -17,11 +17,11 @@ log_level = "info"
 data_dir = "/var/lib/opensoma"
 
 # ---------------------------------------------------------------------------
-# Soul — gRPC connection to the Soul agent
+# Soul — HTTP connection to the OpenSoul agent
 # ---------------------------------------------------------------------------
 [soul]
-# Soul agent gRPC endpoint (required)
-endpoint = "http://soul.local:50051"
+# Soul agent HTTP endpoint (required, e.g. http://localhost:8090)
+endpoint = "http://localhost:8090"
 # Heartbeat interval in seconds (default: 30)
 heartbeat_interval = 30
 # Connection timeout in seconds (default: 10)

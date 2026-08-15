@@ -2,7 +2,7 @@
 
 **Deploy Everywhere, Collect Everything.**
 
-OpenSoma is a headless daemon that acts as your digital twin's sensory layer. It collects data from diverse sources — files, IM platforms, RSS feeds, email, and more — normalizes it, and streams it to the Soul agent via gRPC. No UI, no bloat — just a silent process running on any machine, any OS, any network.
+OpenSoma is a headless daemon that acts as your digital twin's sensory layer. It collects data from diverse sources — files, IM platforms, RSS feeds, email, and more — normalizes it, and streams it to the OpenSoul agent via HTTP API. No UI, no bloat — just a silent process running on any machine, any OS, any network.
 
 ## Architecture
 
@@ -28,7 +28,7 @@ OpenSoma is a headless daemon that acts as your digital twin's sensory layer. It
 │                   └───────────┘                      │
 └─────────────────────────────────────────────────────┘
                           │
-                     gRPC (TLS)
+                     HTTP (REST)
                           │
                   ┌───────▼───────┐
                   │   Soul Agent  │
@@ -61,7 +61,7 @@ OpenSoma is a headless daemon that acts as your digital twin's sensory layer. It
 ### Prerequisites
 
 - Rust 1.75+ (or Docker)
-- A running Soul agent with gRPC endpoint
+- A running OpenSoul agent with HTTP endpoint
 
 ### Run with Cargo
 
@@ -111,7 +111,7 @@ Copy `config.example.toml` to `config.toml` and edit. All options are documented
 | Section         | Description                                        |
 |----------------|----------------------------------------------------|
 | `[daemon]`     | Node identity, log level, data directory            |
-| `[soul]`       | Soul gRPC endpoint, heartbeat and timeout settings  |
+| `[soul]`       | OpenSoul HTTP endpoint, heartbeat and timeout settings  |
 | `[collector]`  | File system watch directories and patterns          |
 | `[connector.*]`| Platform-specific credentials and polling intervals |
 | `[processor]`  | Normalization, deduplication, and event size limits  |
@@ -129,7 +129,7 @@ Examples:
 
 ```bash
 OPENSOMA_DAEMON_NODE_ID=soma-node-002
-OPENSOMA_SOUL_ENDPOINT=http://soul.local:50051
+OPENSOMA_SOUL_ENDPOINT=http://localhost:8090
 OPENSOMA_CONNECTOR_FEISHU_APP_ID=cli_xxxxx
 OPENSOMA_CONNECTOR_DINGTALK_APP_SECRET=secret123
 ```
@@ -199,9 +199,9 @@ strip = true         # Strip debug symbols
 panic = "abort"      # Abort on panic (no unwinding)
 ```
 
-## gRPC Protocol
+## HTTP API Integration
 
-OpenSoma communicates with the Soul agent via gRPC (defined in `proto/soul.proto`):
+OpenSoma communicates with OpenSoul via HTTP REST API:
 
 | RPC             | Direction       | Description                        |
 |----------------|----------------|------------------------------------|
