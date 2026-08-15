@@ -1,6 +1,9 @@
 pub mod feishu;
 pub mod dingtalk;
 pub mod wecom;
+pub mod notion;
+pub mod git;
+pub mod obsidian;
 pub mod rss;
 pub mod email;
 pub mod webhook;
@@ -97,6 +100,45 @@ pub async fn start_all(
                         handles.push(h);
                     }
                     Err(e) => tracing::error!("Failed to start Webhook connector: {}", e),
+                }
+            }
+        }
+
+        // Notion connector
+        if let Some(ref notion_cfg) = config.notion {
+            if notion_cfg.enabled {
+                match notion::start(notion_cfg.clone(), tx.clone()).await {
+                    Ok(h) => {
+                        info!("Notion connector started.");
+                        handles.push(h);
+                    }
+                    Err(e) => tracing::error!("Failed to start Notion connector: {}", e),
+                }
+            }
+        }
+
+        // Git connector
+        if let Some(ref git_cfg) = config.git {
+            if git_cfg.enabled {
+                match git::start(git_cfg.clone(), tx.clone()).await {
+                    Ok(h) => {
+                        info!("Git connector started.");
+                        handles.push(h);
+                    }
+                    Err(e) => tracing::error!("Failed to start Git connector: {}", e),
+                }
+            }
+        }
+
+        // Obsidian connector
+        if let Some(ref obsidian_cfg) = config.obsidian {
+            if obsidian_cfg.enabled {
+                match obsidian::start(obsidian_cfg.clone(), tx.clone()).await {
+                    Ok(h) => {
+                        info!("Obsidian connector started.");
+                        handles.push(h);
+                    }
+                    Err(e) => tracing::error!("Failed to start Obsidian connector: {}", e),
                 }
             }
         }
