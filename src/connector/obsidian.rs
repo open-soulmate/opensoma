@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use notify::{RecursiveMode, Watcher};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;

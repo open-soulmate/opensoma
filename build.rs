@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::path::Path::new(&proto_file).exists() {
         tonic_build::configure()
             .build_server(false)
-            .compile(&[proto_file], &[proto_dir])?;
+            .compile_protos(&[proto_file], &[proto_dir])?;
     }
     Ok(())
 }

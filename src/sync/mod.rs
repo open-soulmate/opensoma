@@ -1,7 +1,6 @@
 pub mod upload;
 pub mod cache;
 
-use anyhow::Result;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 

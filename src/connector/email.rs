@@ -149,7 +149,7 @@ fn poll_account_sync(
 
     // Fetch headers and body for new messages (limit to 20)
     for uid in uid_vec.iter().take(20) {
-        let fetch_items = format!("{} (BODY[HEADER.FIELDS (FROM SUBJECT DATE)]) BODY[TEXT]", uid);
+        let _fetch_items = format!("{} (BODY[HEADER.FIELDS (FROM SUBJECT DATE)]) BODY[TEXT]", uid);
         let fetch_result = session.fetch(uid.to_string(), "BODY[HEADER.FIELDS (FROM SUBJECT DATE)] BODY[TEXT]")?;
 
         let mut headers = String::new();

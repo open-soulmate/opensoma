@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub mod asr;
 pub mod image;
 pub mod ocr;

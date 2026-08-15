@@ -58,7 +58,7 @@ async fn handle_connection(
     allowed_origins: Vec<String>,
     tx: EventTx,
 ) -> Result<()> {
-    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 
     let mut reader = tokio::io::BufReader::new(&mut stream);
     let mut request_line = String::new();

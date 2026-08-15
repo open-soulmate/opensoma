@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tracing::debug;
 
 use crate::collector::RawEvent;
 

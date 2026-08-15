@@ -31,7 +31,7 @@ struct DocListResponse {
 
 /// A single document entry from the Feishu list API.
 #[derive(Debug, Deserialize, Serialize)]
-struct DocItem {
+pub struct DocItem {
     #[serde(default)]
     document_id: String,
     #[serde(default)]

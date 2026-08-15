@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::Utc;
-use notify::{RecursiveMode, Watcher};
+use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 use std::path::Path;
 use std::time::Duration;

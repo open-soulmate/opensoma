@@ -1,11 +1,10 @@
 pub mod normalize;
 pub mod dedup;
 
-use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
-use crate::collector::{EventRx, EventTx, RawEvent};
+use crate::collector::{EventRx, EventTx};
 use crate::config::ProcessorConfig;
 
 /// Start the processing pipeline: raw events → normalize → dedup → output.

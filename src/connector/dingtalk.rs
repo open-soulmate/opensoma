@@ -20,7 +20,7 @@ struct TokenResponse {
 
 /// Start the DingTalk connector. Authenticates via OAuth and begins
 /// polling or webhook listening for robot messages.
-pub async fn start(config: DingtalkConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: DingtalkConfig, _tx: EventTx) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;

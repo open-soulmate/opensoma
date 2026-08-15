@@ -45,7 +45,7 @@ impl OcrPlugin {
     }
 
     async fn run_tesseract(&self, data: &[u8]) -> Result<String> {
-        use tokio::io::AsyncWriteExt;
+        
 
         let tmp = tempfile::NamedTempFile::new()?;
         std::fs::write(tmp.path(), data)?;

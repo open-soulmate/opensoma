@@ -22,7 +22,7 @@ struct TokenResponse {
 
 /// Start the WeCom (企业微信) connector. Fetches access token and
 /// begins polling for callback events.
-pub async fn start(config: WecomConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: WecomConfig, _tx: EventTx) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
