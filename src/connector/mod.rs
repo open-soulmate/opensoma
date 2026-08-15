@@ -1,6 +1,9 @@
 pub mod feishu;
 pub mod dingtalk;
 pub mod wecom;
+pub mod rss;
+pub mod email;
+pub mod webhook;
 
 use anyhow::Result;
 use tokio::task::JoinHandle;
@@ -55,6 +58,45 @@ pub async fn start_all(
                         handles.push(h);
                     }
                     Err(e) => tracing::error!("Failed to start WeCom connector: {}", e),
+                }
+            }
+        }
+
+        // RSS connector
+        if let Some(ref rss_cfg) = config.rss {
+            if rss_cfg.enabled {
+                match rss::start(rss_cfg.clone(), tx.clone()).await {
+                    Ok(h) => {
+                        info!("RSS connector started.");
+                        handles.push(h);
+                    }
+                    Err(e) => tracing::error!("Failed to start RSS connector: {}", e),
+                }
+            }
+        }
+
+        // Email connector
+        if let Some(ref email_cfg) = config.email {
+            if email_cfg.enabled {
+                match email::start(email_cfg.clone(), tx.clone()).await {
+                    Ok(h) => {
+                        info!("Email connector started.");
+                        handles.push(h);
+                    }
+                    Err(e) => tracing::error!("Failed to start Email connector: {}", e),
+                }
+            }
+        }
+
+        // Webhook connector
+        if let Some(ref webhook_cfg) = config.webhook {
+            if webhook_cfg.enabled {
+                match webhook::start(webhook_cfg.clone(), tx.clone()).await {
+                    Ok(h) => {
+                        info!("Webhook connector started.");
+                        handles.push(h);
+                    }
+                    Err(e) => tracing::error!("Failed to start Webhook connector: {}", e),
                 }
             }
         }

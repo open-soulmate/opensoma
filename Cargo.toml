@@ -63,6 +63,8 @@ sysinfo = "0.33"
 
 # Content hashing (for dedup)
 sha2 = "0.10"
+hmac = "0.12"
+tokio-native-tls = "0.3"
 
 # Local IP detection
 local-ip-address = "0.6"
