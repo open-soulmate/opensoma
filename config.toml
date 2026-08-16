@@ -1,0 +1,168 @@
+# OpenSoma Configuration
+# Copy to config.toml and edit.
+#
+# Environment variable overrides follow the pattern:
+#   OPENSOMA_<SECTION>_<FIELD>
+# Example: OPENSOMA_DAEMON_NODE_ID=soma-node-002
+
+# ---------------------------------------------------------------------------
+# Daemon — node identity and runtime settings
+# ---------------------------------------------------------------------------
+[daemon]
+# Unique identifier for this Soma node (required)
+node_id = "soma-node-001"
+# Log level: trace, debug, info, warn, error (default: info)
+log_level = "info"
+# Directory for local sled cache and temporary files (default: /home/climbing/.opensoma/data)
+data_dir = "/home/climbing/.opensoma/data"
+
+# ---------------------------------------------------------------------------
+# Soul — HTTP connection to the OpenSoul agent
+# ---------------------------------------------------------------------------
+[soul]
+# Soul agent HTTP endpoint (required, e.g. http://localhost:8090)
+endpoint = "http://localhost:8090"
+# Heartbeat interval in seconds (default: 30)
+heartbeat_interval = 30
+# Connection timeout in seconds (default: 10)
+connect_timeout = 10
+
+# ---------------------------------------------------------------------------
+# Collector — file system watcher
+# ---------------------------------------------------------------------------
+[collector]
+# Directories to watch for new/changed files
+watch_dirs = ["/home/climbing/.opensoma/watch"]
+# File patterns to include (glob syntax)
+include = ["*.json", "*.csv", "*.txt", "*.log", "*.md"]
+# File patterns to exclude (glob syntax)
+exclude = ["*.tmp", "*.swp", "~*"]
+# Debounce duration in milliseconds — avoids duplicate events on rapid writes (default: 500)
+debounce_ms = 500
+
+# ---------------------------------------------------------------------------
+# Connectors — platform integrations (all disabled by default)
+# ---------------------------------------------------------------------------
+
+# --- Feishu (Lark) ---
+[connector.feishu]
+enabled = false
+# App credentials from Feishu Open Platform
+app_id = ""
+app_secret = ""
+# HTTP path for receiving Feishu event callbacks (default: /api/feishu/webhook)
+webhook_path = "/api/feishu/webhook"
+# Folder token to poll for document changes (optional, empty = disabled)
+folder_token = ""
+
+# --- DingTalk ---
+[connector.dingtalk]
+enabled = false
+# App credentials from DingTalk Open Platform
+app_key = ""
+app_secret = ""
+# Agent ID for the DingTalk app
+agent_id = ""
+# Robot webhook URL for outgoing messages (optional)
+robot_webhook = ""
+# Polling interval in seconds for approval and message data (default: 60)
+poll_interval_secs = 60
+
+# --- WeCom (Enterprise WeChat) ---
+[connector.wecom]
+enabled = false
+# Corp ID from WeCom admin console
+corp_id = ""
+# Agent ID for the WeCom application
+agent_id = ""
+# Application secret
+secret = ""
+# Polling interval in seconds (default: 60)
+poll_interval_secs = 60
+
+# --- RSS / Atom feeds ---
+[connector.rss]
+enabled = false
+# Polling interval in seconds (default: 300)
+poll_interval_secs = 300
+# List of feeds to subscribe to
+feeds = [
+    { name = "Hacker News", url = "https://news.ycombinator.com/rss" },
+    { name = "Rust Blog",   url = "https://blog.rust-lang.org/feed.xml" },
+]
+
+# --- Email (IMAP) ---
+[connector.email]
+enabled = false
+# Polling interval in seconds (default: 120)
+poll_interval_secs = 120
+# One or more IMAP accounts
+accounts = [
+    { name = "work", imap_server = "imap.gmail.com", imap_port = 993, username = "you@gmail.com", password = "app-specific-password", folder = "INBOX", tls = true },
+]
+
+# --- Notion ---
+[connector.notion]
+enabled = false
+# Internal integration token from https://www.notion.so/my-integrations
+integration_token = ""
+# Database ID to sync (from the Notion URL or API)
+database_id = ""
+# Polling interval in seconds (default: 120)
+poll_interval_secs = 120
+
+# --- Git repository watcher ---
+[connector.git]
+enabled = false
+# Remote repository URL
+repo_url = "https://github.com/your-org/your-repo.git"
+# Branch to watch (default: main)
+branch = "main"
+# Local clone path (auto-created if missing)
+local_path = "/home/climbing/.opensoma/data/repos/your-repo"
+# Polling interval in seconds (default: 300)
+poll_interval_secs = 300
+
+# --- Obsidian vault ---
+[connector.obsidian]
+enabled = false
+# Absolute path to the Obsidian vault directory
+vault_path = "/home/user/Documents/MyVault"
+# Debounce duration in milliseconds (default: 500)
+debounce_ms = 500
+
+# --- Generic Webhook receiver ---
+[connector.webhook]
+enabled = false
+# Listen address for the webhook HTTP server (default: 0.0.0.0:9800)
+listen = "0.0.0.0:9800"
+# Shared secret for HMAC-SHA256 signature verification (optional, empty = skip verification)
+secret = ""
+# Allowed origin prefixes for request validation (optional, empty = accept all)
+allowed_origins = ["https://open.feishu.cn"]
+
+# ---------------------------------------------------------------------------
+# Processor — normalization and deduplication
+# ---------------------------------------------------------------------------
+[processor]
+# Normalize all timestamps to UTC (default: true)
+normalize_timestamps = true
+# Maximum event payload size in bytes (default: 1048576 = 1MB)
+max_event_size = 1048576
+# Deduplication window in seconds — events with the same hash within this window are dropped (default: 300)
+dedup_window_secs = 300
+
+# ---------------------------------------------------------------------------
+# Sync — upload engine and local cache
+# ---------------------------------------------------------------------------
+[sync]
+# Number of events per upload batch (default: 50)
+batch_size = 50
+# Upload interval in seconds (default: 10)
+upload_interval = 10
+# Maximum retry attempts for failed uploads (default: 5)
+max_retries = 5
+# Initial retry backoff in milliseconds — doubles on each retry (default: 1000)
+retry_backoff_ms = 1000
+# Local sled cache size limit in megabytes (default: 512)
+cache_size_mb = 512
