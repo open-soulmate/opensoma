@@ -22,6 +22,8 @@ pub struct DaemonConfig {
     pub log_level: String,
     #[serde(default = "default_data_dir")]
     pub data_dir: String,
+    #[serde(default = "default_status_port")]
+    pub status_port: u16,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -353,6 +355,9 @@ fn default_log_level() -> String {
 }
 fn default_data_dir() -> String {
     "/var/lib/opensoma".into()
+}
+fn default_status_port() -> u16 {
+    8091
 }
 fn default_heartbeat_interval() -> u64 {
     30

@@ -7,6 +7,7 @@ mod plugins;
 mod processor;
 mod sync;
 mod grpc;
+mod status_server;
 
 use anyhow::Result;
 use tracing::info;
@@ -74,6 +75,20 @@ async fn main() -> Result<()> {
         processed_rx,
     );
 
+    // Start HTTP status server for monitoring
+    let status_state = status_server::StatusServerState {
+        node_id: config.daemon.node_id.clone(),
+        start_time: std::time::Instant::now(),
+        events_collected: std::sync::Arc::new(tokio::sync::RwLock::new(0)),
+        events_synced: std::sync::Arc::new(tokio::sync::RwLock::new(0)),
+        connectors_active: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        last_error: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+    };
+    let status_handle = status_server::start_status_server(
+        config.daemon.status_port,
+        status_state,
+    ).await;
+
     info!("All subsystems initialized. Daemon is running.");
 
     // Wait for shutdown signal
@@ -90,6 +105,7 @@ async fn main() -> Result<()> {
     connector_handle.abort();
     processor_handle.abort();
     sync_handle.abort();
+    status_handle.abort();
 
     info!("OpenSoma stopped.");
     Ok(())
