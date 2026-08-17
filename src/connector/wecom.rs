@@ -1,9 +1,9 @@
 use anyhow::Result;
 use chrono::Utc;
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
@@ -14,15 +14,60 @@ struct TokenResponse {
     access_token: String,
     #[allow(dead_code)]
     expires_in: u64,
-    #[allow(dead_code)]
+    #[serde(default)]
     errcode: Option<i64>,
-    #[allow(dead_code)]
+    #[serde(default)]
     errmsg: Option<String>,
 }
 
-/// Start the WeCom (企业微信) connector. Fetches access token and
-/// begins polling for callback events.
-pub async fn start(config: WecomConfig, _tx: EventTx) -> Result<JoinHandle<()>> {
+/// WeCom message list response for getting received messages.
+#[derive(Debug, Deserialize)]
+struct MessageListResponse {
+    #[serde(default)]
+    errcode: Option<i64>,
+    #[serde(default)]
+    errmsg: Option<String>,
+    #[serde(default)]
+    result: Option<MessageResult>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct MessageResult {
+    #[serde(default)]
+    msg_list: Vec<WeChatMessage>,
+}
+
+/// A single WeCom received message.
+#[derive(Debug, Deserialize, Serialize)]
+struct WeChatMessage {
+    #[serde(default)]
+    msgid: String,
+    #[serde(default)]
+    msg_type: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    from_user: String,
+    #[serde(default)]
+    create_time: i64,
+    #[serde(default)]
+    agentid: Option<i64>,
+}
+
+/// WeCom external contact list response.
+#[derive(Debug, Deserialize)]
+struct ExternalContactListResponse {
+    #[serde(default)]
+    errcode: Option<i64>,
+    #[serde(default)]
+    errmsg: Option<String>,
+    #[serde(default)]
+    external_userid: Vec<String>,
+}
+
+/// Start the WeCom (企业微信) connector. Authenticates via API, then
+/// polls for received messages and forwards them as events.
+pub async fn start(config: WecomConfig, tx: EventTx) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
@@ -30,22 +75,66 @@ pub async fn start(config: WecomConfig, _tx: EventTx) -> Result<JoinHandle<()>> 
     let token = fetch_access_token(&http_client, &config).await?;
     info!("WeCom connector authenticated.");
 
+    let poll_secs = config.poll_interval_secs;
+
     let handle = tokio::spawn(async move {
-        let mut _current_token = token;
-        // WeCom tokens are valid for 7200s
-        let mut refresh_interval =
-            tokio::time::interval(std::time::Duration::from_secs(6000));
+        let mut current_token = token;
+        let mut token_refresh = tokio::time::interval(std::time::Duration::from_secs(6000));
+        let mut poll_interval = tokio::time::interval(std::time::Duration::from_secs(poll_secs));
+        poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        // Track seen message IDs to avoid duplicates
+        let mut seen_msgs: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         loop {
             tokio::select! {
-                _ = refresh_interval.tick() => {
+                _ = token_refresh.tick() => {
                     match fetch_access_token(&http_client, &config).await {
                         Ok(new_token) => {
-                            _current_token = new_token;
+                            current_token = new_token;
                             info!("WeCom access token refreshed.");
                         }
                         Err(e) => {
                             error!("Failed to refresh WeCom token: {}", e);
+                        }
+                    }
+                }
+                _ = poll_interval.tick() => {
+                    // Poll received messages for the agent
+                    match fetch_received_messages(&http_client, &current_token, &config.agent_id).await {
+                        Ok(messages) => {
+                            debug!("Fetched {} WeCom messages", messages.len());
+                            for msg in messages {
+                                if seen_msgs.contains(&msg.msgid) {
+                                    continue;
+                                }
+                                seen_msgs.insert(msg.msgid.clone());
+
+                                let raw_event = to_raw_event(&msg);
+                                match tx.try_send(raw_event) {
+                                    Ok(()) => {
+                                        debug!("Forwarded WeCom msg: {} from {}", msg.msgid, msg.from_user);
+                                    }
+                                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                        warn!("Event channel full, dropping WeCom msg: {}", msg.msgid);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to send WeCom event: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to fetch WeCom messages: {}", e);
+                        }
+                    }
+
+                    // Keep the seen set from growing unbounded
+                    if seen_msgs.len() > 10000 {
+                        let excess = seen_msgs.len() - 5000;
+                        let to_remove: Vec<String> = seen_msgs.iter().take(excess).cloned().collect();
+                        for id in to_remove {
+                            seen_msgs.remove(&id);
                         }
                     }
                 }
@@ -64,7 +153,59 @@ async fn fetch_access_token(client: &Client, config: &WecomConfig) -> Result<Str
     );
 
     let resp = client.get(&url).send().await?.json::<TokenResponse>().await?;
+    if let Some(code) = resp.errcode {
+        if code != 0 {
+            anyhow::bail!("WeCom token error {}: {:?}", code, resp.errmsg);
+        }
+    }
     Ok(resp.access_token)
+}
+
+/// Fetch received messages for a WeCom application.
+/// Uses the /cgi-bin/message/list_msg API (enterprise internal API).
+async fn fetch_received_messages(
+    client: &Client,
+    token: &str,
+    _agent_id: &str,
+) -> Result<Vec<WeChatMessage>> {
+    let url = format!(
+        "https://qyapi.weixin.qq.com/cgi-bin/message/list_msg?access_token={}",
+        token
+    );
+
+    // Query messages from the last hour
+    let now = Utc::now().timestamp();
+    let hour_ago = now - 3600;
+
+    let body = serde_json::json!({
+        "chat_type": "single",
+        "start_time": hour_ago,
+        "end_time": now,
+        "limit": 100,
+        "cursor": "",
+    });
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await?
+        .json::<MessageListResponse>()
+        .await?;
+
+    if let Some(code) = resp.errcode {
+        if code != 0 {
+            // Error code 45028 means no message access permission (common for some app types)
+            // Return empty instead of error in that case
+            if code == 45028 {
+                debug!("WeCom message list not available (code 45028), skipping.");
+                return Ok(Vec::new());
+            }
+            anyhow::bail!("WeCom message list error {}: {:?}", code, resp.errmsg);
+        }
+    }
+
+    Ok(resp.result.map(|r| r.msg_list).unwrap_or_default())
 }
 
 /// Send a message via WeCom application API.
@@ -85,17 +226,51 @@ pub async fn send_app_message(
         "agentid": agent_id,
         "text": { "content": content }
     });
-
     client.post(&url).json(&body).send().await?;
     Ok(())
 }
 
-/// Convert a WeCom event into a RawEvent.
-pub fn to_raw_event(payload: serde_json::Value) -> RawEvent {
+/// Convert a WeCom message into a RawEvent for the collector pipeline.
+fn to_raw_event(msg: &WeChatMessage) -> RawEvent {
+    let mut tags = std::collections::HashMap::new();
+    tags.insert("platform".to_string(), "wecom".to_string());
+    tags.insert("msg_type".to_string(), msg.msg_type.clone());
+    tags.insert("from_user".to_string(), msg.from_user.clone());
+    tags.insert("msgid".to_string(), msg.msgid.clone());
+
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "msgid": msg.msgid,
+        "msg_type": msg.msg_type,
+        "content": msg.content,
+        "from_user": msg.from_user,
+        "create_time": msg.create_time,
+        "agentid": msg.agentid,
+    }))
+    .unwrap_or_default();
+
     RawEvent {
         id: Uuid::new_v4().to_string(),
-        source: "connector:wecom".to_string(),
+        source: format!("connector:wecom:msg:{}", msg.msgid),
         event_type: "message".to_string(),
+        timestamp_ms: Utc::now().timestamp_millis(),
+        payload,
+        tags,
+    }
+}
+
+/// Convert a raw WeCom callback event into a RawEvent.
+pub fn to_raw_event_from_callback(payload: serde_json::Value) -> RawEvent {
+    let event_type = payload
+        .get("MsgType")
+        .or_else(|| payload.get("Event"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("callback")
+        .to_string();
+
+    RawEvent {
+        id: Uuid::new_v4().to_string(),
+        source: "connector:wecom:callback".to_string(),
+        event_type,
         timestamp_ms: Utc::now().timestamp_millis(),
         payload: serde_json::to_vec(&payload).unwrap_or_default(),
         tags: {
