@@ -7,6 +7,7 @@ pub mod obsidian;
 pub mod rss;
 pub mod email;
 pub mod webhook;
+pub mod github;
 
 use anyhow::Result;
 use tokio::task::JoinHandle;
@@ -100,6 +101,19 @@ pub async fn start_all(
                         handles.push(h);
                     }
                     Err(e) => tracing::error!("Failed to start Webhook connector: {}", e),
+                }
+            }
+        }
+
+        // GitHub connector
+        if let Some(ref github_cfg) = config.github {
+            if github_cfg.enabled {
+                match github::start(github_cfg.clone(), tx.clone()).await {
+                    Ok(h) => {
+                        info!("GitHub connector started.");
+                        handles.push(h);
+                    }
+                    Err(e) => tracing::error!("Failed to start GitHub connector: {}", e),
                 }
             }
         }

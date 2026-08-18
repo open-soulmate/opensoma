@@ -66,6 +66,8 @@ pub struct ConnectorConfig {
     pub obsidian: Option<ObsidianConfig>,
     #[serde(default)]
     pub webhook: Option<WebhookConfig>,
+    #[serde(default)]
+    pub github: Option<GitHubConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -185,6 +187,34 @@ pub struct WebhookConfig {
     /// Allowed origin prefixes for validation (e.g. "https://open.feishu.cn")
     #[serde(default)]
     pub allowed_origins: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GitHubConfig {
+    pub enabled: bool,
+    /// GitHub personal access token (optional, increases rate limits)
+    #[serde(default)]
+    pub token: Option<String>,
+    /// List of "owner/repo" to sync
+    pub repos: Vec<String>,
+    /// Polling interval in seconds (default 300)
+    #[serde(default = "default_github_interval")]
+    pub poll_interval_secs: u64,
+    /// Include issues (default true)
+    #[serde(default = "default_true")]
+    pub include_issues: bool,
+    /// Include pull requests (default true)
+    #[serde(default = "default_true")]
+    pub include_prs: bool,
+    /// Include releases (default true)
+    #[serde(default = "default_true")]
+    pub include_releases: bool,
+    /// Include closed items (default false)
+    #[serde(default)]
+    pub include_closed: bool,
+    /// Max items per API fetch (default 30)
+    #[serde(default = "default_github_max_items")]
+    pub max_items_per_fetch: usize,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -426,5 +456,13 @@ fn default_obsidian_debounce() -> u64 {
     500
 }
 fn default_webhook_listen() -> String {
-    "0.0.0.0:9800".into()
+    "0.0.0.0:9800".to_string()
+}
+
+fn default_github_interval() -> u64 {
+    300
+}
+
+fn default_github_max_items() -> usize {
+    30
 }
