@@ -316,6 +316,7 @@ pub fn to_raw_event_from_callback(payload: serde_json::Value) -> RawEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::WecomConfig;
 
     #[test]
     fn test_to_raw_event_from_callback_msg_type() {
@@ -351,5 +352,198 @@ mod tests {
         let event = to_raw_event_from_callback(payload.clone());
         let parsed: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
         assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn test_to_raw_event_from_message() {
+        let msg = WeChatMessage {
+            msgid: "msg-001".to_string(),
+            msg_type: "text".to_string(),
+            content: Some("Hello, world!".to_string()),
+            from_user: "user-abc".to_string(),
+            create_time: 1700000000,
+            agentid: Some(1000002),
+        };
+        let event = to_raw_event(&msg);
+        assert_eq!(event.event_type, "message");
+        assert_eq!(event.source, "connector:wecom:msg:msg-001");
+        assert_eq!(event.tags.get("platform").unwrap(), "wecom");
+        assert_eq!(event.tags.get("msg_type").unwrap(), "text");
+        assert_eq!(event.tags.get("from_user").unwrap(), "user-abc");
+        assert_eq!(event.tags.get("msgid").unwrap(), "msg-001");
+
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["msgid"], "msg-001");
+        assert_eq!(payload["content"], "Hello, world!");
+        assert_eq!(payload["from_user"], "user-abc");
+        assert_eq!(payload["create_time"], 1700000000);
+        assert_eq!(payload["agentid"], 1000002);
+    }
+
+    #[test]
+    fn test_to_raw_event_from_message_no_content() {
+        let msg = WeChatMessage {
+            msgid: "msg-002".to_string(),
+            msg_type: "image".to_string(),
+            content: None,
+            from_user: "user-xyz".to_string(),
+            create_time: 0,
+            agentid: None,
+        };
+        let event = to_raw_event(&msg);
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert!(payload["content"].is_null());
+        assert!(payload["agentid"].is_null());
+    }
+
+    #[test]
+    fn test_wechat_message_deserialization() {
+        let json = r#"{
+            "msgid": "msg-123",
+            "msg_type": "text",
+            "content": "Test message",
+            "from_user": "user1",
+            "create_time": 1700000000,
+            "agentid": 1000001
+        }"#;
+        let msg: WeChatMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg.msgid, "msg-123");
+        assert_eq!(msg.msg_type, "text");
+        assert_eq!(msg.content.unwrap(), "Test message");
+        assert_eq!(msg.from_user, "user1");
+        assert_eq!(msg.agentid.unwrap(), 1000001);
+    }
+
+    #[test]
+    fn test_wechat_message_deserialization_minimal() {
+        let json = r#"{}"#;
+        let msg: WeChatMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg.msgid, "");
+        assert_eq!(msg.msg_type, "");
+        assert!(msg.content.is_none());
+        assert_eq!(msg.from_user, "");
+        assert_eq!(msg.create_time, 0);
+        assert!(msg.agentid.is_none());
+    }
+
+    #[test]
+    fn test_token_response_deserialization() {
+        let json = r#"{
+            "access_token": "token-abc123",
+            "expires_in": 7200
+        }"#;
+        let resp: TokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.access_token, "token-abc123");
+        assert_eq!(resp.expires_in, 7200);
+        assert!(resp.errcode.is_none());
+        assert!(resp.errmsg.is_none());
+    }
+
+    #[test]
+    fn test_token_response_with_error() {
+        let json = r#"{
+            "access_token": "",
+            "expires_in": 0,
+            "errcode": 40013,
+            "errmsg": "invalid appid"
+        }"#;
+        let resp: TokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.errcode.unwrap(), 40013);
+        assert_eq!(resp.errmsg.unwrap(), "invalid appid");
+    }
+
+    #[test]
+    fn test_message_list_response_deserialization() {
+        let json = r#"{
+            "errcode": 0,
+            "errmsg": "ok",
+            "result": {
+                "msg_list": [
+                    {"msgid": "m1", "msg_type": "text", "from_user": "u1", "create_time": 100},
+                    {"msgid": "m2", "msg_type": "image", "from_user": "u2", "create_time": 200}
+                ]
+            }
+        }"#;
+        let resp: MessageListResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.errcode.is_none() || resp.errcode == Some(0));
+        let result = resp.result.unwrap();
+        assert_eq!(result.msg_list.len(), 2);
+        assert_eq!(result.msg_list[0].msgid, "m1");
+        assert_eq!(result.msg_list[1].msg_type, "image");
+    }
+
+    #[test]
+    fn test_message_list_response_empty() {
+        let json = r#"{"errcode": 0, "result": {"msg_list": []}}"#;
+        let resp: MessageListResponse = serde_json::from_str(json).unwrap();
+        let result = resp.result.unwrap();
+        assert!(result.msg_list.is_empty());
+    }
+
+    #[test]
+    fn test_message_list_response_no_result() {
+        let json = r#"{"errcode": 45028, "errmsg": "no permission"}"#;
+        let resp: MessageListResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.errcode.unwrap(), 45028);
+        assert!(resp.result.is_none());
+    }
+
+    #[test]
+    fn test_external_contact_list_deserialization() {
+        let json = r#"{
+            "errcode": 0,
+            "errmsg": "ok",
+            "external_userid": ["ext-user-1", "ext-user-2", "ext-user-3"]
+        }"#;
+        let resp: ExternalContactListResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.external_userid.len(), 3);
+        assert_eq!(resp.external_userid[0], "ext-user-1");
+    }
+
+    #[test]
+    fn test_external_contact_list_empty() {
+        let json = r#"{"errcode": 0, "external_userid": []}"#;
+        let resp: ExternalContactListResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.external_userid.is_empty());
+    }
+
+    #[test]
+    fn test_wecom_connector_name() {
+        let config = WecomConfig {
+            enabled: true,
+            corp_id: "test-corp".to_string(),
+            agent_id: "1000001".to_string(),
+            secret: "test-secret".to_string(),
+            poll_interval_secs: 60,
+        };
+        let connector = WecomConnector::new(config);
+        assert_eq!(connector.name(), "wecom");
+    }
+
+    #[test]
+    fn test_callback_msg_type_priority_over_event() {
+        // MsgType should take priority over Event
+        let payload = serde_json::json!({
+            "MsgType": "text",
+            "Event": "subscribe"
+        });
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "text");
+    }
+
+    #[test]
+    fn test_to_raw_event_unique_ids() {
+        let msg = WeChatMessage {
+            msgid: "same-msg".to_string(),
+            msg_type: "text".to_string(),
+            content: Some("test".to_string()),
+            from_user: "user".to_string(),
+            create_time: 0,
+            agentid: None,
+        };
+        let e1 = to_raw_event(&msg);
+        let e2 = to_raw_event(&msg);
+        assert_ne!(e1.id, e2.id);
+        assert_eq!(e1.source, e2.source);
     }
 }
