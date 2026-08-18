@@ -205,3 +205,135 @@ pub struct CacheStats {
     pub uploaded: usize,
     pub pending: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn temp_cache() -> Cache {
+        let dir = tempfile::tempdir().unwrap();
+        Cache::open(dir.path().to_str().unwrap()).unwrap()
+    }
+
+    fn make_event(id: &str, payload: &[u8]) -> RawEvent {
+        RawEvent {
+            id: id.to_string(),
+            source: "test".to_string(),
+            event_type: "test.event".to_string(),
+            timestamp_ms: chrono::Utc::now().timestamp_millis(),
+            payload: payload.to_vec(),
+            tags: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_put_and_get_pending() {
+        let cache = temp_cache();
+        let event = make_event("ev1", b"hello");
+        cache.put(&event).unwrap();
+
+        let pending = cache.get_pending().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, "ev1");
+    }
+
+    #[test]
+    fn test_mark_uploaded() {
+        let cache = temp_cache();
+        let event = make_event("ev2", b"data");
+        cache.put(&event).unwrap();
+        cache.mark_uploaded("ev2").unwrap();
+
+        let pending = cache.get_pending().unwrap();
+        assert_eq!(pending.len(), 0);
+    }
+
+    #[test]
+    fn test_pending_count() {
+        let cache = temp_cache();
+        assert_eq!(cache.pending_count().unwrap(), 0);
+
+        cache.put(&make_event("a", b"1")).unwrap();
+        cache.put(&make_event("b", b"2")).unwrap();
+        assert_eq!(cache.pending_count().unwrap(), 2);
+
+        cache.mark_uploaded("a").unwrap();
+        assert_eq!(cache.pending_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_increment_retry() {
+        let cache = temp_cache();
+        cache.put(&make_event("ev3", b"data")).unwrap();
+        cache.increment_retry("ev3").unwrap();
+        cache.increment_retry("ev3").unwrap();
+        // No panic = success; retry count is internal
+    }
+
+    #[test]
+    fn test_hash_event() {
+        let event = make_event("ev4", b"same content");
+        let hash1 = Cache::hash_event(&event);
+        let hash2 = Cache::hash_event(&event);
+        assert_eq!(hash1, hash2);
+        assert_eq!(hash1.len(), 64); // SHA-256 hex = 64 chars
+    }
+
+    #[test]
+    fn test_contains_hash() {
+        let cache = temp_cache();
+        let event = make_event("ev5", b"unique payload");
+        let hash = Cache::hash_event(&event);
+
+        assert!(!cache.contains_hash(&hash).unwrap());
+        cache.put(&event).unwrap();
+        assert!(cache.contains_hash(&hash).unwrap());
+    }
+
+    #[test]
+    fn test_stats() {
+        let cache = temp_cache();
+        cache.put(&make_event("a", b"1")).unwrap();
+        cache.put(&make_event("b", b"2")).unwrap();
+        cache.mark_uploaded("a").unwrap();
+
+        let stats = cache.stats();
+        assert_eq!(stats.total, 2);
+        assert_eq!(stats.uploaded, 1);
+        assert_eq!(stats.pending, 1);
+    }
+
+    #[test]
+    fn test_evict_before() {
+        let cache = temp_cache();
+        cache.put(&make_event("old", b"old data")).unwrap();
+        cache.mark_uploaded("old").unwrap();
+
+        // Evict everything older than far future
+        let future = chrono::Utc::now().timestamp_millis() + 100_000;
+        let evicted = cache.evict_before(future).unwrap();
+        assert_eq!(evicted, 1);
+        assert_eq!(cache.stats().total, 0);
+    }
+
+    #[test]
+    fn test_evict_before_skips_unuploaded() {
+        let cache = temp_cache();
+        cache.put(&make_event("pending", b"data")).unwrap();
+        // Don't mark as uploaded
+
+        let future = chrono::Utc::now().timestamp_millis() + 100_000;
+        let evicted = cache.evict_before(future).unwrap();
+        assert_eq!(evicted, 0); // Should not evict unuploaded
+        assert_eq!(cache.stats().total, 1);
+    }
+
+    #[test]
+    fn test_remove() {
+        let cache = temp_cache();
+        cache.put(&make_event("ev6", b"data")).unwrap();
+        cache.remove("ev6").unwrap();
+        assert_eq!(cache.stats().total, 0);
+    }
+}

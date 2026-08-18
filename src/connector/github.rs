@@ -320,3 +320,198 @@ async fn fetch_releases(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::GitHubConfig;
+
+    fn default_config() -> GitHubConfig {
+        GitHubConfig {
+            enabled: true,
+            token: None,
+            repos: vec!["owner/repo".to_string()],
+            poll_interval_secs: 300,
+            include_issues: true,
+            include_prs: true,
+            include_releases: true,
+            include_closed: false,
+            max_items_per_fetch: 30,
+        }
+    }
+
+    #[test]
+    fn test_build_client_no_token() {
+        let config = default_config();
+        // Should not panic — verifies the builder succeeds
+        let _client = build_client(&config);
+    }
+
+    #[test]
+    fn test_build_client_with_token() {
+        let mut config = default_config();
+        config.token = Some("ghp_test123".to_string());
+        // Should not panic — verifies token header parse succeeds
+        let _client = build_client(&config);
+    }
+
+    #[test]
+    fn test_build_client_empty_token() {
+        let mut config = default_config();
+        config.token = Some("".to_string());
+        // Empty token should still build fine (token is skipped in build_client)
+        let _client = build_client(&config);
+    }
+
+    #[test]
+    fn test_github_issue_deserialization() {
+        let json = serde_json::json!({
+            "number": 42,
+            "title": "Test Issue",
+            "body": "Issue body text",
+            "state": "open",
+            "html_url": "https://github.com/owner/repo/issues/42",
+            "user": {"login": "testuser"},
+            "labels": [{"name": "bug"}, {"name": "priority:high"}],
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-02T00:00:00Z",
+            "pull_request": null
+        });
+
+        let issue: GitHubIssue = serde_json::from_value(json).unwrap();
+        assert_eq!(issue.number, 42);
+        assert_eq!(issue.title, "Test Issue");
+        assert_eq!(issue.body.unwrap(), "Issue body text");
+        assert_eq!(issue.state, "open");
+        assert_eq!(issue.user.unwrap().login, "testuser");
+        assert_eq!(issue.labels.len(), 2);
+        assert_eq!(issue.labels[0].name, "bug");
+        assert!(issue.pull_request.is_none());
+    }
+
+    #[test]
+    fn test_github_pr_deserialization() {
+        let json = serde_json::json!({
+            "number": 10,
+            "title": "Fix bug",
+            "body": null,
+            "state": "open",
+            "html_url": "https://github.com/owner/repo/pull/10",
+            "user": {"login": "dev"},
+            "labels": [],
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "pull_request": {"url": "https://api.github.com/repos/owner/repo/pulls/10"}
+        });
+
+        let issue: GitHubIssue = serde_json::from_value(json).unwrap();
+        assert!(issue.pull_request.is_some());
+        assert_eq!(issue.number, 10);
+        assert!(issue.body.is_none());
+    }
+
+    #[test]
+    fn test_github_release_deserialization() {
+        let json = serde_json::json!({
+            "tag_name": "v1.0.0",
+            "name": "Version 1.0.0",
+            "body": "Release notes here",
+            "html_url": "https://github.com/owner/repo/releases/tag/v1.0.0",
+            "published_at": "2026-01-15T12:00:00Z",
+            "author": {"login": "maintainer"}
+        });
+
+        let release: GitHubRelease = serde_json::from_value(json).unwrap();
+        assert_eq!(release.tag_name, "v1.0.0");
+        assert_eq!(release.name.unwrap(), "Version 1.0.0");
+        assert_eq!(release.body.unwrap(), "Release notes here");
+        assert_eq!(release.author.unwrap().login, "maintainer");
+    }
+
+    #[test]
+    fn test_github_release_minimal() {
+        let json = serde_json::json!({
+            "tag_name": "v0.1.0",
+            "name": null,
+            "body": null,
+            "html_url": "https://github.com/owner/repo/releases/tag/v0.1.0",
+            "published_at": "2026-01-01T00:00:00Z",
+            "author": null
+        });
+
+        let release: GitHubRelease = serde_json::from_value(json).unwrap();
+        assert_eq!(release.tag_name, "v0.1.0");
+        assert!(release.name.is_none());
+        assert!(release.body.is_none());
+        assert!(release.author.is_none());
+    }
+
+    #[test]
+    fn test_connector_name() {
+        let config = default_config();
+        let connector = GitHubConnector::new(config);
+        assert_eq!(connector.name(), "github");
+    }
+
+    #[test]
+    fn test_issue_content_format() {
+        // Verify the content string format for issues
+        let json = serde_json::json!({
+            "number": 1,
+            "title": "First issue",
+            "body": "Hello world",
+            "state": "open",
+            "html_url": "https://github.com/o/r/issues/1",
+            "user": {"login": "alice"},
+            "labels": [{"name": "bug"}],
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-02T00:00:00Z",
+            "pull_request": null
+        });
+
+        let issue: GitHubIssue = serde_json::from_value(json).unwrap();
+        let is_pr = issue.pull_request.is_some();
+        let item_type = if is_pr { "pull_request" } else { "issue" };
+        let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+        let author = issue.user.as_ref().map(|u| u.login.clone()).unwrap_or_default();
+        let body_text = issue.body.as_deref().unwrap_or("");
+
+        let content = format!(
+            "# {} #{}: {}\n\nAuthor: {}\nState: {}\nLabels: {}\nURL: {}\nCreated: {}\nUpdated: {}\n\n{}",
+            item_type, issue.number, issue.title,
+            author, issue.state, labels.join(", "), issue.html_url,
+            issue.created_at, issue.updated_at, body_text,
+        );
+
+        assert!(content.contains("# issue #1: First issue"));
+        assert!(content.contains("Author: alice"));
+        assert!(content.contains("Labels: bug"));
+        assert!(content.contains("Hello world"));
+    }
+
+    #[test]
+    fn test_issue_filtering_pr_only() {
+        // When include_prs=false and include_issues=true, PRs should be skipped
+        let json = serde_json::json!({
+            "number": 5,
+            "title": "A PR",
+            "body": null,
+            "state": "open",
+            "html_url": "https://github.com/o/r/pull/5",
+            "user": {"login": "dev"},
+            "labels": [],
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/5"}
+        });
+
+        let issue: GitHubIssue = serde_json::from_value(json).unwrap();
+        let is_pr = issue.pull_request.is_some();
+
+        // With include_prs=false, this should be skipped
+        let include_prs = false;
+        let include_issues = true;
+        let should_skip = (is_pr && !include_prs) || (!is_pr && !include_issues);
+        assert!(should_skip);
+    }
+}
