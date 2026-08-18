@@ -78,6 +78,28 @@ struct GitHubRelease {
     author: Option<GitHubUser>,
 }
 
+/// A recent commit from the GitHub commits API.
+#[derive(Debug, Deserialize)]
+struct GitHubCommit {
+    sha: String,
+    commit: GitHubCommitDetail,
+    html_url: String,
+    author: Option<GitHubUser>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubCommitDetail {
+    message: String,
+    author: GitHubCommitAuthor,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubCommitAuthor {
+    name: String,
+    email: String,
+    date: String,
+}
+
 /// Start the GitHub connector. Polls the GitHub API for issues, PRs, and releases.
 pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> {
     let handle = tokio::spawn(async move {
@@ -92,6 +114,7 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
 
         let mut seen_issues: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut seen_releases: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut seen_commits: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         // Initial fetch
         for repo in &config.repos {
@@ -102,6 +125,9 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                 if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases).await {
                     warn!("Initial GitHub releases fetch failed for {}: {}", repo, e);
                 }
+            }
+            if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
+                warn!("Initial GitHub commits fetch failed for {}: {}", repo, e);
             }
         }
 
@@ -115,6 +141,18 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                 if config.include_releases {
                     if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases).await {
                         warn!("GitHub releases fetch failed for {}: {}", repo, e);
+                    }
+                }
+                if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
+                    warn!("GitHub commits fetch failed for {}: {}", repo, e);
+                }
+
+                // Evict old seen records to prevent unbounded growth
+                for seen in [&mut seen_issues, &mut seen_releases, &mut seen_commits] {
+                    if seen.len() > 5000 {
+                        let excess = seen.len() - 2500;
+                        let to_remove: Vec<String> = seen.iter().take(excess).cloned().collect();
+                        for id in to_remove { seen.remove(&id); }
                     }
                 }
             }
@@ -321,6 +359,99 @@ async fn fetch_releases(
     Ok(())
 }
 
+/// Fetch recent commits from a GitHub repository.
+/// Polls the /repos/{owner}/{repo}/commits endpoint.
+async fn fetch_commits(
+    client: &reqwest::Client,
+    repo: &str,
+    tx: &EventTx,
+    seen: &mut std::collections::HashSet<String>,
+) -> Result<()> {
+    let url = format!(
+        "https://api.github.com/repos/{}/commits?per_page=20",
+        repo
+    );
+
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .context("Failed to fetch GitHub commits")?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("GitHub commits API error {}: {}", status, body);
+    }
+
+    let commits: Vec<GitHubCommit> = resp.json().await.context("Failed to parse GitHub commits")?;
+    let mut new_count = 0u32;
+
+    for commit in &commits {
+        let item_id = format!("{}:commit:{}", repo, commit.sha);
+
+        if seen.contains(&item_id) {
+            continue;
+        }
+
+        let author_name = commit
+            .author
+            .as_ref()
+            .map(|u| u.login.clone())
+            .unwrap_or_else(|| commit.commit.author.name.clone());
+
+        // Truncate commit message to first line
+        let first_line = commit
+            .commit
+            .message
+            .lines()
+            .next()
+            .unwrap_or("")
+            .to_string();
+
+        let content = format!(
+            "# Commit: {}\n\nRepository: {}\nAuthor: {} <{}>\nDate: {}\nSHA: {}\nURL: {}\n\n{}",
+            first_line, repo, author_name, commit.commit.author.email,
+            commit.commit.author.date, &commit.sha[..12], commit.html_url,
+            commit.commit.message,
+        );
+
+        let mut tags = std::collections::HashMap::new();
+        tags.insert("repo".to_string(), repo.to_string());
+        tags.insert("type".to_string(), "commit".to_string());
+        tags.insert("sha".to_string(), commit.sha.clone());
+        tags.insert("author".to_string(), author_name);
+        tags.insert("url".to_string(), commit.html_url.clone());
+
+        let event = RawEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            source: format!("github:{}", repo),
+            event_type: "github.commit".to_string(),
+            timestamp_ms: chrono::Utc::now().timestamp_millis(),
+            payload: content.into_bytes(),
+            tags,
+        };
+
+        if tx.send(event).await.is_err() {
+            error!("Failed to forward GitHub commit — channel closed");
+            break;
+        }
+
+        seen.insert(item_id);
+        new_count += 1;
+        debug!("Forwarded GitHub commit {}", &commit.sha[..12]);
+    }
+
+    if new_count > 0 {
+        info!(
+            "GitHub commits sync: {} total from {} ({} new)",
+            commits.len(), repo, new_count,
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -513,5 +644,55 @@ mod tests {
         let include_issues = true;
         let should_skip = (is_pr && !include_prs) || (!is_pr && !include_issues);
         assert!(should_skip);
+    }
+
+    #[test]
+    fn test_github_commit_deserialization() {
+        let json = serde_json::json!({
+            "sha": "abc123def456789",
+            "commit": {
+                "message": "feat: add new feature\n\nDetailed description here",
+                "author": {
+                    "name": "Test Author",
+                    "email": "test@example.com",
+                    "date": "2026-08-19T10:30:00Z"
+                }
+            },
+            "html_url": "https://github.com/owner/repo/commit/abc123def456789",
+            "author": {"login": "testuser"}
+        });
+
+        let commit: GitHubCommit = serde_json::from_value(json).unwrap();
+        assert_eq!(commit.sha, "abc123def456789");
+        assert_eq!(commit.commit.message, "feat: add new feature\n\nDetailed description here");
+        assert_eq!(commit.commit.author.name, "Test Author");
+        assert_eq!(commit.commit.author.email, "test@example.com");
+        assert_eq!(commit.author.unwrap().login, "testuser");
+
+        // Verify first line extraction
+        let first_line = commit.commit.message.lines().next().unwrap();
+        assert_eq!(first_line, "feat: add new feature");
+    }
+
+    #[test]
+    fn test_github_commit_minimal() {
+        let json = serde_json::json!({
+            "sha": "deadbeef1234",
+            "commit": {
+                "message": "fix: bug fix",
+                "author": {
+                    "name": "Anonymous",
+                    "email": "anon@example.com",
+                    "date": "2026-01-01T00:00:00Z"
+                }
+            },
+            "html_url": "https://github.com/o/r/commit/deadbeef1234",
+            "author": null
+        });
+
+        let commit: GitHubCommit = serde_json::from_value(json).unwrap();
+        assert_eq!(commit.sha, "deadbeef1234");
+        assert!(commit.author.is_none());
+        assert_eq!(commit.commit.author.name, "Anonymous");
     }
 }

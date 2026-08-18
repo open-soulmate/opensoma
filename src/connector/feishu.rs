@@ -96,7 +96,7 @@ pub async fn start(config: FeishuConfig, tx: EventTx) -> Result<JoinHandle<()>> 
         poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         // Track seen document IDs to avoid duplicate events
-        let seen_docs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut seen_docs: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         loop {
             tokio::select! {
@@ -129,6 +129,7 @@ pub async fn start(config: FeishuConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                                             let raw_event = to_raw_event(&doc, &content);
                                             match tx.try_send(raw_event) {
                                                 Ok(()) => {
+                                                    seen_docs.insert(doc.document_id.clone());
                                                     debug!("Forwarded Feishu doc: {}", doc.title);
                                                 }
                                                 Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
@@ -150,6 +151,15 @@ pub async fn start(config: FeishuConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                             }
                         }
                     }
+                }
+            }
+
+            // Evict old seen docs to prevent unbounded growth
+            if seen_docs.len() > 10000 {
+                let excess = seen_docs.len() - 5000;
+                let to_remove: Vec<String> = seen_docs.iter().take(excess).cloned().collect();
+                for id in to_remove {
+                    seen_docs.remove(&id);
                 }
             }
         }
