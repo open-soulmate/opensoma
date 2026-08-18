@@ -31,8 +31,8 @@ async fn run_sync_engine(
     mut rx: EventRx,
 ) {
     info!(
-        "Sync engine started — batch_size={}, interval={}s, max_retries={}",
-        config.batch_size, config.upload_interval, config.max_retries
+        "Sync engine started — batch_size={}, interval={}s, max_retries={}, streaming={}",
+        config.batch_size, config.upload_interval, config.max_retries, config.enable_streaming
     );
 
     let mut upload_interval =
@@ -45,6 +45,14 @@ async fn run_sync_engine(
         tokio::select! {
             // Receive events from processor
             Some(event) = rx.recv() => {
+                // Real-time streaming: send immediately if enabled
+                if config.enable_streaming {
+                    let proto_event = upload::to_proto_event_shared(&event);
+                    if let Err(e) = client.stream_event(&proto_event).await {
+                        tracing::debug!("Stream send failed (will batch): {}", e);
+                    }
+                }
+
                 // Cache locally first (for offline retry)
                 if let Err(e) = cache.put(&event) {
                     error!("Cache write error: {}", e);

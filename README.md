@@ -208,7 +208,7 @@ OpenSoma communicates with OpenSoul via HTTP REST API:
 |----------------|----------------|------------------------------------|
 | `Heartbeat`     | Bidirectional  | Node liveness ping/pong            |
 | `UploadEvents`  | Soma ─▶ Soul   | Batch upload of collected events   |
-| `StreamEvents`  | Bidirectional  | Real-time event streaming          |
+| `StreamEvents`  | Soma ─▶ Soul   | Real-time single-event streaming (SSE) |
 
 ## Project Structure
 

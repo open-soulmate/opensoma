@@ -53,7 +53,7 @@ pub async fn upload_events(client: &SoulClient, events: &[RawEvent]) -> Result<U
 
     // Split into chunks
     for (chunk_idx, chunk) in events.chunks(MAX_CHUNK_SIZE).enumerate() {
-        let proto_events: Vec<_> = chunk.iter().map(to_proto_event).collect();
+        let proto_events: Vec<_> = chunk.iter().map(to_proto_event_shared).collect();
 
         match client.upload_events(&proto_events).await {
             Ok(resp) => {
@@ -99,7 +99,7 @@ pub async fn upload_events(client: &SoulClient, events: &[RawEvent]) -> Result<U
 }
 
 /// Convert a RawEvent to a protobuf CollectedEvent.
-fn to_proto_event(event: &RawEvent) -> crate::grpc::soul::CollectedEvent {
+pub fn to_proto_event_shared(event: &RawEvent) -> crate::grpc::soul::CollectedEvent {
     crate::grpc::soul::CollectedEvent {
         id: event.id.clone(),
         source: event.source.clone(),
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn test_to_proto_event() {
         let event = make_event("evt-1", 10);
-        let proto = to_proto_event(&event);
+        let proto = to_proto_event_shared(&event);
         assert_eq!(proto.id, "evt-1");
         assert_eq!(proto.source, "test");
         assert_eq!(proto.event_type, "test_event");

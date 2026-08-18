@@ -211,4 +211,31 @@ impl SoulClient {
             .map(|r| r.status().is_success())
             .unwrap_or(false)
     }
+    /// Stream a single event in real-time (StreamEvents HTTP equivalent).
+    /// Unlike batch upload, this sends events immediately for low-latency use cases.
+    /// Falls back gracefully if the endpoint is unavailable.
+    pub async fn stream_event(&self, event: &soul::CollectedEvent) -> Result<bool> {
+        let url = format!("{}/api/nerve/stream/upload", self.base_url);
+        let payload_str = String::from_utf8_lossy(&event.payload).to_string();
+        let body = serde_json::json!({
+            "id": event.id,
+            "source": event.source,
+            "event_type": event.event_type,
+            "timestamp_ms": event.timestamp_ms,
+            "payload": payload_str,
+            "tags": event.tags,
+        });
+
+        match self.http.post(&url).json(&body).send().await {
+            Ok(resp) if resp.status().is_success() => Ok(true),
+            Ok(resp) => {
+                debug!("Stream upload returned {}: {}", resp.status(), resp.text().await.unwrap_or_default());
+                Ok(false)
+            }
+            Err(e) => {
+                debug!("Stream upload failed (will batch): {}", e);
+                Ok(false)
+            }
+        }
+    }
 }

@@ -245,6 +245,13 @@ pub struct SyncConfig {
     pub retry_backoff_ms: u64,
     #[serde(default = "default_cache_size")]
     pub cache_size_mb: u64,
+    /// Enable real-time event streaming alongside batch upload.
+    /// When true, each event is also sent immediately via the stream endpoint.
+    #[serde(default)]
+    pub enable_streaming: bool,
+}
+fn default_streaming() -> bool {
+    false
 }
 
 impl AppConfig {
