@@ -1,0 +1,30 @@
+[Unit]
+Description=OpenSoma — Deploy Everywhere, Collect Everything
+Documentation=https://github.com/nousresearch/opensoma
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opensoma
+Group=opensoma
+ExecStart=/usr/local/bin/opensoma --config /etc/opensoma/config.toml
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/opensoma
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Environment
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target
