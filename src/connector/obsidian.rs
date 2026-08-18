@@ -305,3 +305,65 @@ fn extract_markdown_title(content: &str) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_wikilinks_simple() {
+        let content = "See [[Other Note]] for details.";
+        let links = extract_wikilinks(content);
+        assert_eq!(links, vec!["Other Note"]);
+    }
+
+    #[test]
+    fn test_extract_wikilinks_with_alias() {
+        let content = "Link to [[Actual Name|Display Text]] here.";
+        let links = extract_wikilinks(content);
+        assert_eq!(links, vec!["Actual Name"]);
+    }
+
+    #[test]
+    fn test_extract_wikilinks_multiple() {
+        let content = "See [[Note A]] and [[Note B]] and [[Note C|Alias]].";
+        let links = extract_wikilinks(content);
+        assert_eq!(links, vec!["Note A", "Note B", "Note C"]);
+    }
+
+    #[test]
+    fn test_extract_wikilinks_none() {
+        let content = "No wikilinks here, just plain text.";
+        let links = extract_wikilinks(content);
+        assert!(links.is_empty());
+    }
+
+    #[test]
+    fn test_extract_wikilinks_empty_brackets() {
+        let content = "Empty [[]] should be ignored.";
+        let links = extract_wikilinks(content);
+        assert!(links.is_empty());
+    }
+
+    #[test]
+    fn test_compute_hash() {
+        let h = compute_hash("test content");
+        assert_eq!(h.len(), 64);
+    }
+
+    #[test]
+    fn test_to_raw_event_with_wikilinks() {
+        let links = vec!["Note A".to_string(), "Note B".to_string()];
+        let event = to_raw_event("notes/test.md", "# Test\n[[Note A]]", "abc", &links);
+        assert_eq!(event.source, "connector:obsidian:notes/test.md");
+        assert_eq!(event.tags.get("platform").unwrap(), "obsidian");
+        assert_eq!(event.tags.get("wikilinks").unwrap(), "Note A,Note B");
+        assert_eq!(event.tags.get("title").unwrap(), "Test");
+    }
+
+    #[test]
+    fn test_to_raw_event_no_heading_uses_filename() {
+        let event = to_raw_event("notes/my-note.md", "Just content", "abc", &[]);
+        assert_eq!(event.tags.get("title").unwrap(), "my-note");
+    }
+}

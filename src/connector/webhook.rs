@@ -181,3 +181,61 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     }
     diff == 0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constant_time_eq_same() {
+        assert!(constant_time_eq(b"hello", b"hello"));
+    }
+
+    #[test]
+    fn test_constant_time_eq_different() {
+        assert!(!constant_time_eq(b"hello", b"world"));
+    }
+
+    #[test]
+    fn test_constant_time_eq_different_length() {
+        assert!(!constant_time_eq(b"hi", b"hello"));
+    }
+
+    #[test]
+    fn test_constant_time_eq_empty() {
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn test_verify_hmac_signature_valid() {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        type HmacSha256 = Hmac<Sha256>;
+
+        let secret = "test-secret";
+        let body = b"test body";
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(body);
+        let sig = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+
+        assert!(verify_hmac_signature(secret, body, &sig));
+    }
+
+    #[test]
+    fn test_verify_hmac_signature_invalid() {
+        assert!(!verify_hmac_signature("secret", b"body", "sha256=invalid"));
+    }
+
+    #[test]
+    fn test_verify_hmac_signature_wrong_secret() {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        type HmacSha256 = Hmac<Sha256>;
+
+        let mut mac = HmacSha256::new_from_slice(b"correct-secret").unwrap();
+        mac.update(b"body");
+        let sig = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+
+        assert!(!verify_hmac_signature("wrong-secret", b"body", &sig));
+    }
+}

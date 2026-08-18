@@ -322,3 +322,36 @@ pub fn to_raw_event_from_callback(payload: serde_json::Value) -> RawEvent {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_raw_event_from_callback_uppercase() {
+        let payload = serde_json::json!({
+            "EventType": "check_in",
+            "data": {"key": "value"}
+        });
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "check_in");
+        assert_eq!(event.source, "connector:dingtalk:callback");
+        assert_eq!(event.tags.get("platform").unwrap(), "dingtalk");
+    }
+
+    #[test]
+    fn test_to_raw_event_from_callback_camelcase() {
+        let payload = serde_json::json!({
+            "eventType": "approval_change"
+        });
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "approval_change");
+    }
+
+    #[test]
+    fn test_to_raw_event_from_callback_no_type() {
+        let payload = serde_json::json!({"data": "test"});
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "callback");
+    }
+}

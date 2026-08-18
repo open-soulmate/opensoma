@@ -329,3 +329,130 @@ fn extract_title_from_properties(properties: &serde_json::Value) -> Option<Strin
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_block_text_paragraph() {
+        let block = NotionBlock {
+            id: "test".to_string(),
+            block_type: "paragraph".to_string(),
+            rich_text: None,
+            paragraph: Some(BlockWithText {
+                rich_text: vec![RichText {
+                    plain_text: "Hello world".to_string(),
+                }],
+            }),
+            heading_1: None,
+            heading_2: None,
+            heading_3: None,
+            bulleted_list_item: None,
+            numbered_list_item: None,
+            to_do: None,
+            code: None,
+            quote: None,
+            callout: None,
+            toggle: None,
+        };
+        assert_eq!(extract_block_text(&block), Some("Hello world".to_string()));
+    }
+
+    #[test]
+    fn test_extract_block_text_heading() {
+        let block = NotionBlock {
+            id: "test".to_string(),
+            block_type: "heading_1".to_string(),
+            rich_text: None,
+            paragraph: None,
+            heading_1: Some(BlockWithText {
+                rich_text: vec![RichText {
+                    plain_text: "Title".to_string(),
+                }],
+            }),
+            heading_2: None,
+            heading_3: None,
+            bulleted_list_item: None,
+            numbered_list_item: None,
+            to_do: None,
+            code: None,
+            quote: None,
+            callout: None,
+            toggle: None,
+        };
+        assert_eq!(extract_block_text(&block), Some("Title".to_string()));
+    }
+
+    #[test]
+    fn test_extract_block_text_unsupported_type() {
+        let block = NotionBlock {
+            id: "test".to_string(),
+            block_type: "unsupported_type".to_string(),
+            rich_text: None,
+            paragraph: None,
+            heading_1: None,
+            heading_2: None,
+            heading_3: None,
+            bulleted_list_item: None,
+            numbered_list_item: None,
+            to_do: None,
+            code: None,
+            quote: None,
+            callout: None,
+            toggle: None,
+        };
+        assert_eq!(extract_block_text(&block), None);
+    }
+
+    #[test]
+    fn test_extract_title_from_properties_title_key() {
+        let props = serde_json::json!({
+            "title": {
+                "title": [
+                    { "plain_text": "My Page Title" }
+                ]
+            }
+        });
+        assert_eq!(
+            extract_title_from_properties(&props),
+            Some("My Page Title".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_title_from_properties_name_key() {
+        let props = serde_json::json!({
+            "Name": {
+                "title": [
+                    { "plain_text": "Named Page" }
+                ]
+            }
+        });
+        assert_eq!(
+            extract_title_from_properties(&props),
+            Some("Named Page".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_title_from_properties_empty() {
+        let props = serde_json::json!({});
+        assert_eq!(extract_title_from_properties(&props), None);
+    }
+
+    #[test]
+    fn test_to_raw_event_structure() {
+        let props = serde_json::json!({
+            "title": {
+                "title": [{ "plain_text": "Test Page" }]
+            }
+        });
+        let event = to_raw_event("page-123", &props, "Content here");
+        assert_eq!(event.source, "connector:notion:page-123");
+        assert_eq!(event.event_type, "document");
+        assert_eq!(event.tags.get("platform").unwrap(), "notion");
+        assert_eq!(event.tags.get("page_id").unwrap(), "page-123");
+        assert_eq!(event.tags.get("title").unwrap(), "Test Page");
+    }
+}

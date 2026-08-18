@@ -133,6 +133,16 @@ vault_path = "/home/user/Documents/MyVault"
 # Debounce duration in milliseconds (default: 500)
 debounce_ms = 500
 
+# --- GitHub ---
+[connector.github]
+enabled = false
+# Personal access token (requires repo scope)
+token = ""
+# List of repositories to watch (owner/repo format)
+repos = ["your-org/your-repo"]
+# Polling interval in seconds (default: 120)
+poll_interval_secs = 120
+
 # --- Generic Webhook receiver ---
 [connector.webhook]
 enabled = false
@@ -153,6 +163,10 @@ normalize_timestamps = true
 max_event_size = 1048576
 # Deduplication window in seconds — events with the same hash within this window are dropped (default: 300)
 dedup_window_secs = 300
+# Enable content classification — tags events with source category, content type, and urgency (default: true)
+enable_classify = true
+# Enable content enrichment — extracts entities, keywords, and summaries from event payloads (default: true)
+enable_enrich = true
 
 # ---------------------------------------------------------------------------
 # Sync — upload engine and local cache

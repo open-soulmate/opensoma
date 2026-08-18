@@ -287,3 +287,50 @@ fn extract_markdown_title(content: &str) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_hash_deterministic() {
+        let h1 = compute_hash("hello world");
+        let h2 = compute_hash("hello world");
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 64); // SHA-256 hex = 64 chars
+    }
+
+    #[test]
+    fn test_compute_hash_different_input() {
+        let h1 = compute_hash("hello");
+        let h2 = compute_hash("world");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_extract_markdown_title() {
+        assert_eq!(
+            extract_markdown_title("# My Title\nSome content"),
+            Some("My Title".to_string())
+        );
+        assert_eq!(
+            extract_markdown_title("No heading here"),
+            None
+        );
+        assert_eq!(
+            extract_markdown_title("## Not H1\n# Real H1"),
+            Some("Real H1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_to_raw_event_structure() {
+        let event = to_raw_event("docs/readme.md", "# Hello\nWorld", "abc123");
+        assert_eq!(event.event_type, "document");
+        assert_eq!(event.source, "connector:git:docs/readme.md");
+        assert_eq!(event.tags.get("platform").unwrap(), "git");
+        assert_eq!(event.tags.get("file_path").unwrap(), "docs/readme.md");
+        assert_eq!(event.tags.get("content_hash").unwrap(), "abc123");
+        assert_eq!(event.tags.get("title").unwrap(), "Hello");
+    }
+}
