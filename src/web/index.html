@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenSoma</title>
+<style>
+/* ══════════════════════════════════════════════════════════
+   OpenSoma — OpenSoul Design System (100% match)
+   ══════════════════════════════════════════════════════════ */
+:root {
+  --bg-base: #0a0a0f;
+  --bg-card: #111118;
+  --bg-muted: #18181b;
+  --bg-hover: #1a1a20;
+  --border: #27272a;
+  --border-hover: #3f3f46;
+  --primary: #7c3aed;
+  --primary-hover: #6d28d9;
+  --primary-dim: rgba(124,58,237,0.12);
+  --primary-glow: rgba(124,58,237,0.25);
+  --text: #e4e4e7;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+  --sidebar-w: 240px;
+  --sidebar-collapsed: 56px;
+  --topbar-h: 48px;
+  --radius-lg: 12px;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --font: system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono: "SF Mono","Cascadia Code","Fira Code",monospace;
+}
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:var(--font);background:var(--bg-base);color:var(--text);font-size:14px;line-height:1.5;overflow:hidden}
+body{display:flex}
+a{color:var(--primary);text-decoration:none}
+a:hover{color:var(--primary-hover)}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-hover)}
+
+/* ══ SIDEBAR ═══════════════════════════════════════════ */
+.sidebar{
+  width:var(--sidebar-collapsed);
+  background:var(--bg-card);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  position:fixed;top:0;left:0;bottom:0;z-index:100;
+  transition:width .25s cubic-bezier(.4,0,.2,1);
+  overflow:hidden;
+}
+.sidebar.expanded{width:var(--sidebar-w)}
+
+.sidebar-header{
+  height:var(--topbar-h);padding:0 12px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;
+  flex-shrink:0;overflow:hidden;white-space:nowrap;
+}
+.logo-icon-wrap{
+  width:32px;height:32px;min-width:32px;border-radius:50%;
+  background:var(--primary);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;color:#fff;letter-spacing:-.5px;
+}
+.logo-text-group{
+  display:flex;align-items:center;gap:8px;
+  opacity:0;transition:opacity .2s ease .05s;pointer-events:none;
+}
+.sidebar.expanded .logo-text-group{opacity:1;pointer-events:auto}
+.logo-name{font-size:15px;font-weight:700;color:var(--text);letter-spacing:.3px}
+.logo-version{font-size:10px;color:var(--text-muted);background:var(--bg-base);padding:1px 6px;border-radius:4px;font-weight:500}
+
+.sidebar-toggle{
+  position:absolute;top:50%;right:-12px;transform:translateY(-50%);
+  width:24px;height:24px;border-radius:50%;
+  background:var(--bg-card);border:1px solid var(--border);
+  color:var(--text-muted);font-size:11px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;z-index:101;
+  transition:all .15s ease;opacity:0;
+}
+.sidebar:hover .sidebar-toggle,.sidebar.expanded .sidebar-toggle{opacity:1}
+.sidebar-toggle:hover{background:var(--primary);border-color:var(--primary);color:#fff}
+
+.nav-menu{flex:1;padding:8px 6px;display:flex;flex-direction:column;gap:1px;overflow-y:auto;overflow-x:hidden}
+.nav-item{
+  display:flex;align-items:center;height:32px;padding:0 10px;
+  border-radius:var(--radius-sm);color:var(--text-secondary);
+  text-decoration:none;font-size:13px;font-weight:500;
+  transition:all .15s ease;position:relative;
+  white-space:nowrap;overflow:hidden;cursor:pointer;
+  border-left:3px solid transparent;
+}
+.nav-item:hover{background:var(--bg-muted);color:var(--text)}
+.nav-item.active{color:var(--primary);background:var(--primary-dim);border-left-color:var(--primary)}
+
+.nav-icon-wrap{
+  width:32px;min-width:32px;height:32px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;line-height:1;flex-shrink:0;
+}
+.nav-label{opacity:0;transition:opacity .2s ease .05s;pointer-events:none;margin-left:0}
+.sidebar.expanded .nav-label{opacity:1;pointer-events:auto}
+
+.sidebar-footer{padding:12px;border-top:1px solid var(--border);flex-shrink:0;overflow:hidden}
+.sidebar-user{display:flex;align-items:center;gap:10px;white-space:nowrap}
+.user-avatar{
+  width:32px;height:32px;min-width:32px;border-radius:50%;
+  background:var(--primary);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:600;color:#fff;
+}
+.user-info{display:flex;flex-direction:column;opacity:0;transition:opacity .2s ease .05s;pointer-events:none}
+.sidebar.expanded .user-info{opacity:1;pointer-events:auto}
+.user-name{font-size:13px;font-weight:600;color:var(--text)}
+.user-role{font-size:11px;color:var(--text-muted)}
+
+/* ══ MAIN CONTENT ══════════════════════════════════════ */
+.main-content{
+  flex:1;margin-left:var(--sidebar-collapsed);
+  display:flex;flex-direction:column;height:100vh;
+  transition:margin-left .25s cubic-bezier(.4,0,.2,1);
+}
+body.sidebar-expanded .main-content{margin-left:var(--sidebar-w)}
+
+.top-bar{
+  height:var(--topbar-h);background:var(--bg-card);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;flex-shrink:0;
+}
+.top-bar-left{display:flex;align-items:center;gap:12px}
+.breadcrumb{font-size:13px;color:var(--text-muted)}
+.breadcrumb-sep{margin:0 4px;color:var(--border)}
+.page-title{font-size:15px;font-weight:600;color:var(--text)}
+.top-bar-right{display:flex;align-items:center;gap:16px}
+.menu-toggle{display:none;background:none;border:none;color:var(--text-secondary);font-size:18px;cursor:pointer;padding:4px;border-radius:var(--radius-sm)}
+.menu-toggle:hover{background:var(--bg-muted)}
+
+.status-badge{display:flex;align-items:center;gap:6px;font-size:12px}
+.status-label{color:var(--text-muted)}
+.status-value{color:var(--text-secondary);font-weight:500;font-family:var(--font-mono);font-size:11px}
+.status-value.status-ok{color:var(--success)}
+.status-value.status-warn{color:var(--warning)}
+.status-value.status-error{color:var(--danger)}
+
+.page-content{flex:1;padding:24px;overflow-y:auto;overflow-x:hidden}
+
+/* ══ CARDS ═════════════════════════════════════════════ */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:20px;
+  transition:border-color .2s ease;
+}
+.stat-card:hover{border-color:var(--border-hover)}
+.stat-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.stat-card-title{font-size:13px;color:var(--text-secondary);font-weight:500}
+.stat-card-icon{font-size:18px;color:var(--text-muted)}
+.stat-card-value{font-size:28px;font-weight:700;line-height:1.2;margin-bottom:4px;font-family:var(--font-mono)}
+.stat-card-sub{font-size:12px;color:var(--text-muted)}
+
+.card{
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:var(--radius-lg);margin-bottom:20px;
+  transition:border-color .2s ease;
+}
+.card:hover{border-color:var(--border-hover)}
+.card-header{
+  padding:14px 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.card-title{font-size:14px;font-weight:600;color:var(--text)}
+.card-desc{font-size:12px;color:var(--text-muted);margin-top:2px}
+.card-body{padding:16px 20px}
+.card-actions{padding:10px 20px;border-top:1px solid var(--border);display:flex;gap:8px}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+
+/* ══ TABLES ════════════════════════════════════════════ */
+.table-wrapper{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 16px;text-align:left;font-size:13px;border-bottom:1px solid var(--border)}
+th{color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.5px;background:var(--bg-muted)}
+tr:hover td{background:rgba(255,255,255,.02)}
+tr:last-child td{border-bottom:none}
+
+/* ══ BUTTONS ═══════════════════════════════════════════ */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 14px;border-radius:var(--radius);font-size:13px;font-weight:500;
+  border:1px solid var(--border);background:transparent;color:var(--text);
+  cursor:pointer;transition:all .15s ease;font-family:var(--font);line-height:1.4;
+}
+.btn:hover{background:var(--bg-muted);border-color:var(--border-hover)}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
+.btn-sm{padding:4px 10px;font-size:12px;border-radius:var(--radius-sm)}
+.btn-danger{color:var(--danger);border-color:transparent}
+.btn-danger:hover{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3)}
+
+/* ══ BADGES ════════════════════════════════════════════ */
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:var(--radius);font-size:11px;font-weight:500;line-height:1.6}
+.badge-success,.badge-ok{background:rgba(34,197,94,.12);color:var(--success)}
+.badge-warning,.badge-warn{background:rgba(245,158,11,.12);color:var(--warning)}
+.badge-danger,.badge-error{background:rgba(239,68,68,.12);color:var(--danger)}
+.badge-info{background:rgba(59,130,246,.12);color:var(--info)}
+
+/* ══ TOGGLE SWITCH ═════════════════════════════════════ */
+.toggle{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .slider{
+  position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;
+  background:var(--border);border-radius:20px;transition:.3s;
+}
+.toggle .slider::before{
+  content:"";position:absolute;height:14px;width:14px;
+  left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s;
+}
+.toggle input:checked+.slider{background:var(--primary)}
+.toggle input:checked+.slider::before{transform:translateX(16px)}
+
+/* ══ CONNECTOR CARDS ═══════════════════════════════════ */
+.connector-card{
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:var(--radius-lg);overflow:hidden;
+  transition:border-color .2s ease;
+}
+.connector-card:hover{border-color:var(--border-hover)}
+.connector-header{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)}
+.connector-icon{
+  width:40px;height:40px;border-radius:var(--radius);
+  background:var(--primary-dim);display:flex;align-items:center;justify-content:center;
+  font-size:20px;flex-shrink:0;
+}
+.connector-info{flex:1;min-width:0}
+.connector-name{font-size:14px;font-weight:600;color:var(--text)}
+.connector-status{font-size:12px;color:var(--text-muted);margin-top:2px}
+.connector-toggle{flex-shrink:0}
+.connector-body{padding:12px 20px;font-size:12px;color:var(--text-muted)}
+.connector-actions{padding:10px 20px;border-top:1px solid var(--border);display:flex;gap:8px}
+
+/* ══ ACTIVITY LIST ═════════════════════════════════════ */
+.activity-list{list-style:none}
+.activity-item{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 0;border-bottom:1px solid var(--border);
+}
+.activity-item:last-child{border-bottom:none}
+.activity-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.activity-dot.green{background:var(--success)}
+.activity-dot.blue{background:var(--info)}
+.activity-dot.yellow{background:var(--warning)}
+.activity-dot.red{background:var(--danger)}
+.activity-text{flex:1;font-size:13px;color:var(--text)}
+.activity-time{font-size:12px;color:var(--text-muted);flex-shrink:0}
+
+/* ══ FORM INPUTS ═══════════════════════════════════════ */
+.form-group{margin-bottom:16px}
+.form-label{display:block;font-size:12px;color:var(--text-secondary);font-weight:500;margin-bottom:6px}
+.form-input,.form-select,.form-textarea{
+  width:100%;padding:8px 12px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--bg-muted);
+  color:var(--text);font-size:13px;font-family:var(--font);
+  transition:border-color .15s ease;
+}
+.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--primary)}
+.form-textarea{resize:vertical;min-height:80px;font-family:var(--font-mono);font-size:12px}
+
+/* ══ LOG VIEWER ════════════════════════════════════════ */
+.log-viewer{
+  background:var(--bg-base);border:1px solid var(--border);
+  border-radius:var(--radius);padding:12px;font-family:var(--font-mono);
+  font-size:12px;line-height:1.7;max-height:400px;overflow-y:auto;
+  color:var(--text-secondary);
+}
+.log-line{white-space:pre-wrap;word-break:break-all}
+.log-line .log-time{color:var(--text-muted)}
+.log-line .log-info{color:var(--info)}
+.log-line .log-warn{color:var(--warning)}
+.log-line .log-err{color:var(--danger)}
+
+/* ══ PROGRESS BAR ══════════════════════════════════════ */
+.progress-bar{width:100%;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;transition:width .5s ease}
+
+/* ══ SECTION HEADERS ═══════════════════════════════════ */
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.section-title{font-size:16px;font-weight:600;color:var(--text)}
+.section-sub{font-size:12px;color:var(--text-muted);margin-top:2px}
+
+/* ══ RESPONSIVE ════════════════════════════════════════ */
+@media(max-width:768px){
+  .sidebar{width:0;transform:translateX(-100%)}
+  .sidebar.mobile-open{width:var(--sidebar-w);transform:translateX(0)}
+  .main-content{margin-left:0!important}
+  .menu-toggle{display:block}
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .card-grid{grid-template-columns:1fr}
+}
+
+/* ══ HIDDEN PAGES ══════════════════════════════════════ */
+.page{display:none}
+.page.active{display:block}
+
+/* ══ EMPTY STATE ═══════════════════════════════════════ */
+.empty-state{text-align:center;padding:48px 24px;color:var(--text-muted)}
+.empty-state-icon{font-size:48px;margin-bottom:16px;opacity:.5}
+.empty-state-text{font-size:14px}
+
+/* ══ CONFIG FORM GRID ══════════════════════════════════ */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:768px){.form-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body class="sidebar-expanded">
+
+<!-- Sidebar -->
+<aside class="sidebar expanded" id="sidebar">
+  <button class="sidebar-toggle" id="sidebar-toggle" title="折叠/展开侧边栏">◀</button>
+  <div class="sidebar-header">
+    <div class="logo-icon-wrap">OS</div>
+    <div class="logo-text-group">
+      <span class="logo-name">OpenSoma</span>
+      <span class="logo-version">v0.1.0</span>
+    </div>
+  </div>
+  <nav class="nav-menu">
+    <a href="#dashboard" class="nav-item active" data-page="dashboard">
+      <span class="nav-icon-wrap">⊞</span>
+      <span class="nav-label">仪表盘</span>
+    </a>
+    <a href="#connectors" class="nav-item" data-page="connectors">
+      <span class="nav-icon-wrap">🔌</span>
+      <span class="nav-label">连接器</span>
+    </a>
+    <a href="#collectors" class="nav-item" data-page="collectors">
+      <span class="nav-icon-wrap">📡</span>
+      <span class="nav-label">采集器</span>
+    </a>
+    <a href="#sync" class="nav-item" data-page="sync">
+      <span class="nav-icon-wrap">🔄</span>
+      <span class="nav-label">同步</span>
+    </a>
+    <a href="#monitor" class="nav-item" data-page="monitor">
+      <span class="nav-icon-wrap">📊</span>
+      <span class="nav-label">监控</span>
+    </a>
+    <a href="#config" class="nav-item" data-page="config">
+      <span class="nav-icon-wrap">⚙</span>
+      <span class="nav-label">配置</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-user">
+      <div class="user-avatar">S</div>
+      <div class="user-info">
+        <span class="user-name">System</span>
+        <span class="user-role" id="sidebar-status">Soma 状态</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main-content">
+  <header class="top-bar">
+    <div class="top-bar-left">
+      <button class="menu-toggle" id="menu-toggle">☰</button>
+      <span class="breadcrumb">OpenSoma</span>
+      <span class="breadcrumb-sep">/</span>
+      <h1 class="page-title" id="page-title">仪表盘</h1>
+    </div>
+    <div class="top-bar-right">
+      <div class="status-badge">
+        <span class="status-label">版本</span>
+        <span class="status-value">0.1.0</span>
+      </div>
+      <div class="status-badge">
+        <span class="status-label">运行时间</span>
+        <span class="status-value" id="uptime">-</span>
+      </div>
+      <div class="status-badge">
+        <span class="status-label">状态</span>
+        <span class="status-value status-ok" id="header-status">-</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="page-content" id="page-content">
+
+    <!-- ═══════════════ DASHBOARD ═══════════════ -->
+    <div class="page active" id="page-dashboard">
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <span class="stat-card-title">连接器</span>
+            <span class="stat-card-icon">🔌</span>
+          </div>
+          <div class="stat-card-value" id="stat-connectors">-</div>
+          <div class="stat-card-sub">已启用 / 总数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <span class="stat-card-title">采集器</span>
+            <span class="stat-card-icon">📡</span>
+          </div>
+          <div class="stat-card-value" id="stat-collectors">-</div>
+          <div class="stat-card-sub">运行中 / 总数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <span class="stat-card-title">今日事件</span>
+            <span class="stat-card-icon">📋</span>
+          </div>
+          <div class="stat-card-value" id="stat-events">-</div>
+          <div class="stat-card-sub">采集事件总数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <span class="stat-card-title">同步状态</span>
+            <span class="stat-card-icon">🔄</span>
+          </div>
+          <div class="stat-card-value" id="stat-sync">-</div>
+          <div class="stat-card-sub">已同步 / 缓存</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- Recent Activity -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">最近活动</span>
+          </div>
+          <div class="card-body">
+            <ul class="activity-list" id="activity-list">
+              <li class="activity-item"><span class="activity-dot blue"></span><span class="activity-text">系统启动中...</span><span class="activity-time">-</span></li>
+            </ul>
+          </div>
+        </div>
+        <!-- System Components -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">系统组件状态</span>
+          </div>
+          <div class="table-wrapper">
+            <table id="component-table">
+              <thead><tr><th>组件</th><th>状态</th><th>延迟</th><th>备注</th></tr></thead>
+              <tbody id="component-tbody"><tr><td colspan="4" style="text-align:center;color:var(--text-muted)">加载中...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ CONNECTORS ═══════════════ -->
+    <div class="page" id="page-connectors">
+      <div class="section-header">
+        <div><div class="section-title">连接器</div><div class="section-sub">管理数据源连接，启用或禁用连接器</div></div>
+      </div>
+      <div class="card-grid" id="connector-grid">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- ═══════════════ COLLECTORS ═══════════════ -->
+    <div class="page" id="page-collectors">
+      <div class="section-header">
+        <div><div class="section-title">采集器</div><div class="section-sub">文件、进程、网络、剪贴板采集器状态</div></div>
+      </div>
+      <div class="card-grid" id="collector-grid">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- ═══════════════ SYNC ═══════════════ -->
+    <div class="page" id="page-sync">
+      <div class="section-header">
+        <div><div class="section-title">同步</div><div class="section-sub">数据同步历史与配置</div></div>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">同步配置</span></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">目标 OpenSoul 地址</label>
+              <input class="form-input" id="sync-target" placeholder="http://localhost:8090">
+            </div>
+            <div class="form-group">
+              <label class="form-label">同步间隔 (秒)</label>
+              <input class="form-input" type="number" id="sync-interval" value="10">
+            </div>
+            <div class="form-group">
+              <label class="form-label">批次大小</label>
+              <input class="form-input" type="number" id="sync-batch" value="50">
+            </div>
+            <div class="form-group">
+              <label class="form-label">最大重试次数</label>
+              <input class="form-input" type="number" id="sync-retries" value="5">
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn btn-primary btn-sm" onclick="alert('配置已保存（演示）')">保存配置</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">同步历史</span></div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>时间</th><th>数据源</th><th>状态</th><th>数量</th></tr></thead>
+            <tbody id="sync-history">
+              <tr><td colspan="4" style="text-align:center;color:var(--text-muted)">暂无同步记录</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ MONITOR ═══════════════ -->
+    <div class="page" id="page-monitor">
+      <div class="section-header">
+        <div><div class="section-title">监控</div><div class="section-sub">系统性能指标与日志</div></div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="stat-card">
+          <div class="stat-card-header"><span class="stat-card-title">CPU 使用率</span><span class="stat-card-icon">⊞</span></div>
+          <div class="stat-card-value" id="mon-cpu">-</div>
+          <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" id="cpu-bar" style="width:0;background:var(--primary)"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-header"><span class="stat-card-title">内存使用</span><span class="stat-card-icon">▣</span></div>
+          <div class="stat-card-value" id="mon-mem">-</div>
+          <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" id="mem-bar" style="width:0;background:var(--info)"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-header"><span class="stat-card-title">主机名</span><span class="stat-card-icon">🖥</span></div>
+          <div class="stat-card-value" id="mon-host" style="font-size:16px;word-break:break-all">-</div>
+          <div class="stat-card-sub" id="mon-ip">-</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">系统日志</span>
+          <button class="btn btn-sm" onclick="refreshLogs()">刷新</button>
+        </div>
+        <div class="card-body">
+          <div class="log-viewer" id="log-viewer">
+            <div class="log-line"><span class="log-time">[启动]</span> <span class="log-info">OpenSoma 守护进程初始化中...</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ CONFIG ═══════════════ -->
+    <div class="page" id="page-config">
+      <div class="section-header">
+        <div><div class="section-title">配置</div><div class="section-sub">系统参数与连接器配置</div></div>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">守护进程配置</span></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">节点 ID</label>
+              <input class="form-input" id="cfg-node-id" placeholder="node-id">
+            </div>
+            <div class="form-group">
+              <label class="form-label">日志级别</label>
+              <select class="form-select" id="cfg-log-level">
+                <option value="debug">debug</option>
+                <option value="info" selected>info</option>
+                <option value="warn">warn</option>
+                <option value="error">error</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">数据目录</label>
+              <input class="form-input" id="cfg-data-dir" placeholder="/var/lib/opensoma">
+            </div>
+            <div class="form-group">
+              <label class="form-label">状态端口</label>
+              <input class="form-input" type="number" id="cfg-status-port" value="8091">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Soul 连接配置</span></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Soul 端点</label>
+              <input class="form-input" id="cfg-soul-endpoint" placeholder="http://localhost:50051">
+            </div>
+            <div class="form-group">
+              <label class="form-label">心跳间隔 (秒)</label>
+              <input class="form-input" type="number" id="cfg-heartbeat" value="30">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">配置文件 (config.toml)</span></div>
+        <div class="card-body">
+          <textarea class="form-textarea" id="cfg-raw" rows="16" placeholder="# config.toml 内容将在此显示..."></textarea>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" onclick="alert('配置已保存（演示）')">保存</button>
+            <button class="btn btn-sm" onclick="alert('配置已重载（演示）')">重载配置</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+/* ══════════════════════════════════════════════════════════
+   OpenSoma — Client-side Application
+   ══════════════════════════════════════════════════════════ */
+
+// ── Sidebar toggle ────────────────────────────────────────
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+const menuToggle = document.getElementById('menu-toggle');
+
+sidebarToggle.addEventListener('click', () => {
+  sidebar.classList.toggle('expanded');
+  document.body.classList.toggle('sidebar-expanded');
+});
+menuToggle.addEventListener('click', () => {
+  sidebar.classList.toggle('mobile-open');
+});
+
+// ── Page navigation ───────────────────────────────────────
+const pageNames = {
+  dashboard: '仪表盘',
+  connectors: '连接器',
+  collectors: '采集器',
+  sync: '同步',
+  monitor: '监控',
+  config: '配置'
+};
+
+document.querySelectorAll('.nav-item[data-page]').forEach(item => {
+  item.addEventListener('click', e => {
+    e.preventDefault();
+    const page = item.dataset.page;
+    // Update nav active state
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    item.classList.add('active');
+    // Show page
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + page).classList.add('active');
+    // Update title
+    document.getElementById('page-title').textContent = pageNames[page] || page;
+    // Load page data
+    loadPageData(page);
+  });
+});
+
+// ── Connector definitions ─────────────────────────────────
+const CONNECTORS = [
+  { id: 'feishu', name: '飞书', icon: '🪶', desc: '飞书消息与文档同步' },
+  { id: 'dingtalk', name: '钉钉', icon: '📌', desc: '钉钉消息与审批流' },
+  { id: 'wecom', name: '企业微信', icon: '💬', desc: '企业微信消息采集' },
+  { id: 'rss', name: 'RSS', icon: '📰', desc: 'RSS/Atom 订阅源' },
+  { id: 'email', name: '邮件', icon: '✉️', desc: 'IMAP 邮件采集' },
+  { id: 'webhook', name: 'Webhook', icon: '🪝', desc: '通用 Webhook 接收器' },
+  { id: 'github', name: 'GitHub', icon: '🐙', desc: 'GitHub Issues/PR/Release' },
+  { id: 'notion', name: 'Notion', icon: '📝', desc: 'Notion 数据库同步' },
+  { id: 'git', name: 'Git', icon: '🔀', desc: 'Git 仓库监控' },
+  { id: 'obsidian', name: 'Obsidian', icon: '💎', desc: 'Obsidian 知识库' },
+];
+
+const COLLECTORS = [
+  { id: 'file', name: '文件采集器', icon: '📁', desc: '监听文件系统变更' },
+  { id: 'process', name: '进程采集器', icon: '⚙️', desc: '监控系统进程' },
+  { id: 'network', name: '网络采集器', icon: '🌐', desc: '监听网络端口' },
+  { id: 'clipboard', name: '剪贴板采集器', icon: '📋', desc: '剪贴板内容监控' },
+];
+
+// ── Data store ────────────────────────────────────────────
+let systemStatus = null;
+let connectorStates = {};
+let collectorStates = {};
+
+// Initialize connector states
+CONNECTORS.forEach(c => {
+  connectorStates[c.id] = { enabled: false, lastCollect: '-', status: '未知' };
+});
+COLLECTORS.forEach(c => {
+  collectorStates[c.id] = { status: '运行中', events: 0, detail: '' };
+});
+
+// ── API calls ─────────────────────────────────────────────
+async function fetchJSON(url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+async function fetchStatus() {
+  const data = await fetchJSON('/api/status');
+  if (!data) return;
+  systemStatus = data;
+
+  // Update header
+  const uptime = data.uptime_seconds || 0;
+  const h = Math.floor(uptime / 3600);
+  const m = Math.floor((uptime % 3600) / 60);
+  const s = uptime % 60;
+  document.getElementById('uptime').textContent = `${h}h ${m}m ${s}s`;
+
+  const statusEl = document.getElementById('header-status');
+  statusEl.textContent = data.last_error ? 'error' : 'ok';
+  statusEl.className = 'status-value ' + (data.last_error ? 'status-error' : 'status-ok');
+
+  document.getElementById('sidebar-status').textContent = data.last_error ? '异常' : '运行中';
+
+  // Dashboard stats
+  const active = (data.connectors_active || []).length;
+  document.getElementById('stat-connectors').textContent = `${active} / ${CONNECTORS.length}`;
+  document.getElementById('stat-collectors').textContent = `${COLLECTORS.length} / ${COLLECTORS.length}`;
+  document.getElementById('stat-events').textContent = (data.events_collected || 0).toLocaleString();
+  document.getElementById('stat-sync').textContent = `${data.events_synced || 0} / ${data.events_collected || 0}`;
+
+  // Monitor
+  document.getElementById('mon-cpu').textContent = (data.cpu_percent || 0).toFixed(1) + '%';
+  document.getElementById('cpu-bar').style.width = Math.min(data.cpu_percent || 0, 100) + '%';
+  const memPct = data.memory_total_mb > 0 ? ((data.memory_used_mb / data.memory_total_mb) * 100) : 0;
+  document.getElementById('mon-mem').textContent = memPct.toFixed(1) + '%';
+  document.getElementById('mem-bar').style.width = Math.min(memPct, 100) + '%';
+  document.getElementById('mon-host').textContent = data.hostname || '-';
+  document.getElementById('mon-ip').textContent = data.ip || '-';
+
+  // Update connector active states
+  const activeSet = new Set(data.connectors_active || []);
+  CONNECTORS.forEach(c => {
+    connectorStates[c.id].enabled = activeSet.has(c.id);
+    connectorStates[c.id].status = activeSet.has(c.id) ? '已启用' : '未启用';
+  });
+
+  // Component table
+  const tbody = document.getElementById('component-tbody');
+  const components = [
+    { name: '状态服务器', status: 'ok', latency: '<1ms', note: 'HTTP API' },
+    { name: '心跳服务', status: 'ok', latency: '-', note: `${data.node_id || '-'}` },
+    { name: '采集引擎', status: 'ok', latency: '-', note: `${data.events_collected || 0} 事件` },
+    { name: '同步引擎', status: data.last_error ? 'error' : 'ok', latency: '-', note: data.last_error || '正常' },
+    { name: '处理器', status: 'ok', latency: '-', note: 'normalize + dedup' },
+  ];
+  tbody.innerHTML = components.map(c => `<tr>
+    <td>${c.name}</td>
+    <td><span class="badge badge-${c.status === 'ok' ? 'success' : 'danger'}">${c.status === 'ok' ? '正常' : '异常'}</span></td>
+    <td style="font-family:var(--font-mono);font-size:12px">${c.latency}</td>
+    <td style="color:var(--text-muted);font-size:12px">${c.note}</td>
+  </tr>`).join('');
+}
+
+async function fetchConnectors() {
+  const data = await fetchJSON('/api/connectors');
+  if (!data) return;
+  if (Array.isArray(data)) {
+    data.forEach(c => {
+      if (connectorStates[c.id] !== undefined) {
+        connectorStates[c.id] = { ...connectorStates[c.id], ...c };
+      }
+    });
+  }
+}
+
+// ── Render functions ──────────────────────────────────────
+function renderConnectors() {
+  const grid = document.getElementById('connector-grid');
+  grid.innerHTML = CONNECTORS.map(c => {
+    const st = connectorStates[c.id] || {};
+    const enabled = st.enabled || false;
+    return `<div class="connector-card">
+      <div class="connector-header">
+        <div class="connector-icon">${c.icon}</div>
+        <div class="connector-info">
+          <div class="connector-name">${c.name}</div>
+          <div class="connector-status">
+            <span class="badge badge-${enabled ? 'success' : 'warning'}">${enabled ? '已启用' : '未启用'}</span>
+            <span style="margin-left:8px;font-size:11px;color:var(--text-muted)">${st.lastCollect || '-'}</span>
+          </div>
+        </div>
+        <div class="connector-toggle">
+          <label class="toggle">
+            <input type="checkbox" ${enabled ? 'checked' : ''} onchange="toggleConnector('${c.id}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="connector-body">${c.desc}</div>
+      <div class="connector-actions">
+        <button class="btn btn-sm" onclick="configureConnector('${c.id}')">⚙ 配置</button>
+        <button class="btn btn-sm" onclick="testConnector('${c.id}')">🔌 测试连接</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderCollectors() {
+  const grid = document.getElementById('collector-grid');
+  grid.innerHTML = COLLECTORS.map(c => {
+    const st = collectorStates[c.id] || {};
+    const running = st.status === '运行中';
+    let detailText = '';
+    if (c.id === 'file') detailText = `监听路径: ${(systemStatus && systemStatus.hostname) ? '~/.opensoma/watch' : '-'}`;
+    if (c.id === 'process') detailText = '监控所有系统进程';
+    if (c.id === 'network') detailText = '监听活跃网络连接';
+    if (c.id === 'clipboard') detailText = '监控剪贴板变更';
+    return `<div class="connector-card">
+      <div class="connector-header">
+        <div class="connector-icon">${c.icon}</div>
+        <div class="connector-info">
+          <div class="connector-name">${c.name}</div>
+          <div class="connector-status">
+            <span class="badge badge-${running ? 'success' : 'danger'}">${st.status || '未知'}</span>
+            <span style="margin-left:8px;font-size:11px;color:var(--text-muted)">${st.events || 0} 事件</span>
+          </div>
+        </div>
+      </div>
+      <div class="connector-body">${detailText}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Actions ───────────────────────────────────────────────
+async function toggleConnector(id, enabled) {
+  try {
+    await fetch(`/api/connectors/${id}/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+    connectorStates[id].enabled = enabled;
+    connectorStates[id].status = enabled ? '已启用' : '未启用';
+    renderConnectors();
+  } catch (e) {
+    console.error('Toggle failed:', e);
+  }
+}
+
+function configureConnector(id) {
+  alert(`配置 ${id} 连接器（演示模式）`);
+}
+
+function testConnector(id) {
+  alert(`测试 ${id} 连接（演示模式）`);
+}
+
+function refreshLogs() {
+  const viewer = document.getElementById('log-viewer');
+  const lines = [
+    { time: new Date().toLocaleTimeString(), level: 'info', msg: '系统运行正常' },
+    { time: new Date().toLocaleTimeString(), level: 'info', msg: `CPU: ${systemStatus ? systemStatus.cpu_percent.toFixed(1) : '?'}%  MEM: ${systemStatus ? systemStatus.memory_used_mb : '?'}MB` },
+    { time: new Date().toLocaleTimeString(), level: 'info', msg: `事件采集: ${systemStatus ? systemStatus.events_collected : 0}  同步: ${systemStatus ? systemStatus.events_synced : 0}` },
+  ];
+  viewer.innerHTML = lines.map(l =>
+    `<div class="log-line"><span class="log-time">[${l.time}]</span> <span class="log-${l.level}">${l.msg}</span></div>`
+  ).join('');
+}
+
+// ── Page data loader ──────────────────────────────────────
+function loadPageData(page) {
+  switch (page) {
+    case 'dashboard':
+      fetchStatus();
+      break;
+    case 'connectors':
+      fetchConnectors().then(renderConnectors);
+      break;
+    case 'collectors':
+      renderCollectors();
+      break;
+    case 'monitor':
+      fetchStatus();
+      break;
+    case 'sync':
+      // Already rendered statically
+      break;
+    case 'config':
+      break;
+  }
+}
+
+// ── Activity list updater ─────────────────────────────────
+const ACTIVITIES = [
+  { dot: 'green', text: 'OpenSoma 守护进程启动', time: '刚刚' },
+  { dot: 'blue', text: '状态服务器就绪', time: '刚刚' },
+  { dot: 'blue', text: '采集引擎初始化', time: '刚刚' },
+  { dot: 'blue', text: '同步引擎就绪', time: '刚刚' },
+  { dot: 'green', text: '心跳服务启动', time: '刚刚' },
+];
+
+function renderActivityList() {
+  const list = document.getElementById('activity-list');
+  list.innerHTML = ACTIVITIES.map(a =>
+    `<li class="activity-item"><span class="activity-dot ${a.dot}"></span><span class="activity-text">${a.text}</span><span class="activity-time">${a.time}</span></li>`
+  ).join('');
+}
+
+// ── Init ──────────────────────────────────────────────────
+renderActivityList();
+fetchStatus();
+setInterval(fetchStatus, 5000);
+
+// Handle hash navigation
+function handleHash() {
+  const hash = location.hash.replace('#', '') || 'dashboard';
+  const navItem = document.querySelector(`.nav-item[data-page="${hash}"]`);
+  if (navItem) navItem.click();
+}
+window.addEventListener('hashchange', handleHash);
+if (location.hash) handleHash();
+</script>
+</body>
+</html>
