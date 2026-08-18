@@ -58,8 +58,10 @@ struct ToggleRequest {
     enabled: bool,
 }
 
-/// Embed the index.html at compile time.
+/// Embed the index.html and CSS at compile time.
 const INDEX_HTML: &str = include_str!("web/index.html");
+const ADMIN_CSS: &str = include_str!("web/admin-framework.css");
+const ADMIN_JS: &str = include_str!("web/admin-framework.js");
 
 /// Start the HTTP status server on the given port.
 /// Exposes /health, /status, /api/* endpoints and the web UI.
@@ -70,6 +72,9 @@ pub async fn start_status_server(
     let app = Router::new()
         // Web UI
         .route("/", get(index_handler))
+        .route("/shared-sidebar.css", get(css_handler))
+        .route("/admin-framework.css", get(css_handler))
+        .route("/admin-framework.js", get(js_handler))
         // Existing endpoints
         .route("/health", get(health_handler))
         .route("/status", get(status_handler))
@@ -96,6 +101,22 @@ pub async fn start_status_server(
 /// Serve the embedded index.html
 async fn index_handler() -> Html<&'static str> {
     Html(INDEX_HTML)
+}
+
+/// Serve the shared sidebar CSS
+async fn css_handler() -> axum::response::Response {
+    axum::response::Response::builder()
+        .header("content-type", "text/css; charset=utf-8")
+        .body(axum::body::Body::from(ADMIN_CSS))
+        .unwrap()
+}
+
+/// Serve the admin framework JS
+async fn js_handler() -> axum::response::Response {
+    axum::response::Response::builder()
+        .header("content-type", "application/javascript; charset=utf-8")
+        .body(axum::body::Body::from(ADMIN_JS))
+        .unwrap()
 }
 
 async fn health_handler(State(state): State<StatusServerState>) -> Json<HealthResponse> {
