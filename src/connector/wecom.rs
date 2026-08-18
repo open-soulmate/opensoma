@@ -312,3 +312,44 @@ pub fn to_raw_event_from_callback(payload: serde_json::Value) -> RawEvent {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_raw_event_from_callback_msg_type() {
+        let payload = serde_json::json!({
+            "MsgType": "text",
+            "Content": "Hello"
+        });
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "text");
+        assert_eq!(event.source, "connector:wecom:callback");
+        assert_eq!(event.tags.get("platform").unwrap(), "wecom");
+    }
+
+    #[test]
+    fn test_to_raw_event_from_callback_event() {
+        let payload = serde_json::json!({
+            "Event": "subscribe"
+        });
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "subscribe");
+    }
+
+    #[test]
+    fn test_to_raw_event_from_callback_fallback() {
+        let payload = serde_json::json!({"data": "test"});
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "callback");
+    }
+
+    #[test]
+    fn test_to_raw_event_from_callback_payload_bytes() {
+        let payload = serde_json::json!({"MsgType": "image", "MediaId": "123"});
+        let event = to_raw_event_from_callback(payload.clone());
+        let parsed: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(parsed, payload);
+    }
+}

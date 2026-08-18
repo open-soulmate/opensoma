@@ -254,3 +254,39 @@ fn to_raw_event(doc: &DocItem, content: &str) -> RawEvent {
         tags,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_raw_event_structure() {
+        let doc = DocItem {
+            document_id: "doc-abc123".to_string(),
+            title: "Test Document".to_string(),
+            doc_type: "docx".to_string(),
+            revision_id: Some(1),
+        };
+        let event = to_raw_event(&doc, "Document content here");
+        assert_eq!(event.source, "connector:feishu:doc-abc123");
+        assert_eq!(event.event_type, "document");
+        assert_eq!(event.tags.get("platform").unwrap(), "feishu");
+        assert_eq!(event.tags.get("doc_id").unwrap(), "doc-abc123");
+        assert_eq!(event.tags.get("doc_type").unwrap(), "docx");
+        assert_eq!(event.tags.get("title").unwrap(), "Test Document");
+        assert_eq!(event.payload, b"Document content here");
+    }
+
+    #[test]
+    fn test_to_raw_event_empty_content() {
+        let doc = DocItem {
+            document_id: "empty-doc".to_string(),
+            title: "Empty".to_string(),
+            doc_type: "sheet".to_string(),
+            revision_id: None,
+        };
+        let event = to_raw_event(&doc, "");
+        assert!(event.payload.is_empty());
+        assert_eq!(event.tags.get("doc_type").unwrap(), "sheet");
+    }
+}
