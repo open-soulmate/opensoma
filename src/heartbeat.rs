@@ -91,3 +91,28 @@ pub fn collect_node_status(node_id: &str, hostname: &str, ip: &str) -> Heartbeat
         disk_used_mb,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_collect_node_status() {
+        let payload = collect_node_status("test-node", "localhost", "127.0.0.1");
+        assert_eq!(payload.node_id, "test-node");
+        assert_eq!(payload.hostname, "localhost");
+        assert_eq!(payload.ip, "127.0.0.1");
+        assert!(payload.memory_total_mb > 0);
+        assert!(payload.timestamp_ms > 0);
+    }
+
+    #[test]
+    fn test_heartbeat_payload_serializes() {
+        let payload = collect_node_status("node1", "host1", "10.0.0.1");
+        let json = serde_json::to_value(&payload).unwrap();
+        assert_eq!(json["node_id"], "node1");
+        assert_eq!(json["hostname"], "host1");
+        assert_eq!(json["ip"], "10.0.0.1");
+        assert!(json["memory_total_mb"].as_u64().unwrap() > 0);
+    }
+}
