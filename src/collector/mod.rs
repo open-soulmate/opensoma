@@ -1,4 +1,7 @@
 pub mod file;
+pub mod process;
+pub mod network;
+pub mod clipboard;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -30,6 +33,31 @@ pub async fn start_all(
     let include = config.include.clone();
     let exclude = config.exclude.clone();
 
+    // Start process monitor in a separate task
+    let process_tx = tx.clone();
+    tokio::spawn(async move {
+        if let Err(e) = process::start_process_monitor(5000, process_tx).await {
+            tracing::error!("Process collector failed: {}", e);
+        }
+    });
+
+    // Start network monitor in a separate task
+    let network_tx = tx.clone();
+    tokio::spawn(async move {
+        if let Err(e) = network::start_network_monitor(10000, network_tx).await {
+            tracing::error!("Network collector failed: {}", e);
+        }
+    });
+
+    // Start clipboard monitor in a separate task
+    let clipboard_tx = tx.clone();
+    tokio::spawn(async move {
+        if let Err(e) = clipboard::start_clipboard_monitor(2000, clipboard_tx).await {
+            tracing::error!("Clipboard collector failed: {}", e);
+        }
+    });
+
+    // Start file watcher (consumes the remaining tx)
     let handle = tokio::spawn(async move {
         if let Err(e) = file::start_watcher(
             &watch_dirs,

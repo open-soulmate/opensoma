@@ -1,4 +1,5 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -7,7 +8,9 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
+use crate::connector::Connector;
 use crate::config::DingtalkConfig;
+use crate::retry_async;
 
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
@@ -96,7 +99,9 @@ pub async fn start(config: DingtalkConfig, tx: EventTx) -> Result<JoinHandle<()>
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
 
-    let token = fetch_access_token(&http_client, &config).await?;
+    let token = retry_async!("dingtalk_token", 3, {
+        fetch_access_token(&http_client, &config).await
+    })?;
     info!("DingTalk connector authenticated.");
 
     let poll_secs = config.poll_interval_secs;
@@ -266,6 +271,31 @@ fn to_raw_event(inst: &ApprovalInstance) -> RawEvent {
         timestamp_ms: Utc::now().timestamp_millis(),
         payload,
         tags,
+    }
+}
+
+/// DingTalk connector implementing the unified Connector trait.
+pub struct DingtalkConnector {
+    config: DingtalkConfig,
+    client: Client,
+}
+
+impl DingtalkConnector {
+    pub fn new(config: DingtalkConfig) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
+        Ok(Self { config, client })
+    }
+}
+
+#[async_trait]
+impl Connector for DingtalkConnector {
+    fn name(&self) -> &str { "dingtalk" }
+
+    async fn ping(&self) -> Result<()> {
+        fetch_access_token(&self.client, &self.config).await?;
+        Ok(())
     }
 }
 

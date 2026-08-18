@@ -225,6 +225,12 @@ pub struct ProcessorConfig {
     pub max_event_size: usize,
     #[serde(default = "default_dedup_window")]
     pub dedup_window_secs: u64,
+    /// Enable content classification (source category, content type, urgency).
+    #[serde(default = "default_true")]
+    pub enable_classify: bool,
+    /// Enable content enrichment (entity extraction, keywords, summary).
+    #[serde(default = "default_true")]
+    pub enable_enrich: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

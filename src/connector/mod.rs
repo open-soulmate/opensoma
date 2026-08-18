@@ -10,11 +10,67 @@ pub mod webhook;
 pub mod github;
 
 use anyhow::Result;
+use async_trait::async_trait;
 use tokio::task::JoinHandle;
 use tracing::info;
 
 use crate::collector::EventTx;
 use crate::config::ConnectorConfig;
+
+/// Unified connector trait for health checking and identification.
+/// Each connector implements this to provide:
+/// - A human-readable name for logging and status
+/// - A health-check that verifies connectivity to the data source
+#[async_trait]
+pub trait Connector: Send + Sync {
+    /// Human-readable connector name (e.g. "dingtalk", "feishu", "github")
+    fn name(&self) -> &str;
+
+    /// Health check — verifies the connector can reach its data source.
+    /// Returns Ok(()) if healthy, Err with details if not.
+    async fn ping(&self) -> Result<()>;
+}
+
+/// Retry an async block with exponential backoff.
+///
+/// The body block must evaluate to `Result<T>`. Must be called from an async context.
+///
+/// # Usage
+/// ```ignore
+/// let token = retry_async!("dingtalk_token", 3, {
+///     fetch_access_token(&client, &config).await
+/// })?;
+/// ```
+#[macro_export]
+macro_rules! retry_async {
+    ($label:expr, $max:expr, { $($body:tt)* }) => {{
+        let mut _retry_last_err: Option<anyhow::Error> = None;
+        let mut _retry_result: Option<_> = None;
+        for _retry_attempt in 0u32..$max {
+            match { $($body)* } {
+                Ok(val) => { _retry_result = Some(val); break; }
+                Err(e) => {
+                    let delay_ms = 500u64 * 2u64.pow(_retry_attempt);
+                    tracing::warn!(
+                        "{} failed (attempt {}/{}): {}; retrying in {}ms",
+                        $label, _retry_attempt + 1, $max, e, delay_ms
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    _retry_last_err = Some(e.into());
+                }
+            }
+        }
+        match _retry_result {
+            Some(val) => Ok(val),
+            None => Err(_retry_last_err.unwrap_or_else(|| anyhow::anyhow!("{}: no attempts made", $label))),
+        }
+    }};
+}
+
+/// Retry delay for manual retry loops (exponential backoff starting at 500ms).
+pub fn retry_delay(attempt: u32) -> std::time::Duration {
+    std::time::Duration::from_millis(500 * 2u64.pow(attempt))
+}
 
 /// Start all enabled connectors. Each connector runs its own HTTP server or
 /// polling loop, forwarding events into the shared collector channel.

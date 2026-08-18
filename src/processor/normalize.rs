@@ -44,6 +44,8 @@ mod tests {
             normalize_timestamps: true,
             max_event_size: 1_048_576,
             dedup_window_secs: 300,
+            enable_classify: true,
+            enable_enrich: true,
         }
     }
 

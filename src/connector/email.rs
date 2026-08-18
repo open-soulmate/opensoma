@@ -1,9 +1,11 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 use tracing::{debug, error, info, warn};
 
 use crate::collector::{EventTx, RawEvent};
+use crate::connector::Connector;
 use crate::config::EmailConfig;
 
 /// Start the Email connector. Polls IMAP accounts at regular intervals
@@ -175,6 +177,45 @@ fn poll_account_sync(
 
     session.logout().ok();
     Ok(messages)
+}
+
+/// Email connector implementing the unified Connector trait.
+pub struct EmailConnector {
+    config: EmailConfig,
+}
+
+impl EmailConnector {
+    pub fn new(config: EmailConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait]
+impl Connector for EmailConnector {
+    fn name(&self) -> &str { "email" }
+
+    async fn ping(&self) -> Result<()> {
+        if let Some(account) = self.config.accounts.first() {
+            let account = account.clone();
+            tokio::task::spawn_blocking(move || {
+                let tls = native_tls::TlsConnector::builder().build()?;
+                let client = imap::connect(
+                    (account.imap_server.as_str(), account.imap_port),
+                    &account.imap_server,
+                    &tls,
+                )?;
+                let mut session = client
+                    .login(&account.username, &account.password)
+                    .map_err(|e| anyhow::anyhow!("IMAP login failed: {}", e.0))?;
+                session.logout().ok();
+                Ok::<(), anyhow::Error>(())
+            })
+            .await??
+        } else {
+            anyhow::bail!("No email accounts configured");
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::FeishuConfig;
+use crate::retry_async;
 
 /// Feishu API tenant access token response.
 #[derive(Debug, Deserialize)]
@@ -57,8 +58,10 @@ pub async fn start(config: FeishuConfig, tx: EventTx) -> Result<JoinHandle<()>> 
         .timeout(Duration::from_secs(30))
         .build()?;
 
-    // Fetch initial access token
-    let token = fetch_tenant_token(&http_client, &config).await?;
+    // Fetch initial access token with retry
+    let token = retry_async!("feishu_token", 3, {
+        fetch_tenant_token(&http_client, &config).await
+    })?;
     info!("Feishu connector authenticated.");
 
     let handle = tokio::spawn(async move {
@@ -66,6 +69,9 @@ pub async fn start(config: FeishuConfig, tx: EventTx) -> Result<JoinHandle<()>> 
         let mut token_refresh = tokio::time::interval(Duration::from_secs(7000));
         let mut poll_interval = tokio::time::interval(Duration::from_secs(60));
         poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        // Track seen document IDs to avoid duplicate events
+        let seen_docs: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         loop {
             tokio::select! {
@@ -89,6 +95,10 @@ pub async fn start(config: FeishuConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                             Ok(docs) => {
                                 debug!("Fetched {} documents from Feishu folder", docs.len());
                                 for doc in docs {
+                                    // Dedup: skip already-seen documents
+                                    if seen_docs.contains(&doc.document_id) {
+                                        continue;
+                                    }
                                     match fetch_document_content(&http_client, &current_token, &doc.document_id).await {
                                         Ok(content) => {
                                             let raw_event = to_raw_event(&doc, &content);

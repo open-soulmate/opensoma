@@ -1,5 +1,7 @@
 pub mod normalize;
 pub mod dedup;
+pub mod classify;
+pub mod enrich;
 
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
@@ -7,7 +9,7 @@ use tracing::{debug, error, info};
 use crate::collector::{EventRx, EventTx};
 use crate::config::ProcessorConfig;
 
-/// Start the processing pipeline: raw events → normalize → dedup → output.
+/// Start the processing pipeline: raw events → normalize → classify → enrich → dedup → output.
 /// Returns the output sender (for sync engine to consume) and the pipeline handle.
 pub fn start_pipeline(
     raw_rx: EventRx,
@@ -29,8 +31,8 @@ async fn run_pipeline(
 ) {
     let dedup = dedup::Deduplicator::new(config.dedup_window_secs);
     info!(
-        "Processor pipeline started — normalize={}, dedup_window={}s",
-        config.normalize_timestamps, config.dedup_window_secs
+        "Processor pipeline started — normalize={}, classify={}, enrich={}, dedup_window={}s",
+        config.normalize_timestamps, config.enable_classify, config.enable_enrich, config.dedup_window_secs
     );
 
     while let Some(mut event) = input.recv().await {
@@ -43,13 +45,25 @@ async fn run_pipeline(
             continue;
         }
 
-        // Step 3: Dedup check
+        // Step 3: Classify (if enabled)
+        if config.enable_classify {
+            let classification = classify::classify_event(&event);
+            classify::apply_classification(&mut event, &classification);
+        }
+
+        // Step 4: Enrich (if enabled)
+        if config.enable_enrich {
+            let enrichment = enrich::enrich_event(&event);
+            enrich::apply_enrichment(&mut event, &enrichment);
+        }
+
+        // Step 5: Dedup check
         if dedup.is_duplicate(&event).await {
             debug!("Dropping duplicate event: {}", event.id);
             continue;
         }
 
-        // Step 4: Forward to output
+        // Step 6: Forward to output
         if let Err(e) = output.send(event).await {
             error!("Pipeline output send error: {}", e);
             break;

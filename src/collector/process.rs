@@ -1,0 +1,168 @@
+use anyhow::Result;
+use chrono::Utc;
+use std::collections::HashMap;
+use std::time::Duration;
+use tracing::{debug, error, info, warn};
+use uuid::Uuid;
+
+use super::{EventTx, RawEvent};
+
+/// Snapshot of a running process for change detection.
+#[derive(Debug, Clone, PartialEq)]
+struct ProcessSnapshot {
+    pid: i32,
+    name: String,
+    cpu_usage: f32,
+    memory_bytes: u64,
+}
+
+/// Process monitor that polls system processes at a fixed interval and
+/// emits `process_change` events for new, exited, or significantly changed processes.
+pub async fn start_process_monitor(interval_ms: u64, tx: EventTx) -> Result<()> {
+    info!("Starting process monitor (interval={}ms)", interval_ms);
+
+    let mut prev_snapshot: HashMap<i32, ProcessSnapshot> = HashMap::new();
+    let mut ticker = tokio::time::interval(Duration::from_millis(interval_ms));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    loop {
+        ticker.tick().await;
+
+        // sysinfo is synchronous; run it in a blocking thread.
+        let current = match tokio::task::spawn_blocking(collect_process_snapshot).await {
+            Ok(Ok(snap)) => snap,
+            Ok(Err(e)) => {
+                error!("Process snapshot failed: {}", e);
+                continue;
+            }
+            Err(e) => {
+                error!("Process snapshot task panicked: {}", e);
+                continue;
+            }
+        };
+
+        // Detect new and changed processes
+        for (pid, snap) in &current {
+            if let Some(prev) = prev_snapshot.get(pid) {
+                // Check for significant CPU change (>20%) or memory change (>10MB)
+                let cpu_delta = (snap.cpu_usage - prev.cpu_usage).abs();
+                let mem_delta = if snap.memory_bytes > prev.memory_bytes {
+                    snap.memory_bytes - prev.memory_bytes
+                } else {
+                    prev.memory_bytes - snap.memory_bytes
+                };
+
+                if cpu_delta > 20.0 || mem_delta > 10 * 1024 * 1024 {
+                    let mut tags = HashMap::new();
+                    tags.insert("pid".to_string(), pid.to_string());
+                    tags.insert("name".to_string(), snap.name.clone());
+                    tags.insert("change_type".to_string(), "resource_change".to_string());
+                    tags.insert("cpu_usage".to_string(), format!("{:.1}", snap.cpu_usage));
+                    tags.insert("memory_mb".to_string(), format!("{}", snap.memory_bytes / 1024 / 1024));
+
+                    emit_event(&tx, "process_resource_change", snap.pid, tags).await;
+                }
+            } else {
+                // New process
+                let mut tags = HashMap::new();
+                tags.insert("pid".to_string(), pid.to_string());
+                tags.insert("name".to_string(), snap.name.clone());
+                tags.insert("change_type".to_string(), "started".to_string());
+                tags.insert("cpu_usage".to_string(), format!("{:.1}", snap.cpu_usage));
+                tags.insert("memory_mb".to_string(), format!("{}", snap.memory_bytes / 1024 / 1024));
+
+                debug!("New process detected: {} ({})", snap.name, pid);
+                emit_event(&tx, "process_started", snap.pid, tags).await;
+            }
+        }
+
+        // Detect exited processes
+        for (pid, snap) in &prev_snapshot {
+            if !current.contains_key(pid) {
+                let mut tags = HashMap::new();
+                tags.insert("pid".to_string(), pid.to_string());
+                tags.insert("name".to_string(), snap.name.clone());
+                tags.insert("change_type".to_string(), "exited".to_string());
+
+                debug!("Process exited: {} ({})", snap.name, pid);
+                emit_event(&tx, "process_exited", *pid, tags).await;
+            }
+        }
+
+        prev_snapshot = current;
+    }
+}
+
+/// Collect a snapshot of all running processes using sysinfo (blocking).
+fn collect_process_snapshot() -> Result<HashMap<i32, ProcessSnapshot>> {
+    use sysinfo::{ProcessesToUpdate, System};
+
+    let mut sys = System::new();
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+
+    let mut snapshot = HashMap::new();
+    for (pid, proc) in sys.processes() {
+        snapshot.insert(
+            pid.as_u32() as i32,
+            ProcessSnapshot {
+                pid: pid.as_u32() as i32,
+                name: proc.name().to_string_lossy().to_string(),
+                cpu_usage: proc.cpu_usage(),
+                memory_bytes: proc.memory(),
+            },
+        );
+    }
+    Ok(snapshot)
+}
+
+/// Emit a process event to the event channel.
+async fn emit_event(tx: &EventTx, event_type: &str, pid: i32, tags: HashMap<String, String>) {
+    let event = RawEvent {
+        id: Uuid::new_v4().to_string(),
+        source: format!("process:{}", pid),
+        event_type: event_type.to_string(),
+        timestamp_ms: Utc::now().timestamp_millis(),
+        payload: serde_json::to_vec(&tags).unwrap_or_default(),
+        tags,
+    };
+
+    match tx.try_send(event) {
+        Ok(()) => {}
+        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+            warn!("Event channel full, dropping process event");
+        }
+        Err(e) => {
+            error!("Failed to send process event: {}", e);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_collect_process_snapshot() {
+        let result = collect_process_snapshot();
+        assert!(result.is_ok());
+        let snap = result.unwrap();
+        // At least one process (the test itself) should be visible
+        assert!(!snap.is_empty());
+    }
+
+    #[test]
+    fn test_process_snapshot_equality() {
+        let a = ProcessSnapshot {
+            pid: 1,
+            name: "init".into(),
+            cpu_usage: 0.0,
+            memory_bytes: 1024,
+        };
+        let b = ProcessSnapshot {
+            pid: 1,
+            name: "init".into(),
+            cpu_usage: 0.0,
+            memory_bytes: 1024,
+        };
+        assert_eq!(a, b);
+    }
+}
