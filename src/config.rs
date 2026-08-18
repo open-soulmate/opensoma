@@ -13,6 +13,9 @@ pub struct AppConfig {
     pub connector: ConnectorConfig,
     pub processor: ProcessorConfig,
     pub sync: SyncConfig,
+    /// Sense plugin configuration for multimodal content parsing.
+    #[serde(default)]
+    pub sense: SenseConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,6 +47,15 @@ pub struct CollectorConfig {
     pub exclude: Vec<String>,
     #[serde(default = "default_debounce_ms")]
     pub debounce_ms: u64,
+    /// Poll interval for process monitor in milliseconds (default 5000)
+    #[serde(default = "default_process_interval_ms")]
+    pub process_interval_ms: u64,
+    /// Poll interval for network monitor in milliseconds (default 10000)
+    #[serde(default = "default_network_interval_ms")]
+    pub network_interval_ms: u64,
+    /// Poll interval for clipboard monitor in milliseconds (default 2000)
+    #[serde(default = "default_clipboard_interval_ms")]
+    pub clipboard_interval_ms: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -216,6 +228,78 @@ pub struct GitHubConfig {
     #[serde(default = "default_github_max_items")]
     pub max_items_per_fetch: usize,
 }
+
+/// Sense plugin configuration for multimodal content parsing.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SenseConfig {
+    /// Enable automatic sense parsing for media files.
+    #[serde(default)]
+    pub enabled: bool,
+    /// ASR (speech-to-text) configuration.
+    #[serde(default)]
+    pub asr: Option<AsrSenseConfig>,
+    /// OCR (image text recognition) configuration.
+    #[serde(default)]
+    pub ocr: Option<OcrSenseConfig>,
+    /// Image understanding via multimodal LLM.
+    #[serde(default)]
+    pub image: Option<ImageSenseConfig>,
+    /// Video frame extraction and analysis.
+    #[serde(default)]
+    pub video: Option<VideoSenseConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AsrSenseConfig {
+    /// "whisper" for local, "api" for remote.
+    #[serde(default = "default_asr_engine")]
+    pub engine: String,
+    #[serde(default)]
+    pub api_url: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default = "default_whisper_model")]
+    pub whisper_model: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OcrSenseConfig {
+    /// "tesseract" for local, "api" for remote.
+    #[serde(default = "default_ocr_engine")]
+    pub engine: String,
+    #[serde(default)]
+    pub api_url: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default = "default_tesseract_lang")]
+    pub tesseract_lang: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImageSenseConfig {
+    pub model: String,
+    pub api_url: String,
+    #[serde(default)]
+    pub api_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct VideoSenseConfig {
+    #[serde(default = "default_frame_interval")]
+    pub frame_interval_sec: u64,
+    #[serde(default = "default_max_frames")]
+    pub max_frames: usize,
+    #[serde(default = "default_frame_analyzer")]
+    pub frame_analyzer: String,
+}
+
+fn default_asr_engine() -> String { "whisper".into() }
+fn default_ocr_engine() -> String { "tesseract".into() }
+fn default_whisper_model() -> String { "base".into() }
+fn default_tesseract_lang() -> String { "chi_sim+eng".into() }
+fn default_frame_interval() -> u64 { 5 }
+fn default_max_frames() -> usize { 60 }
+fn default_frame_analyzer() -> String { "ocr".into() }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProcessorConfig {
@@ -522,6 +606,15 @@ fn default_include() -> Vec<String> {
 }
 fn default_debounce_ms() -> u64 {
     500
+}
+fn default_process_interval_ms() -> u64 {
+    5000
+}
+fn default_network_interval_ms() -> u64 {
+    10000
+}
+fn default_clipboard_interval_ms() -> u64 {
+    2000
 }
 fn default_feishu_webhook() -> String {
     "/api/feishu/webhook".into()
