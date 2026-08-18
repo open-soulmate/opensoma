@@ -10,6 +10,39 @@ use tracing::{debug, error, info, warn};
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::GitHubConfig;
+use crate::connector::Connector;
+
+/// GitHub connector implementing the unified Connector trait.
+pub struct GitHubConnector {
+    config: GitHubConfig,
+}
+
+impl GitHubConnector {
+    pub fn new(config: GitHubConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait::async_trait]
+impl Connector for GitHubConnector {
+    fn name(&self) -> &str {
+        "github"
+    }
+
+    async fn ping(&self) -> Result<()> {
+        let client = build_client(&self.config);
+        // Check rate limit endpoint (no auth required, lightweight)
+        let resp = client
+            .get("https://api.github.com/rate_limit")
+            .send()
+            .await
+            .context("GitHub API unreachable")?;
+        if !resp.status().is_success() {
+            anyhow::bail!("GitHub API returned {}", resp.status());
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct GitHubIssue {

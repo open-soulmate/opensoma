@@ -7,6 +7,45 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::GitConfig;
+use crate::connector::Connector;
+
+/// Git connector implementing the unified Connector trait.
+pub struct GitConnector {
+    config: GitConfig,
+}
+
+impl GitConnector {
+    pub fn new(config: GitConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait::async_trait]
+impl Connector for GitConnector {
+    fn name(&self) -> &str {
+        "git"
+    }
+
+    async fn ping(&self) -> Result<()> {
+        // Verify the local repo exists and has a .git directory
+        let git_dir = std::path::Path::new(&self.config.local_path).join(".git");
+        if !git_dir.exists() {
+            anyhow::bail!(
+                "Git repo not found at {} (no .git directory)",
+                self.config.local_path
+            );
+        }
+        // Verify git is available
+        let output = std::process::Command::new("git")
+            .args(["--version"])
+            .output()
+            .context("git not found in PATH")?;
+        if !output.status.success() {
+            anyhow::bail!("git --version failed");
+        }
+        Ok(())
+    }
+}
 
 /// Start the Git connector. Clones (or pulls) a repo periodically, parses
 /// Markdown files, and forwards new/changed content into the collector pipeline.

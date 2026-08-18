@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
@@ -8,6 +8,44 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::NotionConfig;
+use crate::connector::Connector;
+
+/// Notion connector implementing the unified Connector trait.
+pub struct NotionConnector {
+    config: NotionConfig,
+}
+
+impl NotionConnector {
+    pub fn new(config: NotionConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait::async_trait]
+impl Connector for NotionConnector {
+    fn name(&self) -> &str {
+        "notion"
+    }
+
+    async fn ping(&self) -> Result<()> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()?;
+        // Try to query the database to verify credentials
+        let url = format!("{}/databases/{}", NOTION_BASE_URL, self.config.database_id);
+        let resp = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.config.integration_token))
+            .header("Notion-Version", NOTION_API_VERSION)
+            .send()
+            .await
+            .context("Notion API unreachable")?;
+        if !resp.status().is_success() {
+            anyhow::bail!("Notion API returned {}", resp.status());
+        }
+        Ok(())
+    }
+}
 
 const NOTION_API_VERSION: &str = "2022-06-28";
 const NOTION_BASE_URL: &str = "https://api.notion.com/v1";

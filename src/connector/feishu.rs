@@ -9,7 +9,34 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::FeishuConfig;
+use crate::connector::Connector;
 use crate::retry_async;
+
+/// Feishu connector implementing the unified Connector trait.
+pub struct FeishuConnector {
+    config: FeishuConfig,
+}
+
+impl FeishuConnector {
+    pub fn new(config: FeishuConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait::async_trait]
+impl Connector for FeishuConnector {
+    fn name(&self) -> &str {
+        "feishu"
+    }
+
+    async fn ping(&self) -> Result<()> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()?;
+        fetch_tenant_token(&client, &self.config).await?;
+        Ok(())
+    }
+}
 
 /// Feishu API tenant access token response.
 #[derive(Debug, Deserialize)]

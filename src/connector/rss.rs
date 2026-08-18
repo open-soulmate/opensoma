@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::Client;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
@@ -6,6 +6,44 @@ use tracing::{debug, error, info, warn};
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::RssConfig;
+use crate::connector::Connector;
+
+/// RSS connector implementing the unified Connector trait.
+pub struct RssConnector {
+    config: RssConfig,
+}
+
+impl RssConnector {
+    pub fn new(config: RssConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait::async_trait]
+impl Connector for RssConnector {
+    fn name(&self) -> &str {
+        "rss"
+    }
+
+    async fn ping(&self) -> Result<()> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .user_agent("OpenSoma/0.1 RSS Connector")
+            .build()?;
+        // Try to fetch the first feed to verify connectivity
+        if let Some(feed) = self.config.feeds.first() {
+            let resp = client
+                .get(&feed.url)
+                .send()
+                .await
+                .with_context(|| format!("RSS feed '{}' unreachable", feed.name))?;
+            if !resp.status().is_success() {
+                anyhow::bail!("RSS feed '{}' returned {}", feed.name, resp.status());
+            }
+        }
+        Ok(())
+    }
+}
 
 /// Start the RSS connector. Polls configured RSS/Atom feeds at regular intervals
 /// and forwards new entries into the collector pipeline.

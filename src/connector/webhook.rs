@@ -1,9 +1,38 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::WebhookConfig;
+use crate::connector::Connector;
+
+/// Webhook connector implementing the unified Connector trait.
+pub struct WebhookConnector {
+    config: WebhookConfig,
+}
+
+impl WebhookConnector {
+    pub fn new(config: WebhookConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait::async_trait]
+impl Connector for WebhookConnector {
+    fn name(&self) -> &str {
+        "webhook"
+    }
+
+    async fn ping(&self) -> Result<()> {
+        // Try to bind to the listen address to verify it's available
+        let listener = tokio::net::TcpListener::bind(&self.config.listen)
+            .await
+            .with_context(|| format!("Cannot bind to {}", self.config.listen))?;
+        // Drop the listener immediately (we just wanted to test the bind)
+        drop(listener);
+        Ok(())
+    }
+}
 
 /// Start the Webhook connector. Runs an HTTP server that receives webhook
 /// payloads and forwards them into the collector pipeline.

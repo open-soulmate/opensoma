@@ -8,6 +8,33 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::WecomConfig;
+use crate::connector::Connector;
+
+/// WeCom connector implementing the unified Connector trait.
+pub struct WecomConnector {
+    config: WecomConfig,
+}
+
+impl WecomConnector {
+    pub fn new(config: WecomConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait::async_trait]
+impl Connector for WecomConnector {
+    fn name(&self) -> &str {
+        "wecom"
+    }
+
+    async fn ping(&self) -> Result<()> {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()?;
+        fetch_access_token(&client, &self.config).await?;
+        Ok(())
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct TokenResponse {

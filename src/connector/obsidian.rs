@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use notify::{RecursiveMode, Watcher};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -11,6 +11,36 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::ObsidianConfig;
+use crate::connector::Connector;
+
+/// Obsidian connector implementing the unified Connector trait.
+pub struct ObsidianConnector {
+    config: ObsidianConfig,
+}
+
+impl ObsidianConnector {
+    pub fn new(config: ObsidianConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait::async_trait]
+impl Connector for ObsidianConnector {
+    fn name(&self) -> &str {
+        "obsidian"
+    }
+
+    async fn ping(&self) -> Result<()> {
+        let vault_path = Path::new(&self.config.vault_path);
+        if !vault_path.is_dir() {
+            anyhow::bail!("Obsidian vault path does not exist: {}", self.config.vault_path);
+        }
+        // Check that we can read the directory
+        std::fs::read_dir(vault_path)
+            .with_context(|| format!("Cannot read Obsidian vault: {}", self.config.vault_path))?;
+        Ok(())
+    }
+}
 
 /// Start the Obsidian connector. Watches the vault directory for file changes
 /// and parses Markdown files with WikiLink resolution.
