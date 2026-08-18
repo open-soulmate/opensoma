@@ -78,6 +78,8 @@ pub async fn start_status_server(
         // Existing endpoints
         .route("/health", get(health_handler))
         .route("/status", get(status_handler))
+        // Prometheus metrics
+        .route("/metrics", get(metrics_handler))
         // New API endpoints
         .route("/api/status", get(api_status_handler))
         .route("/api/connectors", get(api_connectors_handler))
@@ -246,4 +248,79 @@ async fn build_status_response(state: &StatusServerState) -> Json<StatusResponse
         memory_used_mb,
         memory_total_mb,
     })
+}
+
+/// /metrics — Prometheus-compatible metrics endpoint.
+/// Returns metrics in Prometheus text exposition format without requiring
+/// an external prometheus crate dependency.
+async fn metrics_handler(
+    State(state): State<StatusServerState>,
+) -> axum::response::Response {
+    let events_collected = *state.events_collected.read().await;
+    let events_synced = *state.events_synced.read().await;
+    let connectors = state.connectors_active.read().await.clone();
+    let uptime = state.start_time.elapsed().as_secs_f64();
+
+    // System metrics
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_all();
+    let cpu_percent = sys.global_cpu_usage() as f64;
+    let memory_total_bytes = sys.total_memory();
+    let memory_used_bytes = sys.used_memory();
+
+    let mut lines: Vec<String> = Vec::new();
+
+    // Metadata
+    lines.push("# HELP opensoma_info OpenSoma daemon information.".to_string());
+    lines.push("# TYPE opensoma_info gauge".to_string());
+    lines.push(format!(
+        "opensoma_info{{node_id=\"{}\",version=\"{}\"}} 1",
+        state.node_id,
+        env!("CARGO_PKG_VERSION")
+    ));
+
+    // Uptime
+    lines.push("# HELP opensoma_uptime_seconds Daemon uptime in seconds.".to_string());
+    lines.push("# TYPE opensoma_uptime_seconds gauge".to_string());
+    lines.push(format!("opensoma_uptime_seconds {}", uptime));
+
+    // Events
+    lines.push("# HELP opensoma_events_collected_total Total events collected.".to_string());
+    lines.push("# TYPE opensoma_events_collected_total counter".to_string());
+    lines.push(format!("opensoma_events_collected_total {}", events_collected));
+
+    lines.push("# HELP opensoma_events_synced_total Total events synced to Soul.".to_string());
+    lines.push("# TYPE opensoma_events_synced_total counter".to_string());
+    lines.push(format!("opensoma_events_synced_total {}", events_synced));
+
+    // Pending events (difference)
+    let pending = events_collected.saturating_sub(events_synced);
+    lines.push("# HELP opensoma_events_pending Events awaiting sync.".to_string());
+    lines.push("# TYPE opensoma_events_pending gauge".to_string());
+    lines.push(format!("opensoma_events_pending {}", pending));
+
+    // Connectors
+    lines.push("# HELP opensoma_connectors_active Number of active connectors.".to_string());
+    lines.push("# TYPE opensoma_connectors_active gauge".to_string());
+    lines.push(format!("opensoma_connectors_active {}", connectors.len()));
+
+    // System metrics
+    lines.push("# HELP opensoma_cpu_usage_percent CPU usage percentage.".to_string());
+    lines.push("# TYPE opensoma_cpu_usage_percent gauge".to_string());
+    lines.push(format!("opensoma_cpu_usage_percent {}", cpu_percent));
+
+    lines.push("# HELP opensoma_memory_total_bytes Total system memory in bytes.".to_string());
+    lines.push("# TYPE opensoma_memory_total_bytes gauge".to_string());
+    lines.push(format!("opensoma_memory_total_bytes {}", memory_total_bytes));
+
+    lines.push("# HELP opensoma_memory_used_bytes Used system memory in bytes.".to_string());
+    lines.push("# TYPE opensoma_memory_used_bytes gauge".to_string());
+    lines.push(format!("opensoma_memory_used_bytes {}", memory_used_bytes));
+
+    lines.push("".to_string()); // trailing newline required by Prometheus
+
+    axum::response::Response::builder()
+        .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
+        .body(axum::body::Body::from(lines.join("\n")))
+        .unwrap()
 }

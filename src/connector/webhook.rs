@@ -1,4 +1,9 @@
 use anyhow::{Context, Result};
+use axum::{
+    http::StatusCode,
+    routing::post,
+    Router,
+};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
@@ -34,17 +39,28 @@ impl Connector for WebhookConnector {
     }
 }
 
+/// Shared state for the webhook server.
+#[derive(Clone)]
+struct WebhookState {
+    tx: EventTx,
+    secret: Option<String>,
+    allowed_origins: Vec<String>,
+}
+
 /// Start the Webhook connector. Runs an HTTP server that receives webhook
 /// payloads and forwards them into the collector pipeline.
 pub async fn start(config: WebhookConfig, tx: EventTx) -> Result<JoinHandle<()>> {
     let listen = config.listen.clone();
-    let secret = config.secret.clone();
-    let allowed_origins = config.allowed_origins.clone();
+    let state = WebhookState {
+        tx,
+        secret: config.secret.clone(),
+        allowed_origins: config.allowed_origins.clone(),
+    };
 
     info!("Webhook connector starting — listening on {}", listen);
 
     let handle = tokio::spawn(async move {
-        if let Err(e) = run_server(&listen, secret, allowed_origins, tx).await {
+        if let Err(e) = run_axum_server(&listen, state).await {
             error!("Webhook server failed: {}", e);
         }
     });
@@ -52,131 +68,62 @@ pub async fn start(config: WebhookConfig, tx: EventTx) -> Result<JoinHandle<()>>
     Ok(handle)
 }
 
-/// Run the webhook HTTP server using a minimal hyper-based approach.
-/// For simplicity we use a raw TCP listener + manual HTTP parsing to avoid
-/// pulling in the full axum/actix stack (OpenSoma is a lightweight daemon).
-async fn run_server(
-    listen: &str,
-    secret: Option<String>,
-    allowed_origins: Vec<String>,
-    tx: EventTx,
-) -> Result<()> {
-    let listener = tokio::net::TcpListener::bind(listen).await?;
+/// Run the webhook HTTP server using axum.
+async fn run_axum_server(listen: &str, state: WebhookState) -> Result<()> {
+    let app = Router::new()
+        .route("/{*path}", post(webhook_handler))
+        .route("/", post(webhook_handler))
+        .with_state(state);
+
+    let listener = tokio::net::TcpListener::bind(listen)
+        .await
+        .with_context(|| format!("Failed to bind webhook server to {}", listen))?;
+
     info!("Webhook server listening on {}", listen);
 
-    loop {
-        let (stream, addr) = listener.accept().await?;
-        debug!("Webhook connection from {}", addr);
+    axum::serve(listener, app)
+        .await
+        .context("Webhook server error")?;
 
-        let tx = tx.clone();
-        let secret = secret.clone();
-        let origins = allowed_origins.clone();
-
-        tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream, secret, origins, tx).await {
-                warn!("Webhook request error from {}: {}", addr, e);
-            }
-        });
-    }
+    Ok(())
 }
 
-/// Handle a single HTTP connection.
-async fn handle_connection(
-    mut stream: tokio::net::TcpStream,
-    secret: Option<String>,
-    allowed_origins: Vec<String>,
-    tx: EventTx,
-) -> Result<()> {
-    use tokio::io::{AsyncBufReadExt, AsyncReadExt};
-
-    let mut reader = tokio::io::BufReader::new(&mut stream);
-    let mut request_line = String::new();
-    reader.read_line(&mut request_line).await?;
-
-    let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
-    if parts.len() < 2 {
-        send_response(&mut stream, 400, "Bad Request").await?;
-        return Ok(());
-    }
-
-    let method = parts[0];
-    let path = parts[1];
-
-    // Read headers
-    let mut content_length: usize = 0;
-    let mut origin = String::new();
-    let mut signature = String::new();
-    loop {
-        let mut header_line = String::new();
-        reader.read_line(&mut header_line).await?;
-        if header_line.trim().is_empty() {
-            break;
-        }
-        let lower = header_line.to_lowercase();
-        if lower.starts_with("content-length:") {
-            content_length = lower["content-length:".len()..].trim().parse().unwrap_or(0);
-        }
-        if lower.starts_with("origin:") {
-            origin = header_line["Origin:".len()..].trim().to_string();
-        }
-        if lower.starts_with("x-signature:") || lower.starts_with("x-hub-signature-256:") {
-            signature = header_line
-                .split_once(':')
-                .map(|(_, v)| v.trim().to_string())
-                .unwrap_or_default();
-        }
-    }
-
-    // Only accept POST
-    if method != "POST" {
-        send_response(&mut stream, 405, "Method Not Allowed").await?;
-        return Ok(());
-    }
-
+/// Axum handler for incoming webhook POST requests.
+async fn webhook_handler(
+    axum::extract::State(state): axum::extract::State<WebhookState>,
+    axum::extract::Path(path): axum::extract::Path<String>,
+    headers: axum::http::HeaderMap,
+    body: String,
+) -> Result<axum::response::Response, StatusCode> {
     // Check allowed origins
-    if !allowed_origins.is_empty() && !origin.is_empty() {
-        if !allowed_origins.iter().any(|o| origin.starts_with(o)) {
-            send_response(&mut stream, 403, "Origin not allowed").await?;
-            return Ok(());
+    if let Some(origin) = headers.get("origin").and_then(|v| v.to_str().ok()) {
+        if !state.allowed_origins.is_empty() {
+            if !state.allowed_origins.iter().any(|o| origin.starts_with(o)) {
+                warn!("Webhook rejected: origin '{}' not in allowed list", origin);
+                return Err(StatusCode::FORBIDDEN);
+            }
         }
-    }
-
-    // Read body
-    let mut body = vec![0u8; content_length.min(1_048_576)]; // max 1MB
-    if content_length > 0 {
-        reader.read_exact(&mut body).await?;
     }
 
     // Verify HMAC signature if secret is configured
-    if let Some(ref secret) = secret {
-        use hmac::{Hmac, Mac};
-        use sha2::Sha256;
-        type HmacSha256 = Hmac<Sha256>;
+    if let Some(ref secret) = state.secret {
+        let signature = headers
+            .get("x-signature")
+            .or_else(|| headers.get("x-hub-signature-256"))
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
 
-        let mut mac =
-            HmacSha256::new_from_slice(secret.as_bytes()).map_err(|e| anyhow::anyhow!("{}", e))?;
-        mac.update(&body);
-        let expected = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
-
-        if !constant_time_eq(signature.as_bytes(), expected.as_bytes()) {
+        if !verify_hmac_signature(secret, body.as_bytes(), signature) {
             warn!("Webhook signature mismatch");
-            send_response(&mut stream, 401, "Invalid signature").await?;
-            return Ok(());
+            return Err(StatusCode::UNAUTHORIZED);
         }
     }
 
-    // Parse body as JSON (or store as raw text)
-    let body_str = String::from_utf8_lossy(&body);
-
-    // Extract source info from path
-    let source_id = path.trim_start_matches('/').replace('/', "_");
-
+    // Build the event
+    let source_id = path.replace('/', "_");
     let payload_json = serde_json::json!({
-        "path": path,
-        "method": method,
-        "origin": origin,
-        "content_length": content_length,
-        "body": body_str.chars().take(10_000).collect::<String>(),
+        "path": format!("/{}", path),
+        "body": body.chars().take(10_000).collect::<String>(),
     });
 
     let event = RawEvent {
@@ -188,44 +135,39 @@ async fn handle_connection(
         tags: {
             let mut tags = std::collections::HashMap::new();
             tags.insert("connector".to_string(), "webhook".to_string());
-            tags.insert("path".to_string(), path.to_string());
+            tags.insert("path".to_string(), format!("/{}", path));
             tags
         },
     };
 
-    if tx.send(event).await.is_err() {
+    if state.tx.send(event).await.is_err() {
         error!("Webhook collector channel closed");
-        send_response(&mut stream, 503, "Service Unavailable").await?;
-        return Ok(());
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
 
-    debug!("Webhook received on path: {}", path);
-    send_response(&mut stream, 200, r#"{"ok":true}"#).await?;
-    Ok(())
+    debug!("Webhook received on path: /{}", path);
+
+    Ok(axum::response::Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(r#"{"ok":true}"#))
+        .unwrap())
 }
 
-/// Send a simple HTTP response.
-async fn send_response(stream: &mut tokio::net::TcpStream, status: u16, body: &str) -> Result<()> {
-    use tokio::io::AsyncWriteExt;
-    let reason = match status {
-        200 => "OK",
-        400 => "Bad Request",
-        401 => "Unauthorized",
-        403 => "Forbidden",
-        405 => "Method Not Allowed",
-        503 => "Service Unavailable",
-        _ => "Unknown",
+/// Verify HMAC-SHA256 signature using constant-time comparison.
+fn verify_hmac_signature(secret: &str, body: &[u8], signature: &str) -> bool {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+
+    let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+        Ok(m) => m,
+        Err(_) => return false,
     };
-    let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        status,
-        reason,
-        body.len(),
-        body
-    );
-    stream.write_all(response.as_bytes()).await?;
-    stream.flush().await?;
-    Ok(())
+    mac.update(body);
+    let expected = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+
+    constant_time_eq(signature.as_bytes(), expected.as_bytes())
 }
 
 /// Constant-time byte comparison.

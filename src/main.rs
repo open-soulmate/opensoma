@@ -107,6 +107,28 @@ async fn main() -> Result<()> {
 /// Parse config path from CLI args, default to "config.toml"
 fn parse_config_path() -> String {
     let args: Vec<String> = std::env::args().collect();
+
+    // Handle --version / -V
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("opensoma {}", env!("CARGO_PKG_VERSION"));
+        std::process::exit(0);
+    }
+
+    // Handle --help / -h
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("OpenSoma — Deploy Everywhere, Collect Everything");
+        println!("Version: {}", env!("CARGO_PKG_VERSION"));
+        println!();
+        println!("USAGE:");
+        println!("    opensoma [OPTIONS]");
+        println!();
+        println!("OPTIONS:");
+        println!("    -c, --config <PATH>    Path to config.toml [default: config.toml]");
+        println!("    -V, --version          Print version information");
+        println!("    -h, --help             Print this help message");
+        std::process::exit(0);
+    }
+
     for i in 0..args.len() {
         if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
             return args[i + 1].clone();
