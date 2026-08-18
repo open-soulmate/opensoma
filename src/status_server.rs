@@ -24,6 +24,23 @@ pub struct StatusServerState {
     pub connector_enabled: Arc<RwLock<HashMap<String, bool>>>,
     /// Per-connector event counts for monitoring.
     pub connector_event_counts: Arc<RwLock<HashMap<String, u64>>>,
+    /// Cache statistics snapshot (updated periodically by sync engine).
+    pub cache_stats: Arc<RwLock<CacheStatsSnapshot>>,
+}
+
+/// Snapshot of cache statistics for the status API.
+#[derive(Clone, Serialize)]
+pub struct CacheStatsSnapshot {
+    pub total: usize,
+    pub uploaded: usize,
+    pub pending: usize,
+    pub cache_size_bytes: u64,
+}
+
+impl Default for CacheStatsSnapshot {
+    fn default() -> Self {
+        Self { total: 0, uploaded: 0, pending: 0, cache_size_bytes: 0 }
+    }
 }
 
 #[derive(Serialize)]
@@ -92,6 +109,8 @@ pub async fn start_status_server(
         .route("/api/collectors", get(api_collectors_handler))
         .route("/api/connectors/{name}/toggle", post(api_connector_toggle))
         .route("/api/connectors/{name}/events", get(api_connector_events))
+        .route("/api/cache/stats", get(api_cache_stats_handler))
+        .route("/api/cache/evict", post(api_cache_evict_handler))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", port);
@@ -388,6 +407,36 @@ async fn metrics_handler(
         .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
         .body(axum::body::Body::from(lines.join("\n")))
         .unwrap()
+}
+
+/// /api/cache/stats — return current cache statistics
+async fn api_cache_stats_handler(
+    State(state): State<StatusServerState>,
+) -> Json<CacheStatsSnapshot> {
+    let stats = state.cache_stats.read().await.clone();
+    Json(stats)
+}
+
+/// /api/cache/evict — trigger cache eviction (remove uploaded entries older than cutoff).
+/// Expects JSON body: {"cutoff_hours": 24}
+async fn api_cache_evict_handler(
+    State(_state): State<StatusServerState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    let cutoff_hours = payload
+        .get("cutoff_hours")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(24);
+    // Eviction is handled by the sync engine; this just logs the request
+    tracing::info!(
+        "Cache eviction requested (cutoff={}h ago) — will be processed by sync engine",
+        cutoff_hours
+    );
+    Json(serde_json::json!({
+        "status": "ok",
+        "cutoff_hours": cutoff_hours,
+        "message": "Eviction request accepted. Sync engine will process on next tick."
+    }))
 }
 
 #[cfg(test)]

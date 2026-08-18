@@ -427,6 +427,38 @@ impl AppConfig {
             }
         }
 
+        // Git connector checks
+        if let Some(ref gc) = self.connector.git {
+            if gc.enabled && gc.repo_url.is_empty() {
+                anyhow::bail!("git connector is enabled but repo_url is empty");
+            }
+            if gc.enabled && gc.local_path.is_empty() {
+                anyhow::bail!("git connector is enabled but local_path is empty");
+            }
+        }
+
+        // Obsidian connector checks
+        if let Some(ref oc) = self.connector.obsidian {
+            if oc.enabled && oc.vault_path.is_empty() {
+                anyhow::bail!("obsidian connector is enabled but vault_path is empty");
+            }
+            if oc.enabled && !std::path::Path::new(&oc.vault_path).exists() {
+                warnings.push(format!("obsidian vault_path '{}' does not exist", oc.vault_path));
+            }
+        }
+
+        // Webhook connector checks
+        if let Some(ref wc) = self.connector.webhook {
+            if wc.enabled && wc.listen.is_empty() {
+                anyhow::bail!("webhook connector is enabled but listen address is empty");
+            }
+        }
+
+        // Streaming check
+        if self.sync.enable_streaming && self.sync.batch_size == 0 {
+            warnings.push("sync.enable_streaming=true but batch_size=0 — streaming may help".into());
+        }
+
         // Sync checks
         if self.sync.batch_size == 0 {
             warnings.push("sync.batch_size is 0 — events will never be uploaded".into());
@@ -509,6 +541,74 @@ impl AppConfig {
             }
             if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_WECOM_AGENT_ID") {
                 wc.agent_id = v;
+            }
+        }
+
+        // GitHub overrides
+        if let Some(ref mut gc) = self.connector.github {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_GITHUB_TOKEN") {
+                gc.token = Some(v);
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_GITHUB_REPOS") {
+                gc.repos = v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            }
+        }
+
+        // RSS overrides
+        if let Some(ref mut rc) = self.connector.rss {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_RSS_FEEDS") {
+                if let Ok(feeds) = serde_json::from_str::<Vec<RssFeedConfig>>(&v) {
+                    rc.feeds = feeds;
+                }
+            }
+        }
+
+        // Email overrides
+        if let Some(ref mut ec) = self.connector.email {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_EMAIL_ACCOUNTS") {
+                if let Ok(accounts) = serde_json::from_str::<Vec<EmailAccountConfig>>(&v) {
+                    ec.accounts = accounts;
+                }
+            }
+        }
+
+        // Notion overrides
+        if let Some(ref mut nc) = self.connector.notion {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_NOTION_TOKEN") {
+                nc.integration_token = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_NOTION_DATABASE_ID") {
+                nc.database_id = v;
+            }
+        }
+
+        // Git overrides
+        if let Some(ref mut gc) = self.connector.git {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_GIT_REPO_URL") {
+                gc.repo_url = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_GIT_LOCAL_PATH") {
+                gc.local_path = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_GIT_BRANCH") {
+                gc.branch = v;
+            }
+        }
+
+        // Obsidian overrides
+        if let Some(ref mut oc) = self.connector.obsidian {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_OBSIDIAN_VAULT_PATH") {
+                oc.vault_path = v;
+            }
+        }
+
+        // Webhook overrides
+        if let Some(ref mut wc) = self.connector.webhook {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_WEBHOOK_LISTEN") {
+                wc.listen = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_WEBHOOK_SECRET") {
+                wc.secret = Some(v);
             }
         }
     }
@@ -869,5 +969,198 @@ watch_dirs = []
         assert_eq!(default_imap_port(), 993);
         assert_eq!(default_inbox_folder(), "INBOX");
         assert!(default_true());
+    }
+
+    #[test]
+    fn test_validate_git_missing_repo_url() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+[processor]
+[sync]
+
+[connector.git]
+enabled = true
+repo_url = ""
+local_path = "/tmp/repo"
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("repo_url"));
+    }
+
+    #[test]
+    fn test_validate_obsidian_missing_vault() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+[processor]
+[sync]
+
+[connector.obsidian]
+enabled = true
+vault_path = ""
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("vault_path"));
+    }
+
+    #[test]
+    fn test_validate_webhook_empty_listen() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+[processor]
+[sync]
+
+[connector.webhook]
+enabled = true
+listen = ""
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("listen"));
+    }
+
+    #[test]
+    fn test_env_override_github_token() {
+        std::env::set_var("OPENSOMA_CONNECTOR_GITHUB_TOKEN", "ghp_test123");
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.github]
+enabled = true
+repos = ["owner/repo"]
+"#;
+        let mut config: AppConfig = toml::from_str(toml).unwrap();
+        config.apply_env_overrides();
+        assert_eq!(config.connector.github.unwrap().token.unwrap(), "ghp_test123");
+        std::env::remove_var("OPENSOMA_CONNECTOR_GITHUB_TOKEN");
+    }
+
+    #[test]
+    fn test_env_override_notion() {
+        std::env::set_var("OPENSOMA_CONNECTOR_NOTION_TOKEN", "secret_test");
+        std::env::set_var("OPENSOMA_CONNECTOR_NOTION_DATABASE_ID", "db123");
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.notion]
+enabled = true
+integration_token = ""
+database_id = ""
+"#;
+        let mut config: AppConfig = toml::from_str(toml).unwrap();
+        config.apply_env_overrides();
+        let nc = config.connector.notion.unwrap();
+        assert_eq!(nc.integration_token, "secret_test");
+        assert_eq!(nc.database_id, "db123");
+        std::env::remove_var("OPENSOMA_CONNECTOR_NOTION_TOKEN");
+        std::env::remove_var("OPENSOMA_CONNECTOR_NOTION_DATABASE_ID");
+    }
+
+    #[test]
+    fn test_env_override_git() {
+        std::env::set_var("OPENSOMA_CONNECTOR_GIT_REPO_URL", "https://github.com/test/repo.git");
+        std::env::set_var("OPENSOMA_CONNECTOR_GIT_BRANCH", "develop");
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.git]
+enabled = true
+repo_url = ""
+local_path = "/tmp/repo"
+"#;
+        let mut config: AppConfig = toml::from_str(toml).unwrap();
+        config.apply_env_overrides();
+        let gc = config.connector.git.unwrap();
+        assert_eq!(gc.repo_url, "https://github.com/test/repo.git");
+        assert_eq!(gc.branch, "develop");
+        std::env::remove_var("OPENSOMA_CONNECTOR_GIT_REPO_URL");
+        std::env::remove_var("OPENSOMA_CONNECTOR_GIT_BRANCH");
+    }
+
+    #[test]
+    fn test_env_override_obsidian() {
+        std::env::set_var("OPENSOMA_CONNECTOR_OBSIDIAN_VAULT_PATH", "/home/user/vault");
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.obsidian]
+enabled = true
+vault_path = ""
+"#;
+        let mut config: AppConfig = toml::from_str(toml).unwrap();
+        config.apply_env_overrides();
+        assert_eq!(config.connector.obsidian.unwrap().vault_path, "/home/user/vault");
+        std::env::remove_var("OPENSOMA_CONNECTOR_OBSIDIAN_VAULT_PATH");
     }
 }

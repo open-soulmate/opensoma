@@ -84,6 +84,7 @@ async fn main() -> Result<()> {
         last_error: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
         connector_enabled: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         connector_event_counts: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        cache_stats: std::sync::Arc::new(tokio::sync::RwLock::new(status_server::CacheStatsSnapshot::default())),
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;

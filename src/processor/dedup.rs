@@ -108,4 +108,44 @@ mod tests {
         assert!(!dedup.is_duplicate(&event1).await);
         assert!(!dedup.is_duplicate(&event2).await);
     }
+
+    #[tokio::test]
+    async fn test_same_content_different_source_not_duplicate() {
+        let dedup = Deduplicator::new(300);
+        let event1 = make_event("1", "file:a", b"hello");
+        let event2 = make_event("2", "file:b", b"hello");
+        assert!(!dedup.is_duplicate(&event1).await);
+        assert!(!dedup.is_duplicate(&event2).await);
+    }
+
+    #[tokio::test]
+    async fn test_dedup_window_length() {
+        let dedup = Deduplicator::new(300);
+        let e1 = make_event("1", "src", b"data");
+        let e2 = make_event("2", "src", b"data");
+        let e3 = make_event("3", "src", b"data");
+        assert!(!dedup.is_duplicate(&e1).await);
+        assert!(dedup.is_duplicate(&e2).await);
+        assert!(dedup.is_duplicate(&e3).await);
+        assert_eq!(dedup.len().await, 1); // Only one unique key in window
+    }
+
+    #[tokio::test]
+    async fn test_empty_payload() {
+        let dedup = Deduplicator::new(300);
+        let e1 = make_event("1", "src", b"");
+        let e2 = make_event("2", "src", b"");
+        assert!(!dedup.is_duplicate(&e1).await);
+        assert!(dedup.is_duplicate(&e2).await);
+    }
+
+    #[tokio::test]
+    async fn test_large_payload_dedup() {
+        let dedup = Deduplicator::new(300);
+        let big = vec![0u8; 8192]; // > 4KB, exercises the sample truncation
+        let e1 = make_event("1", "src", &big);
+        let e2 = make_event("2", "src", &big);
+        assert!(!dedup.is_duplicate(&e1).await);
+        assert!(dedup.is_duplicate(&e2).await);
+    }
 }
