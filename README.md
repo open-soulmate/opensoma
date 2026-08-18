@@ -162,9 +162,9 @@ To add a new plugin, create a module under `src/plugins/sense/` and register it 
 
 | Module       | Responsibility                                          |
 |-------------|--------------------------------------------------------|
-| `collector`  | File system watcher (notify) — detects new/changed files |
-| `connector`  | IM platform integrations — Feishu, DingTalk, WeCom, RSS, Email, Notion, Git, Obsidian, Webhook |
-| `processor`  | Normalize formats + deduplicate entries                 |
+| `collector`  | File system watcher + process/network/clipboard monitors |
+| `connector`  | IM platform integrations — Feishu, DingTalk, WeCom, RSS, Email, Notion, Git, Obsidian, Webhook, GitHub |
+| `processor`  | Normalize → Classify → Enrich → Dedup pipeline         |
 | `sync`       | Incremental upload with local sled cache + offline retry |
 | `grpc`       | Tonic client for Soul Agent API                         |
 | `heartbeat`  | Periodic liveness signal to Soul                        |
@@ -224,18 +224,26 @@ opensoma/
     ├── main.rs           # Entry point, subsystem wiring
     ├── config.rs         # TOML config + hot-reload
     ├── heartbeat.rs      # Liveness signal
+    ├── status_server.rs  # HTTP monitoring endpoint
     ├── collector/
     │   ├── mod.rs
-    │   └── file.rs       # File system watcher
+    │   ├── file.rs       # File system watcher
+    │   ├── process.rs    # Process monitor (sysinfo)
+    │   ├── network.rs    # Network connection monitor
+    │   └── clipboard.rs  # Clipboard change monitor
     ├── connector/
-    │   ├── mod.rs
+    │   ├── mod.rs        # Connector trait + retry macro
     │   ├── feishu.rs
     │   ├── dingtalk.rs
     │   ├── wecom.rs
+    │   ├── rss.rs
+    │   ├── email.rs      # IMAP fetching
     │   ├── notion.rs
     │   ├── git.rs
-    │   └── obsidian.rs
-    ├── grpc/             # Tonic gRPC client
+    │   ├── obsidian.rs
+    │   ├── webhook.rs    # HMAC-verified HTTP receiver
+    │   └── github.rs     # Issues, PRs, releases
+    ├── grpc/             # HTTP client for Soul API
     ├── plugins/
     │   └── sense/
     │       ├── mod.rs    # SensePlugin trait
@@ -243,8 +251,17 @@ opensoma/
     │       ├── asr.rs
     │       ├── image.rs
     │       └── video.rs
-    ├── processor/        # Normalize + dedup
-    └── sync/             # Upload + sled cache
+    ├── processor/
+    │   ├── mod.rs        # Pipeline orchestrator
+    │   ├── normalize.rs  # Timestamp normalization
+    │   ├── classify.rs   # Content type + urgency classification
+    │   ├── enrich.rs     # Entity extraction + keywords + summary
+    │   └── dedup.rs      # Content-hash deduplication
+    └── sync/
+        ├── mod.rs        # Sync engine with batch upload
+        ├── cache.rs      # Sled local cache
+        ├── upload.rs     # HTTP upload to Soul
+        └── conflict.rs   # Conflict detection + resolution
 ```
 
 ## License
