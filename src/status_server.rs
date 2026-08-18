@@ -63,9 +63,7 @@ pub async fn start_status_server(
     })
 }
 
-async fn health_handler(
-    State(state): State<StatusServerState>,
-) -> Json<HealthResponse> {
+async fn health_handler(State(state): State<StatusServerState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
         component: "OpenSoma".to_string(),
@@ -74,9 +72,7 @@ async fn health_handler(
     })
 }
 
-async fn status_handler(
-    State(state): State<StatusServerState>,
-) -> Json<StatusResponse> {
+async fn status_handler(State(state): State<StatusServerState>) -> Json<StatusResponse> {
     let events_collected = *state.events_collected.read().await;
     let events_synced = *state.events_synced.read().await;
     let connectors = state.connectors_active.read().await.clone();

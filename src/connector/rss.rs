@@ -72,9 +72,10 @@ async fn poll_feed(
     for entry in entries {
         // Use guid or link as dedup key
         let dedup_key = entry.guid.clone().unwrap_or_else(|| {
-            entry.link.clone().unwrap_or_else(|| {
-                format!("{}:{}", feed.name, entry.title)
-            })
+            entry
+                .link
+                .clone()
+                .unwrap_or_else(|| format!("{}:{}", feed.name, entry.title))
         });
 
         if seen.contains(&dedup_key) {
@@ -160,8 +161,7 @@ fn parse_rss_entries(xml: &str) -> Vec<RssEntry> {
         let end = entry_xml.find("</entry>").unwrap_or(entry_xml.len());
         let fragment = &entry_xml[..end];
         // Atom uses <link href="..."/> instead of <link>...</link>
-        let link = extract_attr(fragment, "link", "href")
-            .or_else(|| extract_tag(fragment, "link"));
+        let link = extract_attr(fragment, "link", "href").or_else(|| extract_tag(fragment, "link"));
         entries.push(RssEntry {
             title: extract_tag(fragment, "title").unwrap_or_else(|| "Untitled".to_string()),
             link,
@@ -274,7 +274,10 @@ mod tests {
         let entries = parse_rss_entries(xml);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].title, "Atom Entry");
-        assert_eq!(entries[0].link.as_deref(), Some("https://example.com/atom1"));
+        assert_eq!(
+            entries[0].link.as_deref(),
+            Some("https://example.com/atom1")
+        );
         assert_eq!(entries[0].guid.as_deref(), Some("atom-1"));
     }
 

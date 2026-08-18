@@ -78,11 +78,7 @@ impl ConflictResolver {
 
     /// Detect if a local event conflicts with a server-side event.
     /// Returns a Conflict if they have the same ID but different content.
-    pub fn detect(
-        &self,
-        local: &RawEvent,
-        server: &EventSnapshot,
-    ) -> Option<Conflict> {
+    pub fn detect(&self, local: &RawEvent, server: &EventSnapshot) -> Option<Conflict> {
         if local.id != server.id {
             return None;
         }
@@ -113,21 +109,33 @@ impl ConflictResolver {
     pub fn resolve(&mut self, mut conflict: Conflict) -> ResolvedConflict {
         let resolution = match self.strategy {
             ConflictStrategy::ServerWins => {
-                debug!("Conflict resolved: server wins for event {}", conflict.event_id);
+                debug!(
+                    "Conflict resolved: server wins for event {}",
+                    conflict.event_id
+                );
                 Resolution::UsedServer
             }
             ConflictStrategy::LocalWins => {
-                debug!("Conflict resolved: local wins for event {}", conflict.event_id);
+                debug!(
+                    "Conflict resolved: local wins for event {}",
+                    conflict.event_id
+                );
                 Resolution::UsedLocal
             }
             ConflictStrategy::NewestWins => {
                 if conflict.local_event.timestamp_ms >= conflict.server_event.timestamp_ms {
-                    debug!("Conflict resolved: newest (local) for event {}", conflict.event_id);
+                    debug!(
+                        "Conflict resolved: newest (local) for event {}",
+                        conflict.event_id
+                    );
                     Resolution::UsedNewest {
                         winner: "local".to_string(),
                     }
                 } else {
-                    debug!("Conflict resolved: newest (server) for event {}", conflict.event_id);
+                    debug!(
+                        "Conflict resolved: newest (server) for event {}",
+                        conflict.event_id
+                    );
                     Resolution::UsedNewest {
                         winner: "server".to_string(),
                     }

@@ -85,10 +85,7 @@ async fn handle_connection(
         }
         let lower = header_line.to_lowercase();
         if lower.starts_with("content-length:") {
-            content_length = lower["content-length:".len()..]
-                .trim()
-                .parse()
-                .unwrap_or(0);
+            content_length = lower["content-length:".len()..].trim().parse().unwrap_or(0);
         }
         if lower.starts_with("origin:") {
             origin = header_line["Origin:".len()..].trim().to_string();
@@ -179,11 +176,7 @@ async fn handle_connection(
 }
 
 /// Send a simple HTTP response.
-async fn send_response(
-    stream: &mut tokio::net::TcpStream,
-    status: u16,
-    body: &str,
-) -> Result<()> {
+async fn send_response(stream: &mut tokio::net::TcpStream, status: u16, body: &str) -> Result<()> {
     use tokio::io::AsyncWriteExt;
     let reason = match status {
         200 => "OK",

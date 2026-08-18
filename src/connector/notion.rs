@@ -87,9 +87,7 @@ struct RichText {
 /// Start the Notion connector. Polls a configured database for pages,
 /// fetches page content, and forwards events into the collector pipeline.
 pub async fn start(config: NotionConfig, tx: EventTx) -> Result<JoinHandle<()>> {
-    let http_client = Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()?;
+    let http_client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
     let handle = tokio::spawn(async move {
         let mut poll_interval =
@@ -117,7 +115,10 @@ pub async fn start(config: NotionConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                                         debug!("Forwarded Notion page: {}", page_id);
                                     }
                                     Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                                        warn!("Event channel full, dropping Notion page: {}", page_id);
+                                        warn!(
+                                            "Event channel full, dropping Notion page: {}",
+                                            page_id
+                                        );
                                     }
                                     Err(e) => {
                                         error!("Failed to send Notion event: {}", e);
@@ -155,7 +156,10 @@ async fn query_database(client: &Client, config: &NotionConfig) -> Result<Vec<No
 
         let resp = client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", config.integration_token))
+            .header(
+                "Authorization",
+                format!("Bearer {}", config.integration_token),
+            )
             .header("Notion-Version", NOTION_API_VERSION)
             .json(&body)
             .send()
@@ -176,7 +180,11 @@ async fn query_database(client: &Client, config: &NotionConfig) -> Result<Vec<No
 }
 
 /// Fetch all block children for a page and extract text content.
-async fn fetch_page_blocks(client: &Client, config: &NotionConfig, page_id: &str) -> Result<String> {
+async fn fetch_page_blocks(
+    client: &Client,
+    config: &NotionConfig,
+    page_id: &str,
+) -> Result<String> {
     let mut all_text = Vec::new();
     let mut start_cursor: Option<String> = None;
 
@@ -191,7 +199,10 @@ async fn fetch_page_blocks(client: &Client, config: &NotionConfig, page_id: &str
 
         let resp = client
             .get(&url)
-            .header("Authorization", format!("Bearer {}", config.integration_token))
+            .header(
+                "Authorization",
+                format!("Bearer {}", config.integration_token),
+            )
             .header("Notion-Version", NOTION_API_VERSION)
             .send()
             .await?

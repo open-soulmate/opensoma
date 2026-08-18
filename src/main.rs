@@ -1,13 +1,13 @@
 #![allow(dead_code)]
-mod config;
-mod heartbeat;
 mod collector;
+mod config;
 mod connector;
+mod grpc;
+mod heartbeat;
 mod plugins;
 mod processor;
-mod sync;
-mod grpc;
 mod status_server;
+mod sync;
 
 use anyhow::Result;
 use tracing::info;
@@ -37,7 +37,10 @@ async fn main() -> Result<()> {
     let grpc_client = grpc::client::SoulClient::new(&config.soul).await?;
 
     // Register this node with Soul's Nerve bus
-    if let Err(e) = grpc_client.register_node(&config.daemon.node_id, "soma").await {
+    if let Err(e) = grpc_client
+        .register_node(&config.daemon.node_id, "soma")
+        .await
+    {
         tracing::warn!("Node registration failed (will retry via heartbeat): {}", e);
     }
 
@@ -61,19 +64,11 @@ async fn main() -> Result<()> {
     let connector_handle = connector::start_all(&config.connector, raw_tx.clone()).await?;
 
     // Start processor pipeline: raw_rx → normalize → dedup → processed_tx
-    let processor_handle = processor::start_pipeline(
-        raw_rx,
-        processed_tx,
-        &config.processor,
-    );
+    let processor_handle = processor::start_pipeline(raw_rx, processed_tx, &config.processor);
 
     // Start sync engine: processed_rx → cache → upload to Soul
-    let sync_handle = sync::start_engine_with_rx(
-        &config.sync,
-        cache,
-        grpc_client.clone(),
-        processed_rx,
-    );
+    let sync_handle =
+        sync::start_engine_with_rx(&config.sync, cache, grpc_client.clone(), processed_rx);
 
     // Start HTTP status server for monitoring
     let status_state = status_server::StatusServerState {
@@ -84,10 +79,8 @@ async fn main() -> Result<()> {
         connectors_active: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         last_error: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
     };
-    let status_handle = status_server::start_status_server(
-        config.daemon.status_port,
-        status_state,
-    ).await;
+    let status_handle =
+        status_server::start_status_server(config.daemon.status_port, status_state).await;
 
     info!("All subsystems initialized. Daemon is running.");
 

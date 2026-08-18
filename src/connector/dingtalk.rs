@@ -8,8 +8,8 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
-use crate::connector::Connector;
 use crate::config::DingtalkConfig;
+use crate::connector::Connector;
 use crate::retry_async;
 
 #[derive(Debug, Deserialize)]
@@ -113,7 +113,8 @@ pub async fn start(config: DingtalkConfig, tx: EventTx) -> Result<JoinHandle<()>
         poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         // Track seen instance IDs to avoid duplicate events
-        let mut seen_approvals: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut seen_approvals: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         loop {
             tokio::select! {
@@ -181,7 +182,12 @@ async fn fetch_access_token(client: &Client, config: &DingtalkConfig) -> Result<
         config.app_key, config.app_secret
     );
 
-    let resp = client.get(&url).send().await?.json::<TokenResponse>().await?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await?
+        .json::<TokenResponse>()
+        .await?;
     if let Some(code) = resp.errcode {
         if code != 0 {
             anyhow::bail!("DingTalk token error {}: {:?}", code, resp.errmsg);
@@ -192,10 +198,7 @@ async fn fetch_access_token(client: &Client, config: &DingtalkConfig) -> Result<
 
 /// Fetch approval process instances from DingTalk.
 /// Uses the topapi/processinstance/list API.
-async fn fetch_approval_list(
-    client: &Client,
-    token: &str,
-) -> Result<Vec<ApprovalInstance>> {
+async fn fetch_approval_list(client: &Client, token: &str) -> Result<Vec<ApprovalInstance>> {
     let url = format!(
         "https://oapi.dingtalk.com/topapi/processinstance/list?access_token={}",
         token
@@ -230,11 +233,7 @@ async fn fetch_approval_list(
 }
 
 /// Send a message via DingTalk robot webhook.
-pub async fn send_robot_message(
-    client: &Client,
-    webhook_url: &str,
-    text: &str,
-) -> Result<()> {
+pub async fn send_robot_message(client: &Client, webhook_url: &str, text: &str) -> Result<()> {
     let body = serde_json::json!({
         "msgtype": "text",
         "text": { "content": text }
@@ -291,7 +290,9 @@ impl DingtalkConnector {
 
 #[async_trait]
 impl Connector for DingtalkConnector {
-    fn name(&self) -> &str { "dingtalk" }
+    fn name(&self) -> &str {
+        "dingtalk"
+    }
 
     async fn ping(&self) -> Result<()> {
         fetch_access_token(&self.client, &self.config).await?;

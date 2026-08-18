@@ -37,7 +37,8 @@ pub async fn start(config: GitConfig, tx: EventTx) -> Result<JoinHandle<()>> {
         );
 
         // Track file hashes to detect changes
-        let mut known_hashes: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut known_hashes: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
 
         // Initial scan
         if let Err(e) = scan_and_forward(&config, &tx, &mut known_hashes).await {
@@ -66,7 +67,14 @@ pub async fn start(config: GitConfig, tx: EventTx) -> Result<JoinHandle<()>> {
 /// Run `git clone`.
 fn git_clone(url: &str, branch: &str, local_path: &str) -> Result<()> {
     let output = std::process::Command::new("git")
-        .args(["clone", "--branch", branch, "--single-branch", url, local_path])
+        .args([
+            "clone",
+            "--branch",
+            branch,
+            "--single-branch",
+            url,
+            local_path,
+        ])
         .output()
         .context("Failed to execute git clone")?;
 
@@ -182,9 +190,10 @@ fn walkdir_or_fallback(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>>
             let path = entry.path();
 
             // Skip hidden directories (like .git)
-            if path.file_name().map_or(false, |n| {
-                n.to_string_lossy().starts_with('.')
-            }) {
+            if path
+                .file_name()
+                .map_or(false, |n| n.to_string_lossy().starts_with('.'))
+            {
                 continue;
             }
 

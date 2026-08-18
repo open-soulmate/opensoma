@@ -54,9 +54,7 @@ struct DocContentResponse {
 /// polls a configured folder for documents and forwards new/updated content
 /// into the collector pipeline.
 pub async fn start(config: FeishuConfig, tx: EventTx) -> Result<JoinHandle<()>> {
-    let http_client = Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()?;
+    let http_client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
     // Fetch initial access token with retry
     let token = retry_async!("feishu_token", 3, {

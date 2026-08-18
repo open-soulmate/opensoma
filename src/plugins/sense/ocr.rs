@@ -45,8 +45,6 @@ impl OcrPlugin {
     }
 
     async fn run_tesseract(&self, data: &[u8]) -> Result<String> {
-        
-
         let tmp = tempfile::NamedTempFile::new()?;
         std::fs::write(tmp.path(), data)?;
 

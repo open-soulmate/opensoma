@@ -165,7 +165,11 @@ async fn fetch_issues(
 
         let item_type = if is_pr { "pull_request" } else { "issue" };
         let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
-        let author = issue.user.as_ref().map(|u| u.login.clone()).unwrap_or_default();
+        let author = issue
+            .user
+            .as_ref()
+            .map(|u| u.login.clone())
+            .unwrap_or_default();
         let body_text = issue.body.as_deref().unwrap_or("");
 
         let content = format!(
@@ -217,10 +221,7 @@ async fn fetch_releases(
     tx: &EventTx,
     seen: &mut std::collections::HashSet<String>,
 ) -> Result<()> {
-    let url = format!(
-        "https://api.github.com/repos/{}/releases?per_page=10",
-        repo
-    );
+    let url = format!("https://api.github.com/repos/{}/releases?per_page=10", repo);
 
     let resp = client
         .get(&url)
@@ -234,7 +235,10 @@ async fn fetch_releases(
         anyhow::bail!("GitHub releases API error {}: {}", status, body);
     }
 
-    let releases: Vec<GitHubRelease> = resp.json().await.context("Failed to parse GitHub releases")?;
+    let releases: Vec<GitHubRelease> = resp
+        .json()
+        .await
+        .context("Failed to parse GitHub releases")?;
 
     for release in &releases {
         let item_id = format!("{}:release:{}", repo, release.tag_name);
@@ -243,7 +247,11 @@ async fn fetch_releases(
             continue;
         }
 
-        let author = release.author.as_ref().map(|u| u.login.clone()).unwrap_or_default();
+        let author = release
+            .author
+            .as_ref()
+            .map(|u| u.login.clone())
+            .unwrap_or_default();
         let body_text = release.body.as_deref().unwrap_or("");
         let name = release.name.as_deref().unwrap_or(&release.tag_name);
 

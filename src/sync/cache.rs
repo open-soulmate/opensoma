@@ -56,7 +56,10 @@ impl Cache {
         if let Some(existing) = self.db.get(event.id.as_bytes())? {
             let entry: CacheEntry = serde_json::from_slice(&existing)?;
             if entry.content_hash == content_hash && entry.uploaded {
-                debug!("Skipping already-uploaded event with same hash: {}", event.id);
+                debug!(
+                    "Skipping already-uploaded event with same hash: {}",
+                    event.id
+                );
                 return Ok(());
             }
         }

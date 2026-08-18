@@ -73,9 +73,7 @@ impl AsrPlugin {
         }
 
         // Whisper writes <filename>.txt alongside the input
-        let txt_path = tmp_in
-            .path()
-            .with_extension("txt");
+        let txt_path = tmp_in.path().with_extension("txt");
         // The actual output path whisper uses: stem from the temp file
         let stem = tmp_in
             .path()

@@ -35,7 +35,7 @@ pub enum EntityType {
     FilePath,
     PhoneNumber,
     DateTime,
-    Hash,      // MD5/SHA hashes
+    Hash, // MD5/SHA hashes
     Port,
     Domain,
 }
@@ -64,15 +64,17 @@ pub fn apply_enrichment(event: &mut RawEvent, enrichment: &Enrichment) {
     // Add entity tags
     for entity in &enrichment.entities {
         let key = format!("entity_{:?}", entity.entity_type).to_lowercase();
-        event.tags.entry(key).or_insert_with(|| entity.value.clone());
+        event
+            .tags
+            .entry(key)
+            .or_insert_with(|| entity.value.clone());
     }
 
     // Add keywords
     if !enrichment.keywords.is_empty() {
-        event.tags.insert(
-            "keywords".to_string(),
-            enrichment.keywords.join(","),
-        );
+        event
+            .tags
+            .insert("keywords".to_string(), enrichment.keywords.join(","));
     }
 
     // Add summary (truncate to 500 chars for tags)
@@ -86,10 +88,9 @@ pub fn apply_enrichment(event: &mut RawEvent, enrichment: &Enrichment) {
         event.tags.insert("language".to_string(), lang.clone());
     }
 
-    event.tags.insert(
-        "word_count".to_string(),
-        enrichment.word_count.to_string(),
-    );
+    event
+        .tags
+        .insert("word_count".to_string(), enrichment.word_count.to_string());
 }
 
 /// Extract entities from text content using regex patterns.
@@ -118,7 +119,10 @@ fn extract_entities(text: &str) -> Vec<Entity> {
     for m in regex_find(text, r"\b(?:\d{1,3}\.){3}\d{1,3}\b") {
         // Basic validation — each octet should be 0-255
         let parts: Vec<&str> = m.0.split('.').collect();
-        if parts.iter().all(|p| p.parse::<u16>().map(|n| n <= 255).unwrap_or(false)) {
+        if parts
+            .iter()
+            .all(|p| p.parse::<u16>().map(|n| n <= 255).unwrap_or(false))
+        {
             entities.push(Entity {
                 entity_type: EntityType::IpAddress,
                 value: m.0.to_string(),
@@ -146,7 +150,10 @@ fn extract_entities(text: &str) -> Vec<Entity> {
     }
 
     // Domains (simple pattern)
-    for m in regex_find(text, r"\b[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.(?:com|org|net|io|dev|cn|ru|uk|de|fr)\b") {
+    for m in regex_find(
+        text,
+        r"\b[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.(?:com|org|net|io|dev|cn|ru|uk|de|fr)\b",
+    ) {
         // Skip if it's already captured as part of a URL or email
         let is_sub = entities.iter().any(|e| e.value.contains(m.0));
         if !is_sub {
@@ -162,11 +169,14 @@ fn extract_entities(text: &str) -> Vec<Entity> {
 }
 
 /// Simple regex finder that returns (match_text, offset) pairs.
-/// Uses a character-by-character approach to avoid depending on the regex crate.
-fn regex_find<'a>(_text: &'a str, _pattern: &str) -> Vec<(&'a str, usize)> {
-    // Since we can't add the regex crate easily, use simple pattern matching
-    // for the most common entity types
-    Vec::new()
+fn regex_find<'a>(text: &'a str, pattern: &str) -> Vec<(&'a str, usize)> {
+    let re = match regex::Regex::new(pattern) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    re.find_iter(text)
+        .map(|m| (&text[m.start()..m.end()], m.start()))
+        .collect()
 }
 
 /// Extract keywords from text by finding frequent, meaningful words.
@@ -175,18 +185,15 @@ fn extract_keywords(text: &str) -> Vec<String> {
 
     // Common stop words to filter out
     let stop_words: &[&str] = &[
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "shall", "can", "need", "dare", "ought",
-        "used", "to", "of", "in", "for", "on", "with", "at", "by", "from",
-        "as", "into", "through", "during", "before", "after", "above", "below",
-        "between", "out", "off", "over", "under", "again", "further", "then",
-        "once", "and", "but", "or", "nor", "not", "so", "yet", "both",
-        "either", "neither", "each", "every", "all", "any", "few", "more",
-        "most", "other", "some", "such", "no", "only", "own", "same",
-        "than", "too", "very", "just", "because", "if", "when", "where",
-        "how", "what", "which", "who", "whom", "this", "that", "these",
-        "those", "i", "me", "my", "we", "our", "you", "your", "he", "him",
+        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+        "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can",
+        "need", "dare", "ought", "used", "to", "of", "in", "for", "on", "with", "at", "by", "from",
+        "as", "into", "through", "during", "before", "after", "above", "below", "between", "out",
+        "off", "over", "under", "again", "further", "then", "once", "and", "but", "or", "nor",
+        "not", "so", "yet", "both", "either", "neither", "each", "every", "all", "any", "few",
+        "more", "most", "other", "some", "such", "no", "only", "own", "same", "than", "too",
+        "very", "just", "because", "if", "when", "where", "how", "what", "which", "who", "whom",
+        "this", "that", "these", "those", "i", "me", "my", "we", "our", "you", "your", "he", "him",
         "his", "she", "her", "it", "its", "they", "them", "their",
     ];
 
@@ -295,7 +302,8 @@ mod tests {
             source: "file:test.txt".into(),
             event_type: "file_change".into(),
             timestamp_ms: 1000,
-            payload: b"This is a test document. It contains some keywords. Test test test.".to_vec(),
+            payload: b"This is a test document. It contains some keywords. Test test test."
+                .to_vec(),
             tags: HashMap::new(),
         };
         let enrichment = enrich_event(&event);
@@ -324,17 +332,24 @@ mod tests {
         let long_text = "A".repeat(500);
         let summary = generate_summary(&long_text, 200);
         assert!(summary.ends_with('…'));
-        assert!(summary.len() <= 202); // 200 chars + …
+        // 200 chars of 'A' + '…' (3 bytes UTF-8) = 203 bytes max
+        assert!(summary.len() <= 203);
     }
 
     #[test]
     fn test_detect_language_english() {
-        assert_eq!(detect_language("Hello world this is English text"), Some("en".to_string()));
+        assert_eq!(
+            detect_language("Hello world this is English text"),
+            Some("en".to_string())
+        );
     }
 
     #[test]
     fn test_detect_language_chinese() {
-        assert_eq!(detect_language("这是一个中文测试文档包含多个汉字"), Some("zh".to_string()));
+        assert_eq!(
+            detect_language("这是一个中文测试文档包含多个汉字"),
+            Some("zh".to_string())
+        );
     }
 
     #[test]

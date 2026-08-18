@@ -56,8 +56,14 @@ pub async fn start_network_monitor(interval_ms: u64, tx: EventTx) -> Result<()> 
         for (key, conn) in &current_map {
             if !prev_conns.contains_key(key) {
                 let mut tags = HashMap::new();
-                tags.insert("local".to_string(), format!("{}:{}", conn.local_addr, conn.local_port));
-                tags.insert("remote".to_string(), format!("{}:{}", conn.remote_addr, conn.remote_port));
+                tags.insert(
+                    "local".to_string(),
+                    format!("{}:{}", conn.local_addr, conn.local_port),
+                );
+                tags.insert(
+                    "remote".to_string(),
+                    format!("{}:{}", conn.remote_addr, conn.remote_port),
+                );
                 tags.insert("protocol".to_string(), conn.protocol.clone());
                 tags.insert("state".to_string(), conn.state.clone());
                 if let Some(pid) = conn.pid {
@@ -67,7 +73,11 @@ pub async fn start_network_monitor(interval_ms: u64, tx: EventTx) -> Result<()> 
 
                 debug!(
                     "New connection: {}:{} → {}:{} [{}]",
-                    conn.local_addr, conn.local_port, conn.remote_addr, conn.remote_port, conn.state
+                    conn.local_addr,
+                    conn.local_port,
+                    conn.remote_addr,
+                    conn.remote_port,
+                    conn.state
                 );
                 emit_event(&tx, "network_new_connection", tags).await;
             }
@@ -77,8 +87,14 @@ pub async fn start_network_monitor(interval_ms: u64, tx: EventTx) -> Result<()> 
         for (key, conn) in &prev_conns {
             if !current_map.contains_key(key) {
                 let mut tags = HashMap::new();
-                tags.insert("local".to_string(), format!("{}:{}", conn.local_addr, conn.local_port));
-                tags.insert("remote".to_string(), format!("{}:{}", conn.remote_addr, conn.remote_port));
+                tags.insert(
+                    "local".to_string(),
+                    format!("{}:{}", conn.local_addr, conn.local_port),
+                );
+                tags.insert(
+                    "remote".to_string(),
+                    format!("{}:{}", conn.remote_addr, conn.remote_port),
+                );
                 tags.insert("protocol".to_string(), conn.protocol.clone());
                 tags.insert("change_type".to_string(), "closed".to_string());
 
@@ -95,8 +111,14 @@ pub async fn start_network_monitor(interval_ms: u64, tx: EventTx) -> Result<()> 
             if let Some(prev) = prev_conns.get(key) {
                 if prev.state != conn.state {
                     let mut tags = HashMap::new();
-                    tags.insert("local".to_string(), format!("{}:{}", conn.local_addr, conn.local_port));
-                    tags.insert("remote".to_string(), format!("{}:{}", conn.remote_addr, conn.remote_port));
+                    tags.insert(
+                        "local".to_string(),
+                        format!("{}:{}", conn.local_addr, conn.local_port),
+                    );
+                    tags.insert(
+                        "remote".to_string(),
+                        format!("{}:{}", conn.remote_addr, conn.remote_port),
+                    );
                     tags.insert("old_state".to_string(), prev.state.clone());
                     tags.insert("new_state".to_string(), conn.state.clone());
                     tags.insert("change_type".to_string(), "state_change".to_string());
@@ -198,7 +220,10 @@ fn parse_address(hex_str: &str) -> (String, u16) {
             let start = i * 8;
             match u32::from_str_radix(&addr_hex[start..start + 8], 16) {
                 Ok(n) => segments[i] = n,
-                Err(_) => { ok = false; break; }
+                Err(_) => {
+                    ok = false;
+                    break;
+                }
             }
         }
         if ok {
@@ -208,7 +233,13 @@ fn parse_address(hex_str: &str) -> (String, u16) {
             } else if segments == [0, 0, 0, 0] {
                 return ("::".to_string(), port);
             }
-            return (format!("{:08x}{:08x}{:08x}{:08x}", segments[0], segments[1], segments[2], segments[3]), port);
+            return (
+                format!(
+                    "{:08x}{:08x}{:08x}{:08x}",
+                    segments[0], segments[1], segments[2], segments[3]
+                ),
+                port,
+            );
         }
     }
 

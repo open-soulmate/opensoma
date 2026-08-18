@@ -5,8 +5,8 @@ use tokio::time::Duration;
 use tracing::{debug, error, info, warn};
 
 use crate::collector::{EventTx, RawEvent};
-use crate::connector::Connector;
 use crate::config::EmailConfig;
+use crate::connector::Connector;
 
 /// Start the Email connector. Polls IMAP accounts at regular intervals
 /// and forwards new emails into the collector pipeline.
@@ -65,10 +65,7 @@ async fn poll_account(
 
     // Use synchronous IMAP in a blocking task (the imap crate is sync)
     let account_clone = account.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        poll_account_sync(&account_clone)
-    })
-    .await??;
+    let result = tokio::task::spawn_blocking(move || poll_account_sync(&account_clone)).await??;
 
     let new_messages: Vec<_> = result
         .into_iter()
@@ -151,8 +148,14 @@ fn poll_account_sync(
 
     // Fetch headers and body for new messages (limit to 20)
     for uid in uid_vec.iter().take(20) {
-        let _fetch_items = format!("{} (BODY[HEADER.FIELDS (FROM SUBJECT DATE)]) BODY[TEXT]", uid);
-        let fetch_result = session.fetch(uid.to_string(), "BODY[HEADER.FIELDS (FROM SUBJECT DATE)] BODY[TEXT]")?;
+        let _fetch_items = format!(
+            "{} (BODY[HEADER.FIELDS (FROM SUBJECT DATE)]) BODY[TEXT]",
+            uid
+        );
+        let fetch_result = session.fetch(
+            uid.to_string(),
+            "BODY[HEADER.FIELDS (FROM SUBJECT DATE)] BODY[TEXT]",
+        )?;
 
         let mut headers = String::new();
         let mut body = String::new();
@@ -167,7 +170,11 @@ fn poll_account_sync(
             // Also try body()
             if body.is_empty() {
                 if let Some(b) = fetch.body() {
-                    body = String::from_utf8_lossy(b).to_string().chars().take(5000).collect();
+                    body = String::from_utf8_lossy(b)
+                        .to_string()
+                        .chars()
+                        .take(5000)
+                        .collect();
                 }
             }
         }
@@ -192,7 +199,9 @@ impl EmailConnector {
 
 #[async_trait]
 impl Connector for EmailConnector {
-    fn name(&self) -> &str { "email" }
+    fn name(&self) -> &str {
+        "email"
+    }
 
     async fn ping(&self) -> Result<()> {
         if let Some(account) = self.config.accounts.first() {

@@ -22,11 +22,7 @@ pub struct HeartbeatPayload {
 
 /// Start the heartbeat loop. Every `interval` seconds, collects node status
 /// (hostname, ip, cpu, memory, disk) and sends a heartbeat to Soul via gRPC.
-pub fn start(
-    node_id: String,
-    interval: u64,
-    client: SoulClient,
-) -> JoinHandle<()> {
+pub fn start(node_id: String, interval: u64, client: SoulClient) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(interval));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

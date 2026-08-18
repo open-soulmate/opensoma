@@ -58,7 +58,10 @@ pub async fn start_process_monitor(interval_ms: u64, tx: EventTx) -> Result<()> 
                     tags.insert("name".to_string(), snap.name.clone());
                     tags.insert("change_type".to_string(), "resource_change".to_string());
                     tags.insert("cpu_usage".to_string(), format!("{:.1}", snap.cpu_usage));
-                    tags.insert("memory_mb".to_string(), format!("{}", snap.memory_bytes / 1024 / 1024));
+                    tags.insert(
+                        "memory_mb".to_string(),
+                        format!("{}", snap.memory_bytes / 1024 / 1024),
+                    );
 
                     emit_event(&tx, "process_resource_change", snap.pid, tags).await;
                 }
@@ -69,7 +72,10 @@ pub async fn start_process_monitor(interval_ms: u64, tx: EventTx) -> Result<()> 
                 tags.insert("name".to_string(), snap.name.clone());
                 tags.insert("change_type".to_string(), "started".to_string());
                 tags.insert("cpu_usage".to_string(), format!("{:.1}", snap.cpu_usage));
-                tags.insert("memory_mb".to_string(), format!("{}", snap.memory_bytes / 1024 / 1024));
+                tags.insert(
+                    "memory_mb".to_string(),
+                    format!("{}", snap.memory_bytes / 1024 / 1024),
+                );
 
                 debug!("New process detected: {} ({})", snap.name, pid);
                 emit_event(&tx, "process_started", snap.pid, tags).await;

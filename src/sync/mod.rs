@@ -1,6 +1,6 @@
-pub mod upload;
 pub mod cache;
 pub mod conflict;
+pub mod upload;
 
 use tokio::task::JoinHandle;
 use tracing::{error, info};
@@ -35,9 +35,8 @@ async fn run_sync_engine(
         config.batch_size, config.upload_interval, config.max_retries
     );
 
-    let mut upload_interval = tokio::time::interval(std::time::Duration::from_secs(
-        config.upload_interval,
-    ));
+    let mut upload_interval =
+        tokio::time::interval(std::time::Duration::from_secs(config.upload_interval));
     upload_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let mut pending: Vec<RawEvent> = Vec::with_capacity(config.batch_size);

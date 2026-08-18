@@ -17,10 +17,7 @@ use crate::config::ObsidianConfig;
 pub async fn start(config: ObsidianConfig, tx: EventTx) -> Result<JoinHandle<()>> {
     let vault_path = Path::new(&config.vault_path).to_path_buf();
     if !vault_path.is_dir() {
-        anyhow::bail!(
-            "Obsidian vault path does not exist: {}",
-            config.vault_path
-        );
+        anyhow::bail!("Obsidian vault path does not exist: {}", config.vault_path);
     }
 
     let handle = tokio::spawn(async move {
@@ -237,12 +234,7 @@ fn compute_hash(content: &str) -> String {
 }
 
 /// Convert an Obsidian Markdown file into a RawEvent.
-fn to_raw_event(
-    relative_path: &str,
-    content: &str,
-    hash: &str,
-    wikilinks: &[String],
-) -> RawEvent {
+fn to_raw_event(relative_path: &str, content: &str, hash: &str, wikilinks: &[String]) -> RawEvent {
     let mut tags = std::collections::HashMap::new();
     tags.insert("platform".to_string(), "obsidian".to_string());
     tags.insert("file_path".to_string(), relative_path.to_string());
@@ -254,12 +246,11 @@ fn to_raw_event(
     }
 
     // Extract title from first heading or filename
-    let title = extract_markdown_title(content)
-        .or_else(|| {
-            Path::new(relative_path)
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-        });
+    let title = extract_markdown_title(content).or_else(|| {
+        Path::new(relative_path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+    });
     if let Some(t) = title {
         tags.insert("title".to_string(), t);
     }

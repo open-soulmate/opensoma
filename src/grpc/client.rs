@@ -80,7 +80,11 @@ impl SoulClient {
         if resp.status().is_success() {
             info!("Node '{}' registered with Soul Nerve bus", node_id);
         } else {
-            warn!("Node registration returned {}: {}", resp.status(), resp.text().await.unwrap_or_default());
+            warn!(
+                "Node registration returned {}: {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            );
         }
 
         Ok(())
@@ -163,11 +167,7 @@ impl SoulClient {
                 }
                 Ok(resp) => {
                     rejected += 1;
-                    reject_reasons.push(format!(
-                        "HTTP {} for event {}",
-                        resp.status(),
-                        event.id
-                    ));
+                    reject_reasons.push(format!("HTTP {} for event {}", resp.status(), event.id));
                 }
                 Err(e) => {
                     rejected += 1;
@@ -180,7 +180,12 @@ impl SoulClient {
             info!("Uploaded {}/{} events to Soul", accepted, events.len());
         }
         if rejected > 0 {
-            warn!("Rejected {}/{} events: {:?}", rejected, events.len(), reject_reasons);
+            warn!(
+                "Rejected {}/{} events: {:?}",
+                rejected,
+                events.len(),
+                reject_reasons
+            );
         }
 
         Ok(soul::UploadEventsResponse {

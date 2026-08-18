@@ -129,14 +129,8 @@ async fn read_clipboard(tool: &ClipboardTool) -> Option<String> {
         ClipboardTool::None => return None,
     };
 
-    match tokio::process::Command::new(cmd)
-        .args(&args)
-        .output()
-        .await
-    {
-        Ok(output) if output.status.success() => {
-            String::from_utf8(output.stdout).ok()
-        }
+    match tokio::process::Command::new(cmd).args(&args).output().await {
+        Ok(output) if output.status.success() => String::from_utf8(output.stdout).ok(),
         Ok(output) => {
             debug!(
                 "Clipboard read failed (exit={}): {}",
@@ -171,7 +165,11 @@ fn sniff_content_type(content: &str) -> &'static str {
             return "json";
         }
     }
-    if trimmed.contains('@') && trimmed.contains('.') && !trimmed.contains(' ') && trimmed.len() < 254 {
+    if trimmed.contains('@')
+        && trimmed.contains('.')
+        && !trimmed.contains(' ')
+        && trimmed.len() < 254
+    {
         return "email";
     }
     if trimmed.starts_with("-----BEGIN") {

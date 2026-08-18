@@ -71,11 +71,7 @@ pub fn classify_event(event: &RawEvent) -> Classification {
 /// Extract the top-level source category from the source field.
 /// E.g., "file:/tmp/data.json" → "file", "process:1234" → "process"
 fn extract_source_category(source: &str) -> String {
-    source
-        .split(':')
-        .next()
-        .unwrap_or("unknown")
-        .to_string()
+    source.split(':').next().unwrap_or("unknown").to_string()
 }
 
 /// Detect the content type from event metadata.
@@ -96,7 +92,9 @@ fn detect_content_type(event: &RawEvent) -> ContentType {
             ContentType::Generic
         }
         "process_started" | "process_exited" | "process_resource_change" => ContentType::System,
-        "network_new_connection" | "network_closed_connection" | "network_state_change" => ContentType::Network,
+        "network_new_connection" | "network_closed_connection" | "network_state_change" => {
+            ContentType::Network
+        }
         "clipboard_change" => ContentType::Clipboard,
         "webhook" => ContentType::Notification,
         "rss_item" => ContentType::Notification,

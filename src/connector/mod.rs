@@ -1,13 +1,13 @@
-pub mod feishu;
 pub mod dingtalk;
-pub mod wecom;
-pub mod notion;
+pub mod email;
+pub mod feishu;
 pub mod git;
+pub mod github;
+pub mod notion;
 pub mod obsidian;
 pub mod rss;
-pub mod email;
 pub mod webhook;
-pub mod github;
+pub mod wecom;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -74,10 +74,7 @@ pub fn retry_delay(attempt: u32) -> std::time::Duration {
 
 /// Start all enabled connectors. Each connector runs its own HTTP server or
 /// polling loop, forwarding events into the shared collector channel.
-pub async fn start_all(
-    config: &ConnectorConfig,
-    tx: EventTx,
-) -> Result<JoinHandle<()>> {
+pub async fn start_all(config: &ConnectorConfig, tx: EventTx) -> Result<JoinHandle<()>> {
     let config = config.clone();
 
     let handle = tokio::spawn(async move {

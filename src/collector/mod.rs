@@ -1,7 +1,7 @@
-pub mod file;
-pub mod process;
-pub mod network;
 pub mod clipboard;
+pub mod file;
+pub mod network;
+pub mod process;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -59,14 +59,7 @@ pub async fn start_all(
 
     // Start file watcher (consumes the remaining tx)
     let handle = tokio::spawn(async move {
-        if let Err(e) = file::start_watcher(
-            &watch_dirs,
-            debounce_ms,
-            &include,
-            &exclude,
-            tx,
-        )
-        .await
+        if let Err(e) = file::start_watcher(&watch_dirs, debounce_ms, &include, &exclude, tx).await
         {
             tracing::error!("File collector failed: {}", e);
         }

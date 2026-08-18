@@ -14,10 +14,7 @@ pub struct UploadResponse {
 }
 
 /// Upload a batch of events to Soul via gRPC.
-pub async fn upload_events(
-    client: &SoulClient,
-    events: &[RawEvent],
-) -> Result<UploadResponse> {
+pub async fn upload_events(client: &SoulClient, events: &[RawEvent]) -> Result<UploadResponse> {
     debug!("Uploading {} events to Soul...", events.len());
 
     let proto_events: Vec<_> = events.iter().map(to_proto_event).collect();

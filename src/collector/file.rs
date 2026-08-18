@@ -19,10 +19,7 @@ pub async fn start_watcher(
 ) -> Result<()> {
     let (debouncer_tx, debouncer_rx) = std::sync::mpsc::channel();
 
-    let mut debouncer = new_debouncer(
-        Duration::from_millis(debounce_ms),
-        debouncer_tx,
-    )?;
+    let mut debouncer = new_debouncer(Duration::from_millis(debounce_ms), debouncer_tx)?;
 
     for dir in watch_dirs {
         let path = Path::new(dir);
@@ -30,9 +27,7 @@ pub async fn start_watcher(
             warn!("Watch directory does not exist: {}", dir);
             continue;
         }
-        debouncer
-            .watcher()
-            .watch(path, RecursiveMode::Recursive)?;
+        debouncer.watcher().watch(path, RecursiveMode::Recursive)?;
         info!("Watching directory: {}", dir);
     }
 

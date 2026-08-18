@@ -152,7 +152,12 @@ async fn fetch_access_token(client: &Client, config: &WecomConfig) -> Result<Str
         config.corp_id, config.secret
     );
 
-    let resp = client.get(&url).send().await?.json::<TokenResponse>().await?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await?
+        .json::<TokenResponse>()
+        .await?;
     if let Some(code) = resp.errcode {
         if code != 0 {
             anyhow::bail!("WeCom token error {}: {:?}", code, resp.errmsg);

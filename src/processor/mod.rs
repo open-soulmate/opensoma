@@ -1,7 +1,7 @@
-pub mod normalize;
-pub mod dedup;
 pub mod classify;
+pub mod dedup;
 pub mod enrich;
+pub mod normalize;
 
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
@@ -24,15 +24,14 @@ pub fn start_pipeline(
 }
 
 /// Run the processing pipeline.
-async fn run_pipeline(
-    mut input: EventRx,
-    output: EventTx,
-    config: ProcessorConfig,
-) {
+async fn run_pipeline(mut input: EventRx, output: EventTx, config: ProcessorConfig) {
     let dedup = dedup::Deduplicator::new(config.dedup_window_secs);
     info!(
         "Processor pipeline started — normalize={}, classify={}, enrich={}, dedup_window={}s",
-        config.normalize_timestamps, config.enable_classify, config.enable_enrich, config.dedup_window_secs
+        config.normalize_timestamps,
+        config.enable_classify,
+        config.enable_enrich,
+        config.dedup_window_secs
     );
 
     while let Some(mut event) = input.recv().await {

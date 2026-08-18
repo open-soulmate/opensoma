@@ -324,7 +324,9 @@ impl AppConfig {
 
 /// Start a file watcher on the config path. Returns a handle and a receiver
 /// that emits the new AppConfig whenever the file changes.
-pub fn watch_config(path: &str) -> Result<(tokio::task::JoinHandle<()>, watch::Receiver<Arc<AppConfig>>)> {
+pub fn watch_config(
+    path: &str,
+) -> Result<(tokio::task::JoinHandle<()>, watch::Receiver<Arc<AppConfig>>)> {
     let initial = AppConfig::load(path)?;
     let (tx, rx) = watch::channel(Arc::new(initial));
     let path_buf = Path::new(path).to_path_buf();
@@ -348,12 +350,18 @@ pub fn watch_config(path: &str) -> Result<(tokio::task::JoinHandle<()>, watch::R
             }
         };
 
-        if let Err(e) = watcher.watch(path_buf.parent().unwrap_or(Path::new(".")), RecursiveMode::NonRecursive) {
+        if let Err(e) = watcher.watch(
+            path_buf.parent().unwrap_or(Path::new(".")),
+            RecursiveMode::NonRecursive,
+        ) {
             warn!("Failed to watch config directory: {}", e);
             return;
         }
 
-        info!("Config hot-reload watcher started for: {}", path_buf.display());
+        info!(
+            "Config hot-reload watcher started for: {}",
+            path_buf.display()
+        );
 
         loop {
             match notify_rx.recv() {
