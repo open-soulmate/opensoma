@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  opensoma:
+    build: .
+    container_name: opensoma
+    restart: unless-stopped
+    volumes:
+      - ./config.toml:/etc/opensoma/config.toml:ro
+      - opensoma-data:/var/lib/opensoma
+    ports:
+      - "9800:9800"   # Webhook receiver
+      - "8091:8091"   # Status server
+    environment:
+      - RUST_LOG=info
+      - OPENSOMA_SOUL_ENDPOINT=http://opensoul:8090
+    depends_on:
+      opensoul:
+        condition: service_healthy
+
+  opensoul:
+    image: opensoul:latest
+    container_name: opensoul
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  opensoma-data:
