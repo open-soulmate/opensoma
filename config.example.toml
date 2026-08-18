@@ -12,6 +12,8 @@
 node_id = "soma-node-001"
 log_level = "info"
 data_dir = "/var/lib/opensoma"
+# HTTP status server port for health checks (default: 8091)
+status_port = 8091
 
 # ---------------------------------------------------------------------------
 # Soul — HTTP connection to the OpenSoul agent
@@ -119,6 +121,10 @@ max_items_per_fetch = 30
 normalize_timestamps = true
 max_event_size = 1048576
 dedup_window_secs = 300
+# Enable content classification (source category, content type, urgency)
+enable_classify = true
+# Enable content enrichment (entity extraction, keywords, summary)
+enable_enrich = true
 
 # ---------------------------------------------------------------------------
 # Sync — upload engine and local cache

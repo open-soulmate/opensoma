@@ -136,12 +136,22 @@ debounce_ms = 500
 # --- GitHub ---
 [connector.github]
 enabled = false
-# Personal access token (requires repo scope)
+# Personal access token (requires repo scope, optional — increases rate limits)
 token = ""
 # List of repositories to watch (owner/repo format)
 repos = ["your-org/your-repo"]
-# Polling interval in seconds (default: 120)
-poll_interval_secs = 120
+# Polling interval in seconds (default: 300)
+poll_interval_secs = 300
+# Include issues (default: true)
+include_issues = true
+# Include pull requests (default: true)
+include_prs = true
+# Include releases (default: true)
+include_releases = true
+# Include closed items (default: false)
+include_closed = false
+# Max items per API call (default: 30, max: 100)
+max_items_per_fetch = 30
 
 # --- Generic Webhook receiver ---
 [connector.webhook]
