@@ -749,4 +749,77 @@ mod tests {
         assert_eq!(payload["report_id"], "rpt-002");
         assert_eq!(payload["creator_name"], "Dave");
     }
+
+    #[test]
+    fn test_approval_instance_deserialization() {
+        let json = serde_json::json!({
+            "process_instance_id": "inst-001",
+            "title": "Leave Request",
+            "status": "COMPLETED",
+            "originator_userid": "user-001",
+            "create_time": 1724000000000_i64,
+            "finish_time": 1724003600000_i64,
+            "business_id": "biz-001"
+        });
+        let inst: ApprovalInstance = serde_json::from_value(json).unwrap();
+        assert_eq!(inst.process_instance_id, "inst-001");
+        assert_eq!(inst.title, "Leave Request");
+        assert_eq!(inst.status, "COMPLETED");
+        assert_eq!(inst.originator_userid, "user-001");
+        assert_eq!(inst.business_id, "biz-001");
+    }
+
+    #[test]
+    fn test_to_raw_event_approval() {
+        let inst = ApprovalInstance {
+            process_instance_id: "inst-002".to_string(),
+            title: "Expense Report".to_string(),
+            status: "RUNNING".to_string(),
+            originator_userid: "user-002".to_string(),
+            create_time: 1724000000000,
+            finish_time: 0,
+            business_id: "biz-002".to_string(),
+        };
+        let event = to_raw_event(&inst);
+        assert_eq!(event.event_type, "approval");
+        assert_eq!(event.source, "connector:dingtalk:approval:inst-002");
+        assert_eq!(event.tags.get("platform").unwrap(), "dingtalk");
+        assert_eq!(event.tags.get("type").unwrap(), "approval");
+        assert_eq!(event.tags.get("status").unwrap(), "RUNNING");
+        assert_eq!(event.tags.get("instance_id").unwrap(), "inst-002");
+        assert_eq!(event.tags.get("title").unwrap(), "Expense Report");
+
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["process_instance_id"], "inst-002");
+        assert_eq!(payload["title"], "Expense Report");
+        assert_eq!(payload["status"], "RUNNING");
+        assert_eq!(payload["originator_userid"], "user-002");
+    }
+
+    #[test]
+    fn test_work_report_no_creator() {
+        let report = WorkReport {
+            report_id: "rpt-003".to_string(),
+            title: "Anonymous Report".to_string(),
+            creator_name: None,
+            creator_id: None,
+            create_time: 0,
+            modified_time: 0,
+            report_type: None,
+        };
+        let event = to_work_report_event(&report);
+        assert_eq!(event.event_type, "work_report");
+        assert!(!event.tags.contains_key("creator"));
+        assert_eq!(event.tags.get("title").unwrap(), "Anonymous Report");
+    }
+
+    #[test]
+    fn test_callback_with_event_key_lowercase() {
+        let payload = serde_json::json!({
+            "eventType": "user_add_org",
+            "TimeStamp": "2026-08-19T00:00:00Z"
+        });
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "user_add_org");
+    }
 }

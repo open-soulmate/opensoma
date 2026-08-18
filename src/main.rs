@@ -124,9 +124,22 @@ fn parse_config_path() -> String {
         println!();
         println!("OPTIONS:");
         println!("    -c, --config <PATH>    Path to config.toml [default: config.toml]");
+        println!("    --validate             Validate config.toml and exit (dry-run)");
         println!("    -V, --version          Print version information");
         println!("    -h, --help             Print this help message");
         std::process::exit(0);
+    }
+
+    // Handle --validate
+    if args.iter().any(|a| a == "--validate") {
+        // Extract config path inline to avoid recursion
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_validate_with_path(&config_path));
     }
 
     for i in 0..args.len() {
@@ -167,5 +180,68 @@ async fn wait_for_signal() {
     #[cfg(not(unix))]
     {
         ctrl_c.await.ok();
+    }
+}
+
+/// Validate config and print results. Returns exit code (0=ok, 1=error).
+fn run_validate_with_path(config_path: &str) -> i32 {
+    println!("Validating config: {}", config_path);
+
+    let config = match config::AppConfig::load(&config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ FATAL: Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    println!("✅ Config parsed successfully.");
+
+    match config.validate() {
+        Ok(warnings) => {
+            if warnings.is_empty() {
+                println!("✅ All checks passed — no warnings.");
+            } else {
+                println!("⚠️  {} warning(s):", warnings.len());
+                for w in &warnings {
+                    println!("   • {}", w);
+                }
+            }
+            // Print summary
+            let mut connector_count = 0;
+            let mut enabled_count = 0;
+            macro_rules! check_connector {
+                ($field:expr) => {
+                    if let Some(ref c) = $field {
+                        connector_count += 1;
+                        if c.enabled { enabled_count += 1; }
+                    }
+                };
+            }
+            check_connector!(config.connector.feishu);
+            check_connector!(config.connector.dingtalk);
+            check_connector!(config.connector.wecom);
+            check_connector!(config.connector.rss);
+            check_connector!(config.connector.email);
+            check_connector!(config.connector.notion);
+            check_connector!(config.connector.git);
+            check_connector!(config.connector.obsidian);
+            check_connector!(config.connector.webhook);
+            check_connector!(config.connector.github);
+
+            println!();
+            println!("Summary:");
+            println!("  Node ID:     {}", config.daemon.node_id);
+            println!("  Soul:        {}", config.soul.endpoint);
+            println!("  Connectors:  {}/{} enabled", enabled_count, connector_count);
+            println!("  Watch dirs:  {}", config.collector.watch_dirs.len());
+            println!("  Status port: {}", config.daemon.status_port);
+            println!("  Batch size:  {}", config.sync.batch_size);
+            0
+        }
+        Err(e) => {
+            eprintln!("❌ Validation failed: {:#}", e);
+            1
+        }
     }
 }

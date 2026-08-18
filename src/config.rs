@@ -257,6 +257,107 @@ impl AppConfig {
         Ok(config)
     }
 
+    /// Validate configuration and return a list of warnings (non-fatal) or errors.
+    /// Returns Ok(warnings) if config is valid, Err(message) if fatally invalid.
+    pub fn validate(&self) -> Result<Vec<String>> {
+        let mut warnings = Vec::new();
+
+        // Daemon checks
+        if self.daemon.node_id.is_empty() {
+            anyhow::bail!("daemon.node_id must not be empty");
+        }
+        if self.daemon.status_port == 0 {
+            warnings.push("daemon.status_port is 0 — status server will be disabled".into());
+        }
+
+        // Soul endpoint check
+        if self.soul.endpoint.is_empty() {
+            anyhow::bail!("soul.endpoint must not be empty");
+        }
+        if !self.soul.endpoint.starts_with("http") {
+            warnings.push(format!(
+                "soul.endpoint '{}' does not start with http — may fail to connect",
+                self.soul.endpoint
+            ));
+        }
+
+        // Collector checks
+        if self.collector.watch_dirs.is_empty() {
+            warnings.push("collector.watch_dirs is empty — file collector will have nothing to watch".into());
+        }
+        for dir in &self.collector.watch_dirs {
+            if !std::path::Path::new(dir).exists() {
+                warnings.push(format!("collector.watch_dirs: '{}' does not exist", dir));
+            }
+        }
+
+        // Connector credential checks
+        if let Some(ref fc) = self.connector.feishu {
+            if fc.enabled && (fc.app_id.is_empty() || fc.app_secret.is_empty()) {
+                anyhow::bail!("feishu connector is enabled but app_id or app_secret is empty");
+            }
+        }
+        if let Some(ref dc) = self.connector.dingtalk {
+            if dc.enabled && (dc.app_key.is_empty() || dc.app_secret.is_empty()) {
+                anyhow::bail!("dingtalk connector is enabled but app_key or app_secret is empty");
+            }
+        }
+        if let Some(ref wc) = self.connector.wecom {
+            if wc.enabled && (wc.corp_id.is_empty() || wc.secret.is_empty()) {
+                anyhow::bail!("wecom connector is enabled but corp_id or secret is empty");
+            }
+        }
+        if let Some(ref ec) = self.connector.email {
+            if ec.enabled && ec.accounts.is_empty() {
+                anyhow::bail!("email connector is enabled but no accounts configured");
+            }
+            for (i, account) in ec.accounts.iter().enumerate() {
+                if account.username.is_empty() || account.password.is_empty() {
+                    warnings.push(format!("email account[{}] '{}' has empty credentials", i, account.name));
+                }
+            }
+        }
+        if let Some(ref nc) = self.connector.notion {
+            if nc.enabled && nc.integration_token.is_empty() {
+                anyhow::bail!("notion connector is enabled but integration_token is empty");
+            }
+        }
+        if let Some(ref gc) = self.connector.github {
+            if gc.enabled && gc.repos.is_empty() {
+                anyhow::bail!("github connector is enabled but no repos configured");
+            }
+            if gc.enabled && gc.token.is_none() {
+                warnings.push("github connector has no token — rate limits will be lower".into());
+            }
+        }
+        if let Some(ref rc) = self.connector.rss {
+            if rc.enabled && rc.feeds.is_empty() {
+                anyhow::bail!("rss connector is enabled but no feeds configured");
+            }
+        }
+
+        // Sync checks
+        if self.sync.batch_size == 0 {
+            warnings.push("sync.batch_size is 0 — events will never be uploaded".into());
+        }
+        if self.sync.max_retries > 10 {
+            warnings.push(format!(
+                "sync.max_retries is {} — this may cause very long delays on failure",
+                self.sync.max_retries
+            ));
+        }
+
+        // Processor checks
+        if self.processor.max_event_size < 1024 {
+            warnings.push(format!(
+                "processor.max_event_size is only {} bytes — most events will be dropped",
+                self.processor.max_event_size
+            ));
+        }
+
+        Ok(warnings)
+    }
+
     /// Override config values from environment variables.
     /// Convention: `OPENSOMA_<SECTION>_<FIELD>` in uppercase.
     /// Examples:
@@ -479,4 +580,194 @@ fn default_github_interval() -> u64 {
 
 fn default_github_max_items() -> usize {
     30
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal_config_toml() -> String {
+        r#"
+[daemon]
+node_id = "test-node"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+
+[processor]
+
+[sync]
+"#.to_string()
+    }
+
+    #[test]
+    fn test_load_minimal_config() {
+        let config: AppConfig = toml::from_str(&minimal_config_toml()).unwrap();
+        assert_eq!(config.daemon.node_id, "test-node");
+        assert_eq!(config.soul.endpoint, "http://localhost:8090");
+    }
+
+    #[test]
+    fn test_validate_minimal_config() {
+        let config: AppConfig = toml::from_str(&minimal_config_toml()).unwrap();
+        let warnings = config.validate().unwrap();
+        // Should have at least a warning about empty watch_dirs
+        assert!(warnings.iter().any(|w| w.contains("watch_dirs")));
+    }
+
+    #[test]
+    fn test_validate_empty_node_id() {
+        let toml = r#"
+[daemon]
+node_id = ""
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+
+[processor]
+
+[sync]
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("node_id"));
+    }
+
+    #[test]
+    fn test_validate_feishu_missing_credentials() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+
+[processor]
+
+[sync]
+
+[connector.feishu]
+enabled = true
+app_id = ""
+app_secret = ""
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("feishu"));
+    }
+
+    #[test]
+    fn test_validate_github_no_token_warning() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+
+[sync]
+
+[connector.github]
+enabled = true
+repos = ["owner/repo"]
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let warnings = config.validate().unwrap();
+        assert!(warnings.iter().any(|w| w.contains("token") && w.contains("rate")));
+    }
+
+    #[test]
+    fn test_validate_zero_batch_size_warning() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+
+[processor]
+
+[sync]
+batch_size = 0
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let warnings = config.validate().unwrap();
+        assert!(warnings.iter().any(|w| w.contains("batch_size")));
+    }
+
+    #[test]
+    fn test_validate_non_http_endpoint_warning() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+
+[processor]
+
+[sync]
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let warnings = config.validate().unwrap();
+        assert!(warnings.iter().any(|w| w.contains("http")));
+    }
+
+    #[test]
+    fn test_env_override_node_id() {
+        std::env::set_var("OPENSOMA_DAEMON_NODE_ID", "env-node");
+        let mut config: AppConfig = toml::from_str(&minimal_config_toml()).unwrap();
+        config.apply_env_overrides();
+        assert_eq!(config.daemon.node_id, "env-node");
+        std::env::remove_var("OPENSOMA_DAEMON_NODE_ID");
+    }
+
+    #[test]
+    fn test_default_values() {
+        assert_eq!(default_status_port(), 8091);
+        assert_eq!(default_heartbeat_interval(), 30);
+        assert_eq!(default_connect_timeout(), 10);
+        assert_eq!(default_batch_size(), 50);
+        assert_eq!(default_upload_interval(), 10);
+        assert_eq!(default_max_retries(), 5);
+        assert_eq!(default_retry_backoff(), 1000);
+        assert_eq!(default_cache_size(), 512);
+        assert_eq!(default_max_event_size(), 1_048_576);
+        assert_eq!(default_dedup_window(), 300);
+        assert_eq!(default_imap_port(), 993);
+        assert_eq!(default_inbox_folder(), "INBOX");
+        assert!(default_true());
+    }
 }
