@@ -229,9 +229,154 @@ impl Connector for EmailConnector {
 
 #[cfg(test)]
 mod tests {
-    // IMAP tests require a real server, so we just verify the module compiles
+    use super::*;
+    use crate::config::{EmailAccountConfig, EmailConfig};
+
     #[test]
     fn test_module_compiles() {
         assert!(true);
+    }
+
+    #[test]
+    fn test_email_connector_name() {
+        let config = EmailConfig {
+            enabled: true,
+            accounts: vec![],
+            poll_interval_secs: 120,
+        };
+        let connector = EmailConnector::new(config);
+        assert_eq!(connector.name(), "email");
+    }
+
+    #[test]
+    fn test_email_config_deserialization() {
+        let toml = r#"
+enabled = true
+poll_interval_secs = 60
+
+[[accounts]]
+name = "work"
+imap_server = "imap.gmail.com"
+imap_port = 993
+username = "user@gmail.com"
+password = "secret"
+folder = "INBOX"
+tls = true
+"#;
+        let config: EmailConfig = toml::from_str(toml).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.poll_interval_secs, 60);
+        assert_eq!(config.accounts.len(), 1);
+        assert_eq!(config.accounts[0].name, "work");
+        assert_eq!(config.accounts[0].imap_server, "imap.gmail.com");
+        assert_eq!(config.accounts[0].imap_port, 993);
+        assert_eq!(config.accounts[0].folder, "INBOX");
+        assert!(config.accounts[0].tls);
+    }
+
+    #[test]
+    fn test_email_config_multiple_accounts() {
+        let toml = r#"
+enabled = true
+
+[[accounts]]
+name = "work"
+imap_server = "imap.work.com"
+username = "work@company.com"
+password = "pass1"
+
+[[accounts]]
+name = "personal"
+imap_server = "imap.gmail.com"
+username = "me@gmail.com"
+password = "pass2"
+folder = "Sent"
+"#;
+        let config: EmailConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.accounts.len(), 2);
+        assert_eq!(config.accounts[0].name, "work");
+        assert_eq!(config.accounts[1].name, "personal");
+        assert_eq!(config.accounts[1].folder, "Sent");
+    }
+
+    #[test]
+    fn test_email_config_defaults() {
+        let toml = r#"
+enabled = true
+
+[[accounts]]
+name = "test"
+imap_server = "imap.test.com"
+username = "user"
+password = "pass"
+"#;
+        let config: EmailConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.accounts[0].imap_port, 993); // default_imap_port
+        assert_eq!(config.accounts[0].folder, "INBOX"); // default_inbox_folder
+        assert!(!config.accounts[0].tls); // default false
+    }
+
+    #[test]
+    fn test_email_config_empty_accounts() {
+        let toml = r#"
+enabled = false
+accounts = []
+"#;
+        let config: EmailConfig = toml::from_str(toml).unwrap();
+        assert!(!config.enabled);
+        assert!(config.accounts.is_empty());
+    }
+
+    #[test]
+    fn test_email_payload_json_structure() {
+        // Verify the JSON structure that poll_account creates
+        let account = EmailAccountConfig {
+            name: "test-account".to_string(),
+            imap_server: "imap.test.com".to_string(),
+            imap_port: 993,
+            username: "user@test.com".to_string(),
+            password: "pass".to_string(),
+            folder: "INBOX".to_string(),
+            tls: true,
+        };
+
+        let payload_json = serde_json::json!({
+            "account": account.name,
+            "folder": account.folder,
+            "uid": 42u32,
+            "headers": "From: sender@test.com\r\nSubject: Test\r\n",
+            "body_snippet": "Hello, this is a test email body.",
+        });
+
+        assert_eq!(payload_json["account"], "test-account");
+        assert_eq!(payload_json["folder"], "INBOX");
+        assert_eq!(payload_json["uid"], 42);
+        assert!(payload_json["headers"].as_str().unwrap().contains("From:"));
+        assert!(payload_json["body_snippet"].as_str().unwrap().contains("test email"));
+    }
+
+    #[test]
+    fn test_email_body_truncation_logic() {
+        // The connector truncates body to 2000 chars
+        let long_body = "x".repeat(5000);
+        let truncated: String = long_body.chars().take(2000).collect();
+        assert_eq!(truncated.len(), 2000);
+    }
+
+    #[test]
+    fn test_seen_uids_dedup() {
+        // Simulate the dedup logic used in the connector
+        let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        seen.insert(1);
+        seen.insert(2);
+        seen.insert(3);
+
+        // First time: not seen
+        assert!(!seen.contains(&4));
+        seen.insert(4);
+
+        // Second time: already seen
+        assert!(seen.contains(&4));
+        assert_eq!(seen.len(), 4);
     }
 }

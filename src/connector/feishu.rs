@@ -299,4 +299,195 @@ mod tests {
         assert!(event.payload.is_empty());
         assert_eq!(event.tags.get("doc_type").unwrap(), "sheet");
     }
+
+    #[test]
+    fn test_to_raw_event_unicode_content() {
+        let doc = DocItem {
+            document_id: "doc-cn".to_string(),
+            title: "中文文档".to_string(),
+            doc_type: "docx".to_string(),
+            revision_id: Some(42),
+        };
+        let content = "这是一份中文内容的文档，包含特殊字符：émojis 🎉";
+        let event = to_raw_event(&doc, content);
+        assert_eq!(event.payload, content.as_bytes());
+        assert_eq!(event.tags.get("title").unwrap(), "中文文档");
+        // UUID should be valid format
+        assert!(uuid::Uuid::parse_str(&event.id).is_ok());
+    }
+
+    #[test]
+    fn test_to_raw_event_large_payload() {
+        let doc = DocItem {
+            document_id: "large-doc".to_string(),
+            title: "Large Document".to_string(),
+            doc_type: "docx".to_string(),
+            revision_id: Some(10),
+        };
+        let content = "x".repeat(100_000);
+        let event = to_raw_event(&doc, &content);
+        assert_eq!(event.payload.len(), 100_000);
+    }
+
+    #[test]
+    fn test_to_raw_event_all_doc_types() {
+        for doc_type in &["docx", "sheet", "bitable", "mindnote", "file", "wiki"] {
+            let doc = DocItem {
+                document_id: format!("doc-{}", doc_type),
+                title: format!("{} doc", doc_type),
+                doc_type: doc_type.to_string(),
+                revision_id: None,
+            };
+            let event = to_raw_event(&doc, "content");
+            assert_eq!(event.tags.get("doc_type").unwrap(), doc_type);
+        }
+    }
+
+    #[test]
+    fn test_doc_item_deserialization() {
+        let json = r#"{
+            "document_id": "doc-123",
+            "title": "My Doc",
+            "doc_type": "docx",
+            "revision_id": 5
+        }"#;
+        let doc: DocItem = serde_json::from_str(json).unwrap();
+        assert_eq!(doc.document_id, "doc-123");
+        assert_eq!(doc.title, "My Doc");
+        assert_eq!(doc.doc_type, "docx");
+        assert_eq!(doc.revision_id, Some(5));
+    }
+
+    #[test]
+    fn test_doc_item_deserialization_missing_optional() {
+        let json = r#"{
+            "document_id": "doc-456",
+            "title": "Minimal Doc",
+            "doc_type": "sheet"
+        }"#;
+        let doc: DocItem = serde_json::from_str(json).unwrap();
+        assert_eq!(doc.document_id, "doc-456");
+        assert!(doc.revision_id.is_none());
+    }
+
+    #[test]
+    fn test_doc_item_deserialization_empty_defaults() {
+        let json = r#"{}"#;
+        let doc: DocItem = serde_json::from_str(json).unwrap();
+        assert_eq!(doc.document_id, "");
+        assert_eq!(doc.title, "");
+        assert_eq!(doc.doc_type, "");
+        assert!(doc.revision_id.is_none());
+    }
+
+    #[test]
+    fn test_doc_list_response_deserialization() {
+        let json = r#"{
+            "items": [
+                {"document_id": "d1", "title": "Doc 1", "doc_type": "docx"},
+                {"document_id": "d2", "title": "Doc 2", "doc_type": "sheet"}
+            ],
+            "has_more": true,
+            "page_token": "next-page-token"
+        }"#;
+        let resp: DocListResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.items.len(), 2);
+        assert_eq!(resp.items[0].document_id, "d1");
+        assert!(resp.has_more);
+        assert_eq!(resp.page_token.unwrap(), "next-page-token");
+    }
+
+    #[test]
+    fn test_doc_list_response_empty() {
+        let json = r#"{"items": [], "has_more": false}"#;
+        let resp: DocListResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.items.is_empty());
+        assert!(!resp.has_more);
+        assert!(resp.page_token.is_none());
+    }
+
+    #[test]
+    fn test_doc_list_response_missing_fields() {
+        let json = r#"{}"#;
+        let resp: DocListResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.items.is_empty());
+        assert!(!resp.has_more);
+        assert!(resp.page_token.is_none());
+    }
+
+    #[test]
+    fn test_token_response_deserialization() {
+        let json = r#"{
+            "tenant_access_token": "t-abc123xyz",
+            "expire": 7200
+        }"#;
+        let resp: TokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.tenant_access_token, "t-abc123xyz");
+        assert_eq!(resp.expire, 7200);
+    }
+
+    #[test]
+    fn test_doc_content_response_with_content() {
+        let json = r#"{"content": "Hello, world!"}"#;
+        let resp: DocContentResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.content.unwrap(), "Hello, world!");
+    }
+
+    #[test]
+    fn test_doc_content_response_no_content() {
+        let json = r#"{}"#;
+        let resp: DocContentResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.content.is_none());
+    }
+
+    #[test]
+    fn test_doc_content_response_null_content() {
+        let json = r#"{"content": null}"#;
+        let resp: DocContentResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.content.is_none());
+    }
+
+    #[test]
+    fn test_to_raw_event_timestamp_is_recent() {
+        let doc = DocItem {
+            document_id: "ts-doc".to_string(),
+            title: "Timestamp Test".to_string(),
+            doc_type: "docx".to_string(),
+            revision_id: None,
+        };
+        let before = Utc::now().timestamp_millis();
+        let event = to_raw_event(&doc, "test");
+        let after = Utc::now().timestamp_millis();
+        assert!(event.timestamp_ms >= before);
+        assert!(event.timestamp_ms <= after);
+    }
+
+    #[test]
+    fn test_to_raw_event_unique_ids() {
+        let doc = DocItem {
+            document_id: "same-doc".to_string(),
+            title: "Same Doc".to_string(),
+            doc_type: "docx".to_string(),
+            revision_id: None,
+        };
+        let e1 = to_raw_event(&doc, "content");
+        let e2 = to_raw_event(&doc, "content");
+        // Same doc should produce different event IDs
+        assert_ne!(e1.id, e2.id);
+        // But same source
+        assert_eq!(e1.source, e2.source);
+    }
+
+    #[test]
+    fn test_feishu_connector_name() {
+        let config = FeishuConfig {
+            enabled: true,
+            app_id: "test".to_string(),
+            app_secret: "test".to_string(),
+            webhook_path: "/webhook/feishu".to_string(),
+            folder_token: None,
+        };
+        let connector = FeishuConnector::new(config);
+        assert_eq!(connector.name(), "feishu");
+    }
 }
