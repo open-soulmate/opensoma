@@ -141,9 +141,42 @@ fn parse_config_path() -> String {
         println!("    -c, --config <PATH>    Path to config.toml [default: config.toml]");
         println!("    --validate             Validate config.toml and exit (dry-run)");
         println!("    --init                 Generate a default config.toml and exit");
+        println!("    --status               Query running daemon status and exit");
+        println!("    --metrics              Print Prometheus metrics from running daemon");
         println!("    -V, --version          Print version information");
         println!("    -h, --help             Print this help message");
         std::process::exit(0);
+    }
+
+    // Handle --status
+    if args.iter().any(|a| a == "--status") {
+        let mut port: u16 = 8091;
+        // Try to read port from config
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        if let Ok(config) = config::AppConfig::load(&config_path) {
+            port = config.daemon.status_port;
+        }
+        std::process::exit(run_status_query(port));
+    }
+
+    // Handle --metrics
+    if args.iter().any(|a| a == "--metrics") {
+        let mut port: u16 = 8091;
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        if let Ok(config) = config::AppConfig::load(&config_path) {
+            port = config.daemon.status_port;
+        }
+        std::process::exit(run_metrics_query(port));
     }
 
     // Handle --init
@@ -412,5 +445,163 @@ watch_dirs = []
             eprintln!("❌ Failed to write config: {}", e);
             1
         }
+    }
+}
+
+/// Query the running daemon's /api/status endpoint and display formatted output.
+/// Uses a blocking HTTP client since this runs before tokio starts.
+fn run_status_query(port: u16) -> i32 {
+    let url = format!("http://127.0.0.1:{}/api/status", port);
+
+    // Use ureq (blocking) or fall back to std::net
+    match blocking_http_get(&url) {
+        Ok(body) => {
+            match serde_json::from_str::<serde_json::Value>(&body) {
+                Ok(json) => {
+                    println!("╔══════════════════════════════════════════════╗");
+                    println!("║          OpenSoma Daemon Status              ║");
+                    println!("╚══════════════════════════════════════════════╝");
+                    println!();
+
+                    let node_id = json["node_id"].as_str().unwrap_or("?");
+                    let component = json["component"].as_str().unwrap_or("?");
+                    let uptime = json["uptime_seconds"].as_u64().unwrap_or(0);
+                    let events_collected = json["events_collected"].as_u64().unwrap_or(0);
+                    let events_synced = json["events_synced"].as_u64().unwrap_or(0);
+                    let hostname = json["hostname"].as_str().unwrap_or("?");
+                    let ip = json["ip"].as_str().unwrap_or("?");
+                    let cpu = json["cpu_percent"].as_f64().unwrap_or(0.0);
+                    let mem_used = json["memory_used_mb"].as_u64().unwrap_or(0);
+                    let mem_total = json["memory_total_mb"].as_u64().unwrap_or(0);
+
+                    println!("  Node ID:          {}", node_id);
+                    println!("  Component:        {}", component);
+                    println!("  Hostname:         {}", hostname);
+                    println!("  IP:               {}", ip);
+                    println!(
+                        "  Uptime:           {}d {}h {}m {}s",
+                        uptime / 86400,
+                        (uptime % 86400) / 3600,
+                        (uptime % 3600) / 60,
+                        uptime % 60
+                    );
+                    println!();
+                    println!("  Events collected: {}", events_collected);
+                    println!("  Events synced:    {}", events_synced);
+                    println!(
+                        "  Events pending:   {}",
+                        events_collected.saturating_sub(events_synced)
+                    );
+                    println!();
+                    println!("  CPU usage:        {:.1}%", cpu);
+                    println!(
+                        "  Memory:           {} / {} MB ({:.0}%)",
+                        mem_used,
+                        mem_total,
+                        if mem_total > 0 {
+                            mem_used as f64 / mem_total as f64 * 100.0
+                        } else {
+                            0.0
+                        }
+                    );
+
+                    // Show active connectors
+                    if let Some(connectors) = json["connectors_active"].as_array() {
+                        if !connectors.is_empty() {
+                            let names: Vec<&str> =
+                                connectors.iter().filter_map(|c| c.as_str()).collect();
+                            println!("  Active connectors: {}", names.join(", "));
+                        }
+                    }
+                    if let Some(err) = json["last_error"].as_str() {
+                        if !err.is_empty() {
+                            println!("  ⚠ Last error:     {}", err);
+                        }
+                    }
+                    println!();
+                    0
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to parse status response: {}", e);
+                    1
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "❌ Cannot reach OpenSoma daemon at port {} — is it running?",
+                port
+            );
+            eprintln!("   Error: {}", e);
+            1
+        }
+    }
+}
+
+/// Query the running daemon's /metrics endpoint and print Prometheus-format metrics.
+fn run_metrics_query(port: u16) -> i32 {
+    let url = format!("http://127.0.0.1:{}/metrics", port);
+
+    match blocking_http_get(&url) {
+        Ok(body) => {
+            print!("{}", body);
+            0
+        }
+        Err(e) => {
+            eprintln!(
+                "❌ Cannot reach OpenSoma daemon at port {} — is it running?",
+                port
+            );
+            eprintln!("   Error: {}", e);
+            1
+        }
+    }
+}
+
+/// Blocking HTTP GET using std::net::TcpStream (no async runtime needed).
+fn blocking_http_get(url: &str) -> std::io::Result<String> {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    // Parse URL: http://host:port/path
+    let stripped = url.strip_prefix("http://").unwrap_or(url);
+    let (host_port, path) = match stripped.find('/') {
+        Some(i) => (&stripped[..i], &stripped[i..]),
+        None => (stripped, "/"),
+    };
+
+    let stream = TcpStream::connect(host_port)?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
+
+    let mut stream = stream;
+    let request = format!(
+        "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+        path, host_port
+    );
+    stream.write_all(request.as_bytes())?;
+
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+
+    // Split headers and body
+    if let Some(body_start) = response.find("\r\n\r\n") {
+        let headers = &response[..body_start];
+        let body = &response[body_start + 4..];
+
+        // Check for HTTP 200
+        if headers.contains("HTTP/1.1 200") || headers.contains("HTTP/1.0 200") {
+            Ok(body.to_string())
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("HTTP error: {}", &headers[..headers.find('\r').unwrap_or(headers.len())]),
+            ))
+        }
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Invalid HTTP response",
+        ))
     }
 }
