@@ -211,7 +211,7 @@ impl Cache {
             }
         }
         // Sort newest first
-        entries.sort_by(|a, b| b.0.cmp(&a.0));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.0));
         Ok(entries.into_iter().take(limit).map(|(_, e)| e).collect())
     }
 
@@ -225,7 +225,7 @@ impl Cache {
                 }
             }
         }
-        results.sort_by(|a, b| b.0.cmp(&a.0));
+        results.sort_by_key(|b| std::cmp::Reverse(b.0));
         Ok(results.into_iter().take(limit).map(|(_, e)| e).collect())
     }
 
@@ -241,7 +241,7 @@ impl Cache {
                 }
             }
         }
-        results.sort_by(|a, b| b.0.cmp(&a.0));
+        results.sort_by_key(|b| std::cmp::Reverse(b.0));
         Ok(results.into_iter().take(limit).map(|(_, e)| e).collect())
     }
 
@@ -261,7 +261,7 @@ impl Cache {
                 }
             }
         }
-        results.sort_by(|a, b| b.0.cmp(&a.0));
+        results.sort_by_key(|b| std::cmp::Reverse(b.0));
         Ok(results.into_iter().take(limit).map(|(_, e)| e).collect())
     }
 
@@ -277,7 +277,7 @@ impl Cache {
                 }
             }
         }
-        results.sort_by(|a, b| b.0.cmp(&a.0));
+        results.sort_by_key(|b| std::cmp::Reverse(b.0));
         Ok(results.into_iter().take(limit).map(|(_, e)| e).collect())
     }
 }

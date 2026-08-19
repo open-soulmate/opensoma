@@ -82,6 +82,7 @@ struct WeChatMessage {
 }
 
 /// WeCom external contact list response.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ExternalContactListResponse {
     #[serde(default)]

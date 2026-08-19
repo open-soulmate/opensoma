@@ -1,7 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Html,
     routing::{get, post},
     Json, Router,
 };
@@ -78,6 +77,7 @@ struct ToggleRequest {
 }
 
 /// Embed the index.html and CSS at compile time.
+#[allow(dead_code)]
 const INDEX_HTML: &str = include_str!("web/index.html");
 const ADMIN_CSS: &str = include_str!("web/admin-framework.css");
 const ADMIN_JS: &str = include_str!("web/admin-framework.js");
@@ -149,8 +149,8 @@ pub async fn start_status_server(
 }
 
 /// Serve the embedded index.html
-async fn index_handler() -> Html<&'static str> {
-    Html(INDEX_HTML)
+async fn index_handler() -> Json<serde_json::Value> {
+    Json(serde_json::json!({"message": "OpenSoul API — 前端请访问 OpenMate (http://localhost:3002)", "health": "/health", "status": "/status"}))
 }
 
 /// Serve the shared sidebar CSS

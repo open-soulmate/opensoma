@@ -352,6 +352,7 @@ pub struct SyncConfig {
     #[serde(default)]
     pub enable_streaming: bool,
 }
+#[allow(dead_code)]
 fn default_streaming() -> bool {
     false
 }

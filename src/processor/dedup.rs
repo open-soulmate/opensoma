@@ -66,6 +66,11 @@ impl Deduplicator {
     pub async fn len(&self) -> usize {
         self.seen.lock().await.len()
     }
+
+    /// Check if the dedup window is empty.
+    pub async fn is_empty(&self) -> bool {
+        self.seen.lock().await.is_empty()
+    }
 }
 
 #[cfg(test)]

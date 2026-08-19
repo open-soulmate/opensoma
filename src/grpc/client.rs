@@ -14,6 +14,7 @@ pub struct SoulClient {
     /// HTTP client with connection pooling
     http: reqwest::Client,
     /// Our node_id for registration/heartbeat
+    #[allow(dead_code)]
     node_id: String,
 }
 

@@ -59,6 +59,7 @@ impl Connector for SlackConnector {
 }
 
 /// Slack conversation.history response.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct HistoryResponse {
     ok: bool,
@@ -107,6 +108,7 @@ struct UserInfoResponse {
     user: Option<UserInfo>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct UserInfo {
     #[serde(default)]
@@ -129,6 +131,7 @@ struct ConversationsResponse {
     response_metadata: Option<ResponseMetadata>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ChannelInfo {
     id: String,

@@ -32,6 +32,7 @@ struct ApprovalListResponse {
     errmsg: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Default)]
 struct ApprovalResult {
     #[serde(default)]
@@ -62,6 +63,7 @@ struct ApprovalInstance {
 }
 
 /// DingTalk work notification response (topapi/message/corpconversation).
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct WorkNotificationResponse {
     #[serde(default)]
@@ -72,6 +74,7 @@ struct WorkNotificationResponse {
 
 /// DingTalk robot messages are received via callbacks. For polling mode,
 /// we check the async send result of previously sent messages.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct SendResultResponse {
     #[serde(default)]
@@ -82,6 +85,7 @@ struct SendResultResponse {
     send_result: Option<SendResult>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct SendResult {
     #[serde(default)]
@@ -125,6 +129,7 @@ struct AttendanceListResponse {
     errmsg: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Default)]
 struct AttendanceResult {
     #[serde(default)]
@@ -162,6 +167,7 @@ struct WorkReportListResponse {
     errmsg: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Default)]
 struct WorkReportResult {
     #[serde(default)]
