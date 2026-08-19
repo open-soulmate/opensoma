@@ -196,6 +196,7 @@ fn parse_config_path() -> String {
         println!("    --metrics              Print Prometheus metrics from running daemon");
         println!("    --health               Quick health check (exit 0=ok, 1=down)");
         println!("    --connectors           List configured connectors and their status");
+        println!("    --doctor               Diagnose runtime environment and dependencies");
         println!("    -V, --version          Print version information");
         println!("    --version-json         Print version as JSON (for scripts)");
         println!("    -h, --help             Print this help message");
@@ -242,6 +243,17 @@ fn parse_config_path() -> String {
             port = config.daemon.status_port;
         }
         std::process::exit(run_metrics_query(port));
+    }
+
+    // Handle --doctor
+    if args.iter().any(|a| a == "--doctor") {
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_doctor(&config_path));
     }
 
     // Handle --health
@@ -849,6 +861,175 @@ fn parse_http_response(response: &str) -> std::io::Result<&str> {
     }
 }
 
+
+/// Diagnose runtime environment — checks config, dependencies, connectivity, and permissions.
+fn run_doctor(config_path: &str) -> i32 {
+    println!("╔══════════════════════════════════════════════╗");
+    println!("║          OpenSoma Doctor — Diagnostics       ║");
+    println!("╚══════════════════════════════════════════════╝");
+    println!();
+
+    let mut warnings = 0u32;
+    let mut errors = 0u32;
+
+    // 1. Config file
+    print!("  [config]  Loading {} ... ", config_path);
+    match config::AppConfig::load(config_path) {
+        Ok(config) => {
+            println!("✅ OK");
+            match config.validate() {
+                Ok(ws) => {
+                    if ws.is_empty() {
+                        println!("  [config]  Validation: ✅ no warnings");
+                    } else {
+                        for w in &ws {
+                            println!("  [config]  ⚠️  {}", w);
+                            warnings += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("  [config]  ❌ Validation failed: {}", e);
+                    errors += 1;
+                }
+            }
+
+            // 2. Soul connectivity
+            print!("  [soul]    Checking {} ... ", config.soul.endpoint);
+            let url = format!("{}/api/health", config.soul.endpoint);
+            match blocking_http_get(&url) {
+                Ok(body) if body.contains("ok") || body.contains("status") => {
+                    println!("✅ reachable");
+                }
+                Ok(_) => {
+                    println!("⚠️  responded but unexpected body");
+                    warnings += 1;
+                }
+                Err(e) => {
+                    println!("❌ unreachable: {}", e);
+                    errors += 1;
+                }
+            }
+
+            // 3. Data directory
+            let data_dir = &config.daemon.data_dir;
+            print!("  [data]    Checking {} ... ", data_dir);
+            match std::fs::metadata(data_dir) {
+                Ok(m) if m.is_dir() => {
+                    // Check write permission by creating a temp file
+                    let test_file = format!("{}/.doctor_test", data_dir);
+                    match std::fs::write(&test_file, "test") {
+                        Ok(_) => {
+                            let _ = std::fs::remove_file(&test_file);
+                            println!("✅ writable");
+                        }
+                        Err(e) => {
+                            println!("❌ not writable: {}", e);
+                            errors += 1;
+                        }
+                    }
+                }
+                Ok(_) => {
+                    println!("❌ exists but is not a directory");
+                    errors += 1;
+                }
+                Err(_) => {
+                    // Try to create it
+                    match std::fs::create_dir_all(data_dir) {
+                        Ok(_) => {
+                            println!("✅ created (did not exist)");
+                            let _ = std::fs::remove_dir(data_dir);
+                        }
+                        Err(e) => {
+                            println!("❌ cannot create: {}", e);
+                            errors += 1;
+                        }
+                    }
+                }
+            }
+
+            // 4. Watch directories
+            for dir in &config.collector.watch_dirs {
+                print!("  [watch]   Checking {} ... ", dir);
+                if std::path::Path::new(dir).is_dir() {
+                    println!("✅ exists");
+                } else {
+                    println!("⚠️  directory not found");
+                    warnings += 1;
+                }
+            }
+
+            // 5. System dependencies (clipboard tools)
+            let clipboard_tools = ["wl-paste", "xclip", "xsel"];
+            let mut found_clipboard = false;
+            for tool in &clipboard_tools {
+                if std::process::Command::new("which")
+                    .arg(tool)
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+                {
+                    println!("  [system]  Clipboard tool: ✅ {} found", tool);
+                    found_clipboard = true;
+                    break;
+                }
+            }
+            if !found_clipboard {
+                println!("  [system]  ⚠️  No clipboard tool (wl-paste/xclip/xsel). Clipboard collector will be no-op.");
+                warnings += 1;
+            }
+
+            // 6. Tesseract (for OCR sense plugin)
+            if config.sense.enabled && config.sense.ocr.is_some() {
+                print!("  [sense]   Checking tesseract ... ");
+                if std::process::Command::new("which")
+                    .arg("tesseract")
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+                {
+                    println!("✅ found");
+                } else {
+                    println!("⚠️  not found (OCR will use LLM fallback)");
+                    warnings += 1;
+                }
+            }
+        }
+        Err(e) => {
+            println!("❌ Failed: {:#}", e);
+            errors += 1;
+        }
+    }
+
+    // 7. System info
+    println!();
+    println!("  [system]  OS:        {}", std::env::consts::OS);
+    println!("  [system]  Arch:      {}", std::env::consts::ARCH);
+    println!(
+        "  [system]  CPUs:      {}",
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(0)
+    );
+    if let Ok(mem) = std::fs::read_to_string("/proc/meminfo") {
+        for line in mem.lines().take(2) {
+            println!("  [system]  {}", line.trim());
+        }
+    }
+
+    println!();
+    println!("────────────────────────────────────────────────");
+    if errors > 0 {
+        println!("  Result: ❌ {} error(s), {} warning(s)", errors, warnings);
+        1
+    } else if warnings > 0 {
+        println!("  Result: ⚠️  {} warning(s), 0 errors", warnings);
+        0
+    } else {
+        println!("  Result: ✅ All checks passed");
+        0
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

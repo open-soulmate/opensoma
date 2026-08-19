@@ -341,17 +341,19 @@ impl PipelineMetrics {
         let process_count = self.inner.process_latency_count.load(Ordering::Relaxed);
         let sync_count = self.inner.sync_latency_count.load(Ordering::Relaxed);
 
-        let avg_process_latency_us = if process_count > 0 {
-            self.inner.process_latency_sum_us.load(Ordering::Relaxed) / process_count
-        } else {
-            0
-        };
+        let avg_process_latency_us = self
+            .inner
+            .process_latency_sum_us
+            .load(Ordering::Relaxed)
+            .checked_div(process_count)
+            .unwrap_or(0);
 
-        let avg_sync_latency_us = if sync_count > 0 {
-            self.inner.sync_latency_sum_us.load(Ordering::Relaxed) / sync_count
-        } else {
-            0
-        };
+        let avg_sync_latency_us = self
+            .inner
+            .sync_latency_sum_us
+            .load(Ordering::Relaxed)
+            .checked_div(sync_count)
+            .unwrap_or(0);
 
         let hits = self.inner.cache_hits.load(Ordering::Relaxed);
         let misses = self.inner.cache_misses.load(Ordering::Relaxed);

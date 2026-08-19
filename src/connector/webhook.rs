@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use axum::{
     http::StatusCode,
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use tokio::task::JoinHandle;

@@ -99,9 +99,17 @@ docker run -d \
 opensoma [OPTIONS]
 
 Options:
-  -c, --config <PATH>  Path to config file [default: config.toml]
-  -h, --help           Print help
-  -V, --version        Print version
+  -c, --config <PATH>    Path to config file [default: config.toml]
+  --validate             Validate config.toml and exit (dry-run)
+  --init                 Generate a default config.toml and exit
+  --status               Query running daemon status and exit
+  --metrics              Print Prometheus metrics from running daemon
+  --health               Quick health check (exit 0=ok, 1=down)
+  --connectors           List configured connectors and their status
+  --doctor               Diagnose runtime environment and dependencies
+  -V, --version          Print version information
+  --version-json         Print version as JSON (for scripts)
+  -h, --help             Print help
 ```
 
 ## Configuration
@@ -171,6 +179,9 @@ To add a new plugin, create a module under `src/plugins/sense/` and register it 
 | `heartbeat`  | Periodic liveness signal to Soul                        |
 | `config`     | TOML config with hot-reload via notify                  |
 | `plugins`    | Sense plugins for multimodal content parsing            |
+| `health`     | Connector health check system with status tracking        |
+| `metrics`    | Pipeline and system metrics with Prometheus export      |
+| `status_server` | HTTP monitoring API for daemon status and health     |
 
 ## Build
 
