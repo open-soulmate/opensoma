@@ -80,6 +80,8 @@ pub struct ConnectorConfig {
     pub webhook: Option<WebhookConfig>,
     #[serde(default)]
     pub github: Option<GitHubConfig>,
+    #[serde(default)]
+    pub slack: Option<SlackConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -227,6 +229,22 @@ pub struct GitHubConfig {
     /// Max items per API fetch (default 30)
     #[serde(default = "default_github_max_items")]
     pub max_items_per_fetch: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SlackConfig {
+    pub enabled: bool,
+    /// Slack Bot User OAuth Token (xoxb-...)
+    pub bot_token: String,
+    /// List of channel IDs to monitor (e.g. ["C01ABC123", "C02DEF456"])
+    #[serde(default)]
+    pub channels: Vec<String>,
+    /// Polling interval in seconds (default 60)
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval_secs: u64,
+    /// Include thread replies (default true)
+    #[serde(default = "default_true")]
+    pub include_threads: bool,
 }
 
 /// Sense plugin configuration for multimodal content parsing.
@@ -451,6 +469,19 @@ impl AppConfig {
         if let Some(ref wc) = self.connector.webhook {
             if wc.enabled && wc.listen.is_empty() {
                 anyhow::bail!("webhook connector is enabled but listen address is empty");
+            }
+        }
+
+        // Slack connector checks
+        if let Some(ref sc) = self.connector.slack {
+            if sc.enabled && sc.bot_token.is_empty() {
+                anyhow::bail!("slack connector is enabled but bot_token is empty");
+            }
+            if sc.enabled && !sc.bot_token.starts_with("xoxb-") {
+                warnings.push("slack bot_token does not start with 'xoxb-' — may be invalid".into());
+            }
+            if sc.enabled && sc.channels.is_empty() {
+                warnings.push("slack connector has no channels configured — will auto-discover joined channels".into());
             }
         }
 

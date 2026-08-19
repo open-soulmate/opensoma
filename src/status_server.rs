@@ -184,6 +184,7 @@ async fn api_connectors_handler(
         ("notion", "Notion"),
         ("git", "Git"),
         ("obsidian", "Obsidian"),
+        ("slack", "Slack"),
     ];
 
     let list: Vec<ConnectorInfo> = all_connectors
@@ -244,7 +245,7 @@ async fn api_connector_toggle(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let valid_connectors = [
         "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
-        "obsidian",
+        "obsidian", "slack",
     ];
 
     if !valid_connectors.contains(&name.as_str()) {
@@ -540,6 +541,7 @@ async fn build_connectors_page(state: &StatusServerState) -> String {
         ("notion", "Notion", "Notion 数据库同步"),
         ("git", "Git", "Git 仓库轮询采集"),
         ("obsidian", "Obsidian", "Obsidian Vault 文件监控"),
+        ("slack", "Slack", "Slack 频道消息和线程采集"),
     ];
 
     let cards: String = all_connectors.iter().map(|(id, name, desc)| {
@@ -937,11 +939,11 @@ mod tests {
             .to_bytes();
         let connectors: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
-        assert_eq!(connectors.len(), 10);
+        assert_eq!(connectors.len(), 11);
 
         // Verify all connector IDs are present
         let ids: Vec<&str> = connectors.iter().map(|c| c["id"].as_str().unwrap()).collect();
-        for expected in &["feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git", "obsidian"] {
+        for expected in &["feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git", "obsidian", "slack"] {
             assert!(ids.contains(expected), "Missing connector: {}", expected);
         }
 

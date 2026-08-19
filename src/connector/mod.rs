@@ -6,6 +6,7 @@ pub mod github;
 pub mod notion;
 pub mod obsidian;
 pub mod rss;
+pub mod slack;
 pub mod webhook;
 pub mod wecom;
 
@@ -206,6 +207,19 @@ pub async fn start_all(config: &ConnectorConfig, tx: EventTx) -> Result<JoinHand
                         handles.push(h);
                     }
                     Err(e) => tracing::error!("Failed to start Obsidian connector: {}", e),
+                }
+            }
+        }
+
+        // Slack connector
+        if let Some(ref slack_cfg) = config.slack {
+            if slack_cfg.enabled {
+                match slack::start(slack_cfg.clone(), tx.clone()).await {
+                    Ok(h) => {
+                        info!("Slack connector started.");
+                        handles.push(h);
+                    }
+                    Err(e) => tracing::error!("Failed to start Slack connector: {}", e),
                 }
             }
         }

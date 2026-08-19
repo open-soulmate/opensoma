@@ -250,6 +250,7 @@ fn run_validate_with_path(config_path: &str) -> i32 {
             check_connector!(config.connector.obsidian);
             check_connector!(config.connector.webhook);
             check_connector!(config.connector.github);
+            check_connector!(config.connector.slack);
 
             println!();
             println!("Summary:");
@@ -353,6 +354,13 @@ watch_dirs = []
 # enabled = true
 # listen = "0.0.0.0:9800"
 # secret = "hmac-secret"
+
+# [connector.slack]
+# enabled = true
+# bot_token = "xoxb-your-token"
+# channels = ["C01ABC123"]
+# poll_interval_secs = 60
+# include_threads = true
 
 [processor]
 # normalize_timestamps = true
