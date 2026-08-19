@@ -29,7 +29,7 @@ pub struct StatusServerState {
 }
 
 /// Snapshot of cache statistics for the status API.
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CacheStatsSnapshot {
     pub total: usize,
     pub uploaded: usize,
@@ -107,11 +107,11 @@ pub async fn start_status_server(
         .route("/api/status", get(api_status_handler))
         .route("/api/connectors", get(api_connectors_handler))
         .route("/api/collectors", get(api_collectors_handler))
-        .route("/api/connectors/{name}/toggle", post(api_connector_toggle))
-        .route("/api/connectors/{name}/events", get(api_connector_events))
+        .route("/api/connectors/:name/toggle", post(api_connector_toggle))
+        .route("/api/connectors/:name/events", get(api_connector_events))
         .route("/api/cache/stats", get(api_cache_stats_handler))
         .route("/api/cache/evict", post(api_cache_evict_handler))
-        .route("/api/page/{page}", get(api_page_handler))
+        .route("/api/page/:page", get(api_page_handler))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", port);
@@ -800,5 +800,508 @@ mod tests {
         assert_eq!(format_bytes(1536), "1.5 KB");
         assert_eq!(format_bytes(1048576), "1.0 MB");
         assert_eq!(format_bytes(1073741824), "1.00 GB");
+    }
+
+    #[test]
+    fn test_cache_stats_snapshot_default() {
+        let stats = CacheStatsSnapshot::default();
+        assert_eq!(stats.total, 0);
+        assert_eq!(stats.uploaded, 0);
+        assert_eq!(stats.pending, 0);
+        assert_eq!(stats.cache_size_bytes, 0);
+    }
+
+    #[test]
+    fn test_cache_stats_snapshot_serialization() {
+        let stats = CacheStatsSnapshot {
+            total: 100,
+            uploaded: 80,
+            pending: 20,
+            cache_size_bytes: 1024 * 512,
+        };
+        let json = serde_json::to_string(&stats).unwrap();
+        assert!(json.contains("\"total\":100"));
+        assert!(json.contains("\"uploaded\":80"));
+        assert!(json.contains("\"pending\":20"));
+    }
+
+    #[test]
+    fn test_toggle_request_deserialization() {
+        let json = r#"{"enabled":true}"#;
+        let req: ToggleRequest = serde_json::from_str(json).unwrap();
+        assert!(req.enabled);
+
+        let json2 = r#"{"enabled":false}"#;
+        let req2: ToggleRequest = serde_json::from_str(json2).unwrap();
+        assert!(!req2.enabled);
+    }
+
+    #[test]
+    fn test_format_bytes_edge_cases() {
+        assert_eq!(format_bytes(1), "1 B");
+        assert_eq!(format_bytes(1023), "1023 B");
+        assert_eq!(format_bytes(1024 * 1024 - 1), "1024.0 KB");
+        assert_eq!(format_bytes(1024 * 1024), "1.0 MB");
+    }
+
+    // ── HTTP integration tests ──────────────────────────────────────────
+
+    /// Build an axum test app with a default StatusServerState.
+    fn build_test_app() -> Router {
+        let state = StatusServerState {
+            node_id: "test-node".to_string(),
+            start_time: std::time::Instant::now(),
+            events_collected: Arc::new(RwLock::new(42)),
+            events_synced: Arc::new(RwLock::new(38)),
+            connectors_active: Arc::new(RwLock::new(vec!["feishu".into(), "github".into()])),
+            last_error: Arc::new(RwLock::new(None)),
+            connector_enabled: Arc::new(RwLock::new(HashMap::new())),
+            connector_event_counts: Arc::new(RwLock::new({
+                let mut m = HashMap::new();
+                m.insert("feishu".to_string(), 150u64);
+                m.insert("github".to_string(), 200u64);
+                m
+            })),
+            cache_stats: Arc::new(RwLock::new(CacheStatsSnapshot {
+                total: 500,
+                uploaded: 450,
+                pending: 50,
+                cache_size_bytes: 1024 * 256,
+            })),
+        };
+
+        Router::new()
+            .route("/health", get(health_handler))
+            .route("/status", get(status_handler))
+            .route("/api/status", get(api_status_handler))
+            .route("/api/connectors", get(api_connectors_handler))
+            .route("/api/collectors", get(api_collectors_handler))
+            .route("/api/connectors/:name/toggle", post(api_connector_toggle))
+            .route("/api/connectors/:name/events", get(api_connector_events))
+            .route("/api/cache/stats", get(api_cache_stats_handler))
+            .route("/api/cache/evict", post(api_cache_evict_handler))
+            .route("/metrics", get(metrics_handler))
+            .with_state(state)
+    }
+
+    fn build_test_app_with_state(state: StatusServerState) -> Router {
+        Router::new()
+            .route("/health", get(health_handler))
+            .route("/api/connectors", get(api_connectors_handler))
+            .route("/api/connectors/:name/toggle", post(api_connector_toggle))
+            .route("/api/connectors/:name/events", get(api_connector_events))
+            .route("/api/cache/stats", get(api_cache_stats_handler))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn test_health_endpoint_returns_ok() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/health")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["status"], "ok");
+        assert_eq!(json["component"], "OpenSoma");
+        assert_eq!(json["node_id"], "test-node");
+    }
+
+    #[tokio::test]
+    async fn test_connectors_endpoint_lists_all_10() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/api/connectors")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let connectors: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(connectors.len(), 10);
+
+        // Verify all connector IDs are present
+        let ids: Vec<&str> = connectors.iter().map(|c| c["id"].as_str().unwrap()).collect();
+        for expected in &["feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git", "obsidian"] {
+            assert!(ids.contains(expected), "Missing connector: {}", expected);
+        }
+
+        // Verify feishu shows as running (we added it to connectors_active)
+        let feishu = connectors.iter().find(|c| c["id"] == "feishu").unwrap();
+        assert_eq!(feishu["status"], "running");
+        assert_eq!(feishu["event_count"], 150);
+
+        // Verify dingtalk shows as stopped (not in active list)
+        let dingtalk = connectors.iter().find(|c| c["id"] == "dingtalk").unwrap();
+        assert_eq!(dingtalk["status"], "stopped");
+    }
+
+    #[tokio::test]
+    async fn test_connector_toggle_enable_disable() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        // Enable a connector
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/connectors/feishu/toggle")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{"enabled":true}"#))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["connector"], "feishu");
+        assert_eq!(json["enabled"], true);
+        assert_eq!(json["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn test_connector_toggle_invalid_name_returns_404() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/connectors/nonexistent/toggle")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{"enabled":true}"#))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_connector_events_endpoint() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/api/connectors/github/events")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["connector"], "github");
+        assert_eq!(json["event_count"], 200);
+    }
+
+    #[tokio::test]
+    async fn test_connector_events_unknown_connector_returns_zero() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/api/connectors/unknown/events")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["connector"], "unknown");
+        assert_eq!(json["event_count"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_cache_stats_endpoint() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/api/cache/stats")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let stats: CacheStatsSnapshot = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(stats.total, 500);
+        assert_eq!(stats.uploaded, 450);
+        assert_eq!(stats.pending, 50);
+    }
+
+    #[tokio::test]
+    async fn test_cache_evict_endpoint() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/cache/evict")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{"cutoff_hours":48}"#))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["status"], "ok");
+        assert_eq!(json["cutoff_hours"], 48);
+    }
+
+    #[tokio::test]
+    async fn test_cache_evict_default_cutoff() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        // Empty body — should default to 24 hours
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/cache/evict")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{}"#))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["cutoff_hours"], 24);
+    }
+
+    #[tokio::test]
+    async fn test_metrics_endpoint_returns_prometheus_format() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/metrics")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        // Verify Prometheus text format
+        assert!(text.contains("# HELP opensoma_info"));
+        assert!(text.contains("# TYPE opensoma_info gauge"));
+        assert!(text.contains("opensoma_info{node_id=\"test-node\""));
+        assert!(text.contains("# HELP opensoma_uptime_seconds"));
+        assert!(text.contains("opensoma_events_collected_total 42"));
+        assert!(text.contains("opensoma_events_synced_total 38"));
+        assert!(text.contains("opensoma_events_pending 4"));
+        assert!(text.contains("opensoma_connectors_active 2"));
+        assert!(text.contains("# HELP opensoma_connector_events_total"));
+        assert!(text.contains("opensoma_connector_events_total{connector=\"feishu\"} 150"));
+        assert!(text.contains("opensoma_connector_events_total{connector=\"github\"} 200"));
+        assert!(text.contains("# HELP opensoma_cpu_usage_percent"));
+        assert!(text.contains("# HELP opensoma_memory_total_bytes"));
+        assert!(text.contains("# HELP opensoma_memory_used_bytes"));
+    }
+
+    #[tokio::test]
+    async fn test_metrics_content_type() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/metrics")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        let content_type = resp.headers().get("content-type").unwrap().to_str().unwrap();
+        assert!(content_type.contains("text/plain"));
+        assert!(content_type.contains("version=0.0.4"));
+    }
+
+    #[tokio::test]
+    async fn test_status_endpoint_returns_system_info() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/status")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["component"], "OpenSoma");
+        assert_eq!(json["node_id"], "test-node");
+        assert_eq!(json["events_collected"], 42);
+        assert_eq!(json["events_synced"], 38);
+        // System info should be present
+        assert!(json["hostname"].is_string());
+        assert!(json["ip"].is_string());
+        assert!(json["cpu_percent"].is_number());
+        assert!(json["memory_used_mb"].is_number());
+        assert!(json["memory_total_mb"].is_number());
+    }
+
+    #[tokio::test]
+    async fn test_collectors_endpoint_lists_four() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/api/collectors")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let collectors: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(collectors.len(), 4);
+        let ids: Vec<&str> = collectors.iter().map(|c| c["id"].as_str().unwrap()).collect();
+        assert!(ids.contains(&"file"));
+        assert!(ids.contains(&"process"));
+        assert!(ids.contains(&"network"));
+        assert!(ids.contains(&"clipboard"));
+    }
+
+    #[tokio::test]
+    async fn test_connector_toggle_disable_removes_from_active() {
+        use tower::ServiceExt;
+
+        let state = StatusServerState {
+            node_id: "toggle-test".to_string(),
+            start_time: std::time::Instant::now(),
+            events_collected: Arc::new(RwLock::new(0)),
+            events_synced: Arc::new(RwLock::new(0)),
+            connectors_active: Arc::new(RwLock::new(vec!["github".into()])),
+            last_error: Arc::new(RwLock::new(None)),
+            connector_enabled: Arc::new(RwLock::new(HashMap::new())),
+            connector_event_counts: Arc::new(RwLock::new(HashMap::new())),
+            cache_stats: Arc::new(RwLock::new(CacheStatsSnapshot::default())),
+        };
+
+        // Verify github is active before toggle
+        {
+            let active = state.connectors_active.read().await;
+            assert!(active.contains(&"github".to_string()));
+        }
+
+        let app = build_test_app_with_state(state.clone());
+
+        // Disable github
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/connectors/github/toggle")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{"enabled":false}"#))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        // Verify github was removed from active list
+        let active = state.connectors_active.read().await;
+        assert!(!active.contains(&"github".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_health_with_last_error() {
+        use tower::ServiceExt;
+
+        let state = StatusServerState {
+            node_id: "error-node".to_string(),
+            start_time: std::time::Instant::now(),
+            events_collected: Arc::new(RwLock::new(0)),
+            events_synced: Arc::new(RwLock::new(0)),
+            connectors_active: Arc::new(RwLock::new(vec![])),
+            last_error: Arc::new(RwLock::new(Some("connection refused".to_string()))),
+            connector_enabled: Arc::new(RwLock::new(HashMap::new())),
+            connector_event_counts: Arc::new(RwLock::new(HashMap::new())),
+            cache_stats: Arc::new(RwLock::new(CacheStatsSnapshot::default())),
+        };
+
+        let app = build_test_app_with_state(state);
+
+        let req = axum::http::Request::builder()
+            .uri("/health")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Health endpoint always returns "ok" regardless of last_error
+        assert_eq!(json["status"], "ok");
+        assert_eq!(json["node_id"], "error-node");
     }
 }

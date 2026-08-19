@@ -83,6 +83,10 @@ mailparse = "0.15"
 [build-dependencies]
 tonic-build = "0.12"
 
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
 [profile.release]
 opt-level = "z"
 lto = true
