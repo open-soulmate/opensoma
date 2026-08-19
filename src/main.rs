@@ -93,6 +93,8 @@ async fn main() -> Result<()> {
         )),
         cache_stats: cache_stats.clone(),
         cache: Some(cache_clone),
+        pipeline_metrics: None,
+        health_checker: None,
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;

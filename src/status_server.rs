@@ -114,6 +114,7 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/api/events/search", get(api_events_search_handler))
         .route("/api/system/info", get(api_system_info_handler))
         .route("/api/connectors/health", get(api_connectors_health_handler))
+        .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
         .with_state(state)
 }
 
@@ -147,6 +148,7 @@ pub async fn start_status_server(
         .route("/api/events/search", get(api_events_search_handler))
         .route("/api/system/info", get(api_system_info_handler))
         .route("/api/connectors/health", get(api_connectors_health_handler))
+        .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", port);
@@ -512,6 +514,23 @@ async fn api_connectors_health_handler(
         }
     }))
 }
+/// /api/pipeline/metrics — internal pipeline metrics (counters, latency, cache stats).
+async fn api_pipeline_metrics_handler(
+    State(state): State<StatusServerState>,
+) -> Json<serde_json::Value> {
+    if let Some(ref metrics) = state.pipeline_metrics {
+        let snapshot = metrics.snapshot();
+        Json(serde_json::json!({
+            "pipeline_metrics": snapshot,
+        }))
+    } else {
+        Json(serde_json::json!({
+            "pipeline_metrics": null,
+            "message": "Pipeline metrics not initialized",
+        }))
+    }
+}
+
 /// Returns OS, kernel, CPU cores, disk usage, network interfaces, and process info.
 async fn api_system_info_handler(
     State(state): State<StatusServerState>,
@@ -1213,6 +1232,8 @@ mod tests {
                 cache_size_bytes: 1024 * 256,
             })),
             cache: None,
+            pipeline_metrics: None,
+            health_checker: None,
         };
 
         Router::new()
@@ -1228,6 +1249,7 @@ mod tests {
             .route("/metrics", get(metrics_handler))
             .route("/api/system/info", get(api_system_info_handler))
         .route("/api/connectors/health", get(api_connectors_health_handler))
+        .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
             .with_state(state)
     }
 
@@ -1604,6 +1626,8 @@ mod tests {
             connector_event_counts: Arc::new(RwLock::new(HashMap::new())),
             cache_stats: Arc::new(RwLock::new(CacheStatsSnapshot::default())),
             cache: None,
+            pipeline_metrics: None,
+            health_checker: None,
         };
 
         // Verify github is active before toggle
@@ -1645,6 +1669,8 @@ mod tests {
             connector_event_counts: Arc::new(RwLock::new(HashMap::new())),
             cache_stats: Arc::new(RwLock::new(CacheStatsSnapshot::default())),
             cache: None,
+            pipeline_metrics: None,
+            health_checker: None,
         };
 
         let app = build_test_app_with_state(state);

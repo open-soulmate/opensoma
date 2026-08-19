@@ -430,6 +430,8 @@ async fn test_status_server_health_endpoint() {
             opensoma::status_server::CacheStatsSnapshot::default(),
         )),
         cache: None,
+        pipeline_metrics: None,
+        health_checker: None,
     };
 
     let app = opensoma::status_server::build_router(state);
