@@ -8,6 +8,7 @@ pub mod config;
 pub mod connector;
 pub mod grpc;
 pub mod heartbeat;
+pub mod metrics;
 pub mod plugins;
 pub mod processor;
 pub mod status_server;
