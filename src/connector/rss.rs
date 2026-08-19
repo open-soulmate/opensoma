@@ -337,7 +337,10 @@ mod tests {
     #[test]
     fn test_extract_tag_with_attributes() {
         let xml = "<link rel=\"alternate\" href=\"https://example.com\">https://example.com</link>";
-        assert_eq!(extract_tag(xml, "link"), Some("https://example.com".to_string()));
+        assert_eq!(
+            extract_tag(xml, "link"),
+            Some("https://example.com".to_string())
+        );
     }
 
     #[test]
@@ -355,13 +358,19 @@ mod tests {
     #[test]
     fn test_extract_attr_simple() {
         let xml = "<link href=\"https://example.com\"/>";
-        assert_eq!(extract_attr(xml, "link", "href"), Some("https://example.com".to_string()));
+        assert_eq!(
+            extract_attr(xml, "link", "href"),
+            Some("https://example.com".to_string())
+        );
     }
 
     #[test]
     fn test_extract_attr_single_quotes() {
         let xml = "<link href='https://example.com'/>";
-        assert_eq!(extract_attr(xml, "link", "href"), Some("https://example.com".to_string()));
+        assert_eq!(
+            extract_attr(xml, "link", "href"),
+            Some("https://example.com".to_string())
+        );
     }
 
     #[test]
@@ -408,6 +417,9 @@ mod tests {
         let entries = parse_rss_entries(xml);
         assert_eq!(entries.len(), 1);
         assert!(entries[0].guid.is_none());
-        assert_eq!(entries[0].link.as_deref(), Some("https://example.com/noguid"));
+        assert_eq!(
+            entries[0].link.as_deref(),
+            Some("https://example.com/noguid")
+        );
     }
 }

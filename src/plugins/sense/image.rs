@@ -123,7 +123,8 @@ mod tests {
 
     #[test]
     fn test_image_config_no_api_key() {
-        let json = r#"{"model": "claude-sonnet-4-20250514", "api_url": "http://localhost:8080/v1"}"#;
+        let json =
+            r#"{"model": "claude-sonnet-4-20250514", "api_url": "http://localhost:8080/v1"}"#;
         let config: ImageConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.model, "claude-sonnet-4-20250514");
         assert!(config.api_key.is_none());

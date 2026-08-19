@@ -161,7 +161,8 @@ mod tests {
 
     #[test]
     fn test_asr_config_deserialize_whisper() {
-        let json = r#"{"engine": "whisper", "whisper_model": "small", "segment_duration_secs": 300}"#;
+        let json =
+            r#"{"engine": "whisper", "whisper_model": "small", "segment_duration_secs": 300}"#;
         let config: AsrConfig = serde_json::from_str(json).unwrap();
         assert!(matches!(config.engine, AsrEngine::Whisper));
         assert_eq!(config.whisper_model, "small");
@@ -174,7 +175,10 @@ mod tests {
         let json = r#"{"engine": "api", "api_url": "http://whisper.local/transcribe", "api_key": "key123"}"#;
         let config: AsrConfig = serde_json::from_str(json).unwrap();
         assert!(matches!(config.engine, AsrEngine::Api));
-        assert_eq!(config.api_url.as_deref(), Some("http://whisper.local/transcribe"));
+        assert_eq!(
+            config.api_url.as_deref(),
+            Some("http://whisper.local/transcribe")
+        );
         assert_eq!(config.api_key.as_deref(), Some("key123"));
     }
 

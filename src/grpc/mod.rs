@@ -144,7 +144,10 @@ mod tests {
         assert_eq!(NodeStatus::Degraded as i32, 2);
         assert_eq!(NodeStatus::Error as i32, 3);
 
-        assert_eq!(NodeStatus::from_str_name("NODE_STATUS_HEALTHY"), Some(NodeStatus::Healthy));
+        assert_eq!(
+            NodeStatus::from_str_name("NODE_STATUS_HEALTHY"),
+            Some(NodeStatus::Healthy)
+        );
         assert_eq!(NodeStatus::Healthy.as_str_name(), "NODE_STATUS_HEALTHY");
     }
 

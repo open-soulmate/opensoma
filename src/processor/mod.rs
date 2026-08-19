@@ -136,21 +136,20 @@ fn process_sense(event: &mut crate::collector::RawEvent, config: &SenseConfig) {
             Some("image")
         }
         // Video files → Video frame extraction
-        "mp4" | "avi" | "mkv" | "mov" | "webm" | "flv" if config.video.is_some() => {
-            Some("video")
-        }
+        "mp4" | "avi" | "mkv" | "mov" | "webm" | "flv" if config.video.is_some() => Some("video"),
         // PDF → OCR
         "pdf" if config.ocr.is_some() => Some("pdf"),
         _ => None,
     };
 
     if let Some(mt) = media_type {
-        event.tags.insert("sense_media_type".to_string(), mt.to_string());
-        event.tags.insert("sense_eligible".to_string(), "true".to_string());
-        debug!(
-            "Tagged event {} as sense-eligible (type={})",
-            event.id, mt
-        );
+        event
+            .tags
+            .insert("sense_media_type".to_string(), mt.to_string());
+        event
+            .tags
+            .insert("sense_eligible".to_string(), "true".to_string());
+        debug!("Tagged event {} as sense-eligible (type={})", event.id, mt);
     }
 }
 
@@ -187,7 +186,12 @@ mod tests {
         let handle = start_pipeline(input_rx, output_tx, &config);
 
         // Send a test event
-        let event = make_test_event("evt-1", "file_change", "file:/tmp/test.json", r#"{"key":"value"}"#);
+        let event = make_test_event(
+            "evt-1",
+            "file_change",
+            "file:/tmp/test.json",
+            r#"{"key":"value"}"#,
+        );
         input_tx.send(event).await.unwrap();
 
         // Receive the processed event
@@ -236,8 +240,8 @@ mod tests {
         assert_eq!(first.id, "evt-dup");
 
         // Second event should not come through (deduped)
-        let second = tokio::time::timeout(std::time::Duration::from_millis(500), output_rx.recv())
-            .await;
+        let second =
+            tokio::time::timeout(std::time::Duration::from_millis(500), output_rx.recv()).await;
         assert!(second.is_err()); // timeout = no event = deduped
 
         handle.abort();
@@ -268,8 +272,8 @@ mod tests {
         input_tx.send(event).await.unwrap();
 
         // Should not receive anything (event was dropped)
-        let result = tokio::time::timeout(std::time::Duration::from_millis(500), output_rx.recv())
-            .await;
+        let result =
+            tokio::time::timeout(std::time::Duration::from_millis(500), output_rx.recv()).await;
         assert!(result.is_err()); // timeout = dropped
 
         handle.abort();
@@ -342,10 +346,11 @@ mod tests {
 
         // Receive all 5 in order
         for i in 0..5 {
-            let received = tokio::time::timeout(std::time::Duration::from_secs(2), output_rx.recv())
-                .await
-                .expect("timeout")
-                .expect("channel closed");
+            let received =
+                tokio::time::timeout(std::time::Duration::from_secs(2), output_rx.recv())
+                    .await
+                    .expect("timeout")
+                    .expect("channel closed");
             assert_eq!(received.id, format!("evt-{}", i));
         }
 

@@ -253,9 +253,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_async_succeeds_first_try() {
-        let result: anyhow::Result<i32> = retry_async!("test_op", 3, {
-            Ok::<i32, anyhow::Error>(42)
-        });
+        let result: anyhow::Result<i32> =
+            retry_async!("test_op", 3, { Ok::<i32, anyhow::Error>(42) });
         assert_eq!(result.unwrap(), 42);
     }
 
@@ -280,10 +279,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_async_exhausts_retries() {
-        let result: anyhow::Result<i32> = retry_async!("test_op", 2, {
-            Err(anyhow::anyhow!("permanent failure"))
-        });
+        let result: anyhow::Result<i32> =
+            retry_async!("test_op", 2, { Err(anyhow::anyhow!("permanent failure")) });
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("permanent failure"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("permanent failure"));
     }
 }

@@ -99,4 +99,99 @@ mod tests {
         normalize_event(&mut event, &config);
         assert!(event.timestamp_ms > 0);
     }
+
+    #[test]
+    fn test_normalize_fixes_negative_timestamp() {
+        let config = make_config();
+        let mut event = RawEvent {
+            id: "test".into(),
+            source: "file:test".into(),
+            event_type: "msg".into(),
+            timestamp_ms: -1,
+            payload: vec![],
+            tags: HashMap::new(),
+        };
+        normalize_event(&mut event, &config);
+        assert!(event.timestamp_ms > 0);
+    }
+
+    #[test]
+    fn test_normalize_preserves_valid_timestamp() {
+        let config = make_config();
+        let mut event = RawEvent {
+            id: "test".into(),
+            source: "file:test".into(),
+            event_type: "msg".into(),
+            timestamp_ms: 1700000000000,
+            payload: vec![],
+            tags: HashMap::new(),
+        };
+        normalize_event(&mut event, &config);
+        assert_eq!(event.timestamp_ms, 1700000000000);
+    }
+
+    #[test]
+    fn test_normalize_empty_event_type() {
+        let config = make_config();
+        let mut event = RawEvent {
+            id: "test".into(),
+            source: "file:test".into(),
+            event_type: "".into(),
+            timestamp_ms: 1000,
+            payload: vec![],
+            tags: HashMap::new(),
+        };
+        normalize_event(&mut event, &config);
+        assert_eq!(event.event_type, "generic");
+    }
+
+    #[test]
+    fn test_normalize_preserves_valid_event_type() {
+        let config = make_config();
+        let mut event = RawEvent {
+            id: "test".into(),
+            source: "file:test".into(),
+            event_type: "file_change".into(),
+            timestamp_ms: 1000,
+            payload: vec![],
+            tags: HashMap::new(),
+        };
+        normalize_event(&mut event, &config);
+        assert_eq!(event.event_type, "file_change");
+    }
+
+    #[test]
+    fn test_normalize_noop_when_disabled() {
+        let config = ProcessorConfig {
+            normalize_timestamps: false,
+            max_event_size: 1_048_576,
+            dedup_window_secs: 300,
+            enable_classify: true,
+            enable_enrich: true,
+        };
+        let mut event = RawEvent {
+            id: "test".into(),
+            source: "file:test".into(),
+            event_type: "msg".into(),
+            timestamp_ms: 0,
+            payload: vec![],
+            tags: HashMap::new(),
+        };
+        normalize_event(&mut event, &config);
+        assert_eq!(event.timestamp_ms, 0); // not fixed when disabled
+    }
+
+    #[test]
+    fn test_format_timestamp_valid() {
+        let ts = 1700000000000; // 2023-11-14T22:13:20.000Z
+        let formatted = format_timestamp(ts);
+        assert!(formatted.starts_with("2023-11-14"));
+        assert!(formatted.ends_with('Z'));
+    }
+
+    #[test]
+    fn test_format_timestamp_zero() {
+        let formatted = format_timestamp(0);
+        assert!(formatted.starts_with("1970-01-01"));
+    }
 }

@@ -282,7 +282,13 @@ fn extract_markdown_title(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("# ") {
-            return Some(trimmed.strip_prefix("# ").unwrap_or(trimmed).trim().to_string());
+            return Some(
+                trimmed
+                    .strip_prefix("# ")
+                    .unwrap_or(trimmed)
+                    .trim()
+                    .to_string(),
+            );
         }
     }
     None
@@ -313,10 +319,7 @@ mod tests {
             extract_markdown_title("# My Title\nSome content"),
             Some("My Title".to_string())
         );
-        assert_eq!(
-            extract_markdown_title("No heading here"),
-            None
-        );
+        assert_eq!(extract_markdown_title("No heading here"), None);
         assert_eq!(
             extract_markdown_title("## Not H1\n# Real H1"),
             Some("Real H1".to_string())
@@ -400,7 +403,9 @@ mod tests {
 
         let result = walkdir_or_fallback(&dir).unwrap();
         assert!(result.iter().any(|p| p.ends_with("file.txt")));
-        assert!(!result.iter().any(|p| p.to_string_lossy().contains(".hidden")));
+        assert!(!result
+            .iter()
+            .any(|p| p.to_string_lossy().contains(".hidden")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

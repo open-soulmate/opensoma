@@ -433,7 +433,12 @@ mod search_tests {
         Cache::open(dir.path().to_str().unwrap()).unwrap()
     }
 
-    fn make_event_with_source(id: &str, source: &str, event_type: &str, payload: &[u8]) -> RawEvent {
+    fn make_event_with_source(
+        id: &str,
+        source: &str,
+        event_type: &str,
+        payload: &[u8],
+    ) -> RawEvent {
         RawEvent {
             id: id.to_string(),
             source: source.to_string(),
@@ -447,9 +452,30 @@ mod search_tests {
     #[test]
     fn test_get_recent() {
         let cache = temp_cache();
-        cache.put(&make_event_with_source("a", "file:1", "file_change", b"data1")).unwrap();
-        cache.put(&make_event_with_source("b", "process:2", "process_started", b"data2")).unwrap();
-        cache.put(&make_event_with_source("c", "file:3", "file_change", b"data3")).unwrap();
+        cache
+            .put(&make_event_with_source(
+                "a",
+                "file:1",
+                "file_change",
+                b"data1",
+            ))
+            .unwrap();
+        cache
+            .put(&make_event_with_source(
+                "b",
+                "process:2",
+                "process_started",
+                b"data2",
+            ))
+            .unwrap();
+        cache
+            .put(&make_event_with_source(
+                "c",
+                "file:3",
+                "file_change",
+                b"data3",
+            ))
+            .unwrap();
 
         let recent = cache.get_recent(10).unwrap();
         assert_eq!(recent.len(), 3);
@@ -461,9 +487,30 @@ mod search_tests {
     #[test]
     fn test_search_by_source() {
         let cache = temp_cache();
-        cache.put(&make_event_with_source("a", "file:/tmp/test.txt", "file_change", b"data")).unwrap();
-        cache.put(&make_event_with_source("b", "process:1234", "process_started", b"data")).unwrap();
-        cache.put(&make_event_with_source("c", "file:/tmp/other.txt", "file_change", b"data")).unwrap();
+        cache
+            .put(&make_event_with_source(
+                "a",
+                "file:/tmp/test.txt",
+                "file_change",
+                b"data",
+            ))
+            .unwrap();
+        cache
+            .put(&make_event_with_source(
+                "b",
+                "process:1234",
+                "process_started",
+                b"data",
+            ))
+            .unwrap();
+        cache
+            .put(&make_event_with_source(
+                "c",
+                "file:/tmp/other.txt",
+                "file_change",
+                b"data",
+            ))
+            .unwrap();
 
         let file_events = cache.search_by_source("file:", 10).unwrap();
         assert_eq!(file_events.len(), 2);
@@ -478,10 +525,28 @@ mod search_tests {
     #[test]
     fn test_search_by_type() {
         let cache = temp_cache();
-        cache.put(&make_event_with_source("a", "src", "file_change", b"data")).unwrap();
-        cache.put(&make_event_with_source("b", "src", "process_started", b"data")).unwrap();
-        cache.put(&make_event_with_source("c", "src", "file_change", b"data")).unwrap();
-        cache.put(&make_event_with_source("d", "src", "clipboard_change", b"data")).unwrap();
+        cache
+            .put(&make_event_with_source("a", "src", "file_change", b"data"))
+            .unwrap();
+        cache
+            .put(&make_event_with_source(
+                "b",
+                "src",
+                "process_started",
+                b"data",
+            ))
+            .unwrap();
+        cache
+            .put(&make_event_with_source("c", "src", "file_change", b"data"))
+            .unwrap();
+        cache
+            .put(&make_event_with_source(
+                "d",
+                "src",
+                "clipboard_change",
+                b"data",
+            ))
+            .unwrap();
 
         let file_changes = cache.search_by_type("file_change", 10).unwrap();
         assert_eq!(file_changes.len(), 2);
@@ -493,9 +558,20 @@ mod search_tests {
     #[test]
     fn test_search_by_payload() {
         let cache = temp_cache();
-        cache.put(&make_event_with_source("a", "src", "test", b"Hello World")).unwrap();
-        cache.put(&make_event_with_source("b", "src", "test", b"Goodbye World")).unwrap();
-        cache.put(&make_event_with_source("c", "src", "test", b"Hello Again")).unwrap();
+        cache
+            .put(&make_event_with_source("a", "src", "test", b"Hello World"))
+            .unwrap();
+        cache
+            .put(&make_event_with_source(
+                "b",
+                "src",
+                "test",
+                b"Goodbye World",
+            ))
+            .unwrap();
+        cache
+            .put(&make_event_with_source("c", "src", "test", b"Hello Again"))
+            .unwrap();
 
         let hello = cache.search_by_payload("hello", 10).unwrap();
         assert_eq!(hello.len(), 2); // case-insensitive

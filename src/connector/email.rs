@@ -352,7 +352,10 @@ accounts = []
         assert_eq!(payload_json["folder"], "INBOX");
         assert_eq!(payload_json["uid"], 42);
         assert!(payload_json["headers"].as_str().unwrap().contains("From:"));
-        assert!(payload_json["body_snippet"].as_str().unwrap().contains("test email"));
+        assert!(payload_json["body_snippet"]
+            .as_str()
+            .unwrap()
+            .contains("test email"));
     }
 
     #[test]

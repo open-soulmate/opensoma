@@ -311,13 +311,27 @@ pub struct VideoSenseConfig {
     pub frame_analyzer: String,
 }
 
-fn default_asr_engine() -> String { "whisper".into() }
-fn default_ocr_engine() -> String { "tesseract".into() }
-fn default_whisper_model() -> String { "base".into() }
-fn default_tesseract_lang() -> String { "chi_sim+eng".into() }
-fn default_frame_interval() -> u64 { 5 }
-fn default_max_frames() -> usize { 60 }
-fn default_frame_analyzer() -> String { "ocr".into() }
+fn default_asr_engine() -> String {
+    "whisper".into()
+}
+fn default_ocr_engine() -> String {
+    "tesseract".into()
+}
+fn default_whisper_model() -> String {
+    "base".into()
+}
+fn default_tesseract_lang() -> String {
+    "chi_sim+eng".into()
+}
+fn default_frame_interval() -> u64 {
+    5
+}
+fn default_max_frames() -> usize {
+    60
+}
+fn default_frame_analyzer() -> String {
+    "ocr".into()
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProcessorConfig {
@@ -393,7 +407,9 @@ impl AppConfig {
 
         // Collector checks
         if self.collector.watch_dirs.is_empty() {
-            warnings.push("collector.watch_dirs is empty — file collector will have nothing to watch".into());
+            warnings.push(
+                "collector.watch_dirs is empty — file collector will have nothing to watch".into(),
+            );
         }
         for dir in &self.collector.watch_dirs {
             if !std::path::Path::new(dir).exists() {
@@ -423,7 +439,10 @@ impl AppConfig {
             }
             for (i, account) in ec.accounts.iter().enumerate() {
                 if account.username.is_empty() || account.password.is_empty() {
-                    warnings.push(format!("email account[{}] '{}' has empty credentials", i, account.name));
+                    warnings.push(format!(
+                        "email account[{}] '{}' has empty credentials",
+                        i, account.name
+                    ));
                 }
             }
         }
@@ -462,7 +481,10 @@ impl AppConfig {
                 anyhow::bail!("obsidian connector is enabled but vault_path is empty");
             }
             if oc.enabled && !std::path::Path::new(&oc.vault_path).exists() {
-                warnings.push(format!("obsidian vault_path '{}' does not exist", oc.vault_path));
+                warnings.push(format!(
+                    "obsidian vault_path '{}' does not exist",
+                    oc.vault_path
+                ));
             }
         }
 
@@ -479,7 +501,8 @@ impl AppConfig {
                 anyhow::bail!("slack connector is enabled but bot_token is empty");
             }
             if sc.enabled && !sc.bot_token.starts_with("xoxb-") {
-                warnings.push("slack bot_token does not start with 'xoxb-' — may be invalid".into());
+                warnings
+                    .push("slack bot_token does not start with 'xoxb-' — may be invalid".into());
             }
             if sc.enabled && sc.channels.is_empty() {
                 warnings.push("slack connector has no channels configured — will auto-discover joined channels".into());
@@ -488,7 +511,8 @@ impl AppConfig {
 
         // Streaming check
         if self.sync.enable_streaming && self.sync.batch_size == 0 {
-            warnings.push("sync.enable_streaming=true but batch_size=0 — streaming may help".into());
+            warnings
+                .push("sync.enable_streaming=true but batch_size=0 — streaming may help".into());
         }
 
         // Sync checks
@@ -582,7 +606,11 @@ impl AppConfig {
                 gc.token = Some(v);
             }
             if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_GITHUB_REPOS") {
-                gc.repos = v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+                gc.repos = v
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
             }
         }
 
@@ -834,7 +862,8 @@ watch_dirs = []
 [processor]
 
 [sync]
-"#.to_string()
+"#
+        .to_string()
     }
 
     #[test]
@@ -927,7 +956,9 @@ repos = ["owner/repo"]
 "#;
         let config: AppConfig = toml::from_str(toml).unwrap();
         let warnings = config.validate().unwrap();
-        assert!(warnings.iter().any(|w| w.contains("token") && w.contains("rate")));
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("token") && w.contains("rate")));
     }
 
     #[test]
@@ -1104,7 +1135,10 @@ repos = ["owner/repo"]
 "#;
         let mut config: AppConfig = toml::from_str(toml).unwrap();
         config.apply_env_overrides();
-        assert_eq!(config.connector.github.unwrap().token.unwrap(), "ghp_test123");
+        assert_eq!(
+            config.connector.github.unwrap().token.unwrap(),
+            "ghp_test123"
+        );
         std::env::remove_var("OPENSOMA_CONNECTOR_GITHUB_TOKEN");
     }
 
@@ -1141,7 +1175,10 @@ database_id = ""
 
     #[test]
     fn test_env_override_git() {
-        std::env::set_var("OPENSOMA_CONNECTOR_GIT_REPO_URL", "https://github.com/test/repo.git");
+        std::env::set_var(
+            "OPENSOMA_CONNECTOR_GIT_REPO_URL",
+            "https://github.com/test/repo.git",
+        );
         std::env::set_var("OPENSOMA_CONNECTOR_GIT_BRANCH", "develop");
         let toml = r#"
 [daemon]
@@ -1192,7 +1229,10 @@ vault_path = ""
 "#;
         let mut config: AppConfig = toml::from_str(toml).unwrap();
         config.apply_env_overrides();
-        assert_eq!(config.connector.obsidian.unwrap().vault_path, "/home/user/vault");
+        assert_eq!(
+            config.connector.obsidian.unwrap().vault_path,
+            "/home/user/vault"
+        );
         std::env::remove_var("OPENSOMA_CONNECTOR_OBSIDIAN_VAULT_PATH");
     }
 }

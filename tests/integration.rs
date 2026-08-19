@@ -10,7 +10,12 @@ use std::time::Duration;
 // Helpers
 // ─────────────────────────────────────────────
 
-fn make_event(id: &str, source: &str, event_type: &str, payload: &str) -> opensoma::collector::RawEvent {
+fn make_event(
+    id: &str,
+    source: &str,
+    event_type: &str,
+    payload: &str,
+) -> opensoma::collector::RawEvent {
     opensoma::collector::RawEvent {
         id: id.to_string(),
         source: source.to_string(),
@@ -103,7 +108,11 @@ cache_size_mb = 64
     .unwrap();
 
     let config = opensoma::config::AppConfig::load(config_path.to_str().unwrap()).unwrap();
-    assert!(config.validate().is_err(), "Expected validation to fail for empty node_id: {:?}", config.validate());
+    assert!(
+        config.validate().is_err(),
+        "Expected validation to fail for empty node_id: {:?}",
+        config.validate()
+    );
 }
 
 #[test]
@@ -177,8 +186,15 @@ async fn test_full_pipeline_file_event() {
 
     let handle = processor::start_pipeline(input_rx, output_tx, &config);
 
-    let mut event = make_event("file-001", "file", "file_change", r#"{"content":"hello world"}"#);
-    event.tags.insert("file_path".to_string(), "/tmp/test.txt".to_string());
+    let mut event = make_event(
+        "file-001",
+        "file",
+        "file_change",
+        r#"{"content":"hello world"}"#,
+    );
+    event
+        .tags
+        .insert("file_path".to_string(), "/tmp/test.txt".to_string());
 
     input_tx.send(event).await.unwrap();
 
@@ -214,10 +230,22 @@ async fn test_full_pipeline_multiple_sources() {
 
     let sources = vec![
         ("file", "file_change", "File content here"),
-        ("process", "process_started", "Process started with PID 1234"),
+        (
+            "process",
+            "process_started",
+            "Process started with PID 1234",
+        ),
         ("clipboard", "clipboard_change", "Copied text from browser"),
-        ("network", "connection_established", "Connection to 192.168.1.1:443"),
-        ("connector:daily-digest", "connector_event", "Daily digest from email"),
+        (
+            "network",
+            "connection_established",
+            "Connection to 192.168.1.1:443",
+        ),
+        (
+            "connector:daily-digest",
+            "connector_event",
+            "Daily digest from email",
+        ),
     ];
 
     for (i, (source, event_type, payload)) in sources.iter().enumerate() {
@@ -306,7 +334,12 @@ fn test_cache_multiple_events() {
     let cache = opensoma::sync::cache::Cache::open(dir.path().to_str().unwrap()).unwrap();
 
     for i in 0..10 {
-        let event = make_event(&format!("evt-{}", i), "file", "file_change", &format!("data {}", i));
+        let event = make_event(
+            &format!("evt-{}", i),
+            "file",
+            "file_change",
+            &format!("data {}", i),
+        );
         cache.put(&event).unwrap();
     }
 
@@ -385,11 +418,19 @@ async fn test_status_server_health_endpoint() {
         start_time: std::time::Instant::now(),
         events_collected: std::sync::Arc::new(tokio::sync::RwLock::new(42)),
         events_synced: std::sync::Arc::new(tokio::sync::RwLock::new(40)),
-        connectors_active: std::sync::Arc::new(tokio::sync::RwLock::new(vec!["feishu".to_string()])),
+        connectors_active: std::sync::Arc::new(tokio::sync::RwLock::new(
+            vec!["feishu".to_string()],
+        )),
         last_error: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
-        connector_enabled: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
-        connector_event_counts: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
-        cache_stats: std::sync::Arc::new(tokio::sync::RwLock::new(opensoma::status_server::CacheStatsSnapshot::default())),
+        connector_enabled: std::sync::Arc::new(tokio::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
+        connector_event_counts: std::sync::Arc::new(tokio::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
+        cache_stats: std::sync::Arc::new(tokio::sync::RwLock::new(
+            opensoma::status_server::CacheStatsSnapshot::default(),
+        )),
         cache: None,
     };
 
@@ -460,7 +501,9 @@ fn test_raw_event_with_tags_roundtrip() {
     let mut event = make_event("rt-002", "process", "process_started", "PID 1234");
     event.tags.insert("pid".to_string(), "1234".to_string());
     event.tags.insert("name".to_string(), "python3".to_string());
-    event.tags.insert("class_category".to_string(), "process".to_string());
+    event
+        .tags
+        .insert("class_category".to_string(), "process".to_string());
 
     let json = serde_json::to_string(&event).unwrap();
     let deserialized: opensoma::collector::RawEvent = serde_json::from_str(&json).unwrap();

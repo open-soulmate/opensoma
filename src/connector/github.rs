@@ -152,7 +152,9 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                     if seen.len() > 5000 {
                         let excess = seen.len() - 2500;
                         let to_remove: Vec<String> = seen.iter().take(excess).cloned().collect();
-                        for id in to_remove { seen.remove(&id); }
+                        for id in to_remove {
+                            seen.remove(&id);
+                        }
                     }
                 }
             }
@@ -367,10 +369,7 @@ async fn fetch_commits(
     tx: &EventTx,
     seen: &mut std::collections::HashSet<String>,
 ) -> Result<()> {
-    let url = format!(
-        "https://api.github.com/repos/{}/commits?per_page=20",
-        repo
-    );
+    let url = format!("https://api.github.com/repos/{}/commits?per_page=20", repo);
 
     let resp = client
         .get(&url)
@@ -384,7 +383,10 @@ async fn fetch_commits(
         anyhow::bail!("GitHub commits API error {}: {}", status, body);
     }
 
-    let commits: Vec<GitHubCommit> = resp.json().await.context("Failed to parse GitHub commits")?;
+    let commits: Vec<GitHubCommit> = resp
+        .json()
+        .await
+        .context("Failed to parse GitHub commits")?;
     let mut new_count = 0u32;
 
     for commit in &commits {
@@ -411,8 +413,13 @@ async fn fetch_commits(
 
         let content = format!(
             "# Commit: {}\n\nRepository: {}\nAuthor: {} <{}>\nDate: {}\nSHA: {}\nURL: {}\n\n{}",
-            first_line, repo, author_name, commit.commit.author.email,
-            commit.commit.author.date, &commit.sha[..12], commit.html_url,
+            first_line,
+            repo,
+            author_name,
+            commit.commit.author.email,
+            commit.commit.author.date,
+            &commit.sha[..12],
+            commit.html_url,
             commit.commit.message,
         );
 
@@ -445,7 +452,9 @@ async fn fetch_commits(
     if new_count > 0 {
         info!(
             "GitHub commits sync: {} total from {} ({} new)",
-            commits.len(), repo, new_count,
+            commits.len(),
+            repo,
+            new_count,
         );
     }
 
@@ -604,7 +613,11 @@ mod tests {
         let is_pr = issue.pull_request.is_some();
         let item_type = if is_pr { "pull_request" } else { "issue" };
         let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
-        let author = issue.user.as_ref().map(|u| u.login.clone()).unwrap_or_default();
+        let author = issue
+            .user
+            .as_ref()
+            .map(|u| u.login.clone())
+            .unwrap_or_default();
         let body_text = issue.body.as_deref().unwrap_or("");
 
         let content = format!(
@@ -664,7 +677,10 @@ mod tests {
 
         let commit: GitHubCommit = serde_json::from_value(json).unwrap();
         assert_eq!(commit.sha, "abc123def456789");
-        assert_eq!(commit.commit.message, "feat: add new feature\n\nDetailed description here");
+        assert_eq!(
+            commit.commit.message,
+            "feat: add new feature\n\nDetailed description here"
+        );
         assert_eq!(commit.commit.author.name, "Test Author");
         assert_eq!(commit.commit.author.email, "test@example.com");
         assert_eq!(commit.author.unwrap().login, "testuser");

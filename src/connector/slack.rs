@@ -476,12 +476,7 @@ async fn resolve_user(
     }
 
     let url = format!("https://slack.com/api/users.info?user={}", user_id);
-    match client
-        .get(&url)
-        .bearer_auth(bot_token)
-        .send()
-        .await
-    {
+    match client.get(&url).bearer_auth(bot_token).send().await {
         Ok(resp) => match resp.json::<UserInfoResponse>().await {
             Ok(info) if info.ok => {
                 let name = info
@@ -642,7 +637,10 @@ mod tests {
 
         let resp: UserInfoResponse = serde_json::from_str(json).unwrap();
         assert!(resp.ok);
-        assert_eq!(resp.user.as_ref().unwrap().real_name, Some("John Doe".to_string()));
+        assert_eq!(
+            resp.user.as_ref().unwrap().real_name,
+            Some("John Doe".to_string())
+        );
     }
 
     #[test]

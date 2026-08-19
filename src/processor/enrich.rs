@@ -363,4 +363,104 @@ mod tests {
         assert_eq!(count_words(""), 0);
         assert_eq!(count_words("  spaced  out  "), 2);
     }
+
+    #[test]
+    fn test_extract_entities_url() {
+        let entities = extract_entities("Visit https://example.com/path?q=1 and http://test.org");
+        let urls: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Url)
+            .collect();
+        assert_eq!(urls.len(), 2);
+        assert!(urls[0].value.contains("example.com"));
+    }
+
+    #[test]
+    fn test_extract_entities_email() {
+        let entities = extract_entities("Contact user@example.com or admin@test.org for help");
+        let emails: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Email)
+            .collect();
+        assert_eq!(emails.len(), 2);
+    }
+
+    #[test]
+    fn test_extract_entities_ip_valid() {
+        let entities = extract_entities("Connected to 192.168.1.1 and 10.0.0.1");
+        let ips: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::IpAddress)
+            .collect();
+        assert_eq!(ips.len(), 2);
+    }
+
+    #[test]
+    fn test_extract_entities_ip_invalid() {
+        let entities = extract_entities("Not an IP: 999.999.999.999");
+        let ips: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::IpAddress)
+            .collect();
+        assert_eq!(ips.len(), 0); // 999 > 255
+    }
+
+    #[test]
+    fn test_extract_entities_file_path() {
+        let entities = extract_entities("Config at /etc/nginx/nginx.conf and /var/log/syslog");
+        let paths: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::FilePath)
+            .collect();
+        assert!(!paths.is_empty());
+    }
+
+    #[test]
+    fn test_extract_entities_hash_md5() {
+        let md5 = "d41d8cd98f00b204e9800998ecf8427e";
+        let entities = extract_entities(&format!("Hash: {}", md5));
+        let hashes: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Hash)
+            .collect();
+        assert_eq!(hashes.len(), 1);
+        assert_eq!(hashes[0].value, md5);
+    }
+
+    #[test]
+    fn test_extract_entities_empty_text() {
+        let entities = extract_entities("");
+        assert!(entities.is_empty());
+    }
+
+    #[test]
+    fn test_apply_enrichment() {
+        let mut event = RawEvent {
+            id: "test".into(),
+            source: "test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 1000,
+            payload: b"Visit https://example.com from 192.168.1.1".to_vec(),
+            tags: HashMap::new(),
+        };
+        let enrichment = enrich_event(&event);
+        apply_enrichment(&mut event, &enrichment);
+
+        assert!(event.tags.contains_key("word_count"));
+        assert!(event.tags.contains_key("language"));
+    }
+
+    #[test]
+    fn test_generate_summary_no_sentence_end() {
+        let summary = generate_summary("no ending sentence here", 200);
+        assert_eq!(summary, "no ending sentence here");
+    }
+
+    #[test]
+    fn test_detect_language_russian() {
+        assert_eq!(
+            detect_language("Это русский текст для тестирования"),
+            Some("ru".to_string())
+        );
+    }
 }

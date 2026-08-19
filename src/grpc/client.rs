@@ -230,7 +230,11 @@ impl SoulClient {
         match self.http.post(&url).json(&body).send().await {
             Ok(resp) if resp.status().is_success() => Ok(true),
             Ok(resp) => {
-                debug!("Stream upload returned {}: {}", resp.status(), resp.text().await.unwrap_or_default());
+                debug!(
+                    "Stream upload returned {}: {}",
+                    resp.status(),
+                    resp.text().await.unwrap_or_default()
+                );
                 Ok(false)
             }
             Err(e) => {

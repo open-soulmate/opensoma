@@ -153,12 +153,17 @@ mod tests {
         // MAX_CHUNK_SIZE events = 1 chunk
         assert_eq!((MAX_CHUNK_SIZE + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE, 1);
         // MAX_CHUNK_SIZE + 1 events = 2 chunks
-        assert_eq!((MAX_CHUNK_SIZE + 1 + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE, 2);
+        assert_eq!(
+            (MAX_CHUNK_SIZE + 1 + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE,
+            2
+        );
     }
 
     #[test]
     fn test_events_chunks_split() {
-        let events: Vec<RawEvent> = (0..250).map(|i| make_event(&format!("e{}", i), 10)).collect();
+        let events: Vec<RawEvent> = (0..250)
+            .map(|i| make_event(&format!("e{}", i), 10))
+            .collect();
         let chunks: Vec<_> = events.chunks(MAX_CHUNK_SIZE).collect();
         assert_eq!(chunks.len(), 3); // 100 + 100 + 50
         assert_eq!(chunks[0].len(), MAX_CHUNK_SIZE);

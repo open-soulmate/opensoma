@@ -298,10 +298,7 @@ async fn api_connector_toggle(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    info!(
-        "Connector '{}' toggle: enabled={}",
-        name, payload.enabled
-    );
+    info!("Connector '{}' toggle: enabled={}", name, payload.enabled);
 
     // Update the shared toggle state
     let mut toggle = state.connector_enabled.write().await;
@@ -375,9 +372,7 @@ async fn build_status_response(state: &StatusServerState) -> Json<StatusResponse
 /// /metrics — Prometheus-compatible metrics endpoint.
 /// Returns metrics in Prometheus text exposition format without requiring
 /// an external prometheus crate dependency.
-async fn metrics_handler(
-    State(state): State<StatusServerState>,
-) -> axum::response::Response {
+async fn metrics_handler(State(state): State<StatusServerState>) -> axum::response::Response {
     let events_collected = *state.events_collected.read().await;
     let events_synced = *state.events_synced.read().await;
     let connectors = state.connectors_active.read().await.clone();
@@ -410,7 +405,10 @@ async fn metrics_handler(
     // Events
     lines.push("# HELP opensoma_events_collected_total Total events collected.".to_string());
     lines.push("# TYPE opensoma_events_collected_total counter".to_string());
-    lines.push(format!("opensoma_events_collected_total {}", events_collected));
+    lines.push(format!(
+        "opensoma_events_collected_total {}",
+        events_collected
+    ));
 
     lines.push("# HELP opensoma_events_synced_total Total events synced to Soul.".to_string());
     lines.push("# TYPE opensoma_events_synced_total counter".to_string());
@@ -432,7 +430,10 @@ async fn metrics_handler(
         lines.push("# HELP opensoma_connector_events_total Events per connector.".to_string());
         lines.push("# TYPE opensoma_connector_events_total counter".to_string());
         for (name, count) in &event_counts {
-            lines.push(format!("opensoma_connector_events_total{{connector=\"{}\"}} {}", name, count));
+            lines.push(format!(
+                "opensoma_connector_events_total{{connector=\"{}\"}} {}",
+                name, count
+            ));
         }
     }
 
@@ -443,7 +444,10 @@ async fn metrics_handler(
 
     lines.push("# HELP opensoma_memory_total_bytes Total system memory in bytes.".to_string());
     lines.push("# TYPE opensoma_memory_total_bytes gauge".to_string());
-    lines.push(format!("opensoma_memory_total_bytes {}", memory_total_bytes));
+    lines.push(format!(
+        "opensoma_memory_total_bytes {}",
+        memory_total_bytes
+    ));
 
     lines.push("# HELP opensoma_memory_used_bytes Used system memory in bytes.".to_string());
     lines.push("# TYPE opensoma_memory_used_bytes gauge".to_string());
@@ -648,10 +652,15 @@ async fn build_dashboard_page(state: &StatusServerState) -> String {
     let uptime_secs = state.start_time.elapsed().as_secs();
     let h = uptime_secs / 3600;
     let m = (uptime_secs % 3600) / 60;
-    let uptime_str = if h > 0 { format!("{}h {}m", h, m) } else { format!("{}m", m) };
+    let uptime_str = if h > 0 {
+        format!("{}h {}m", h, m)
+    } else {
+        format!("{}m", m)
+    };
     let cache = state.cache_stats.read().await.clone();
 
-    format!(r#"
+    format!(
+        r#"
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
   <div class="bg-card border border-border rounded-lg p-4">
     <div class="text-muted-foreground text-xs mb-1">运行时间</div>
@@ -743,20 +752,39 @@ async fn build_connectors_page(state: &StatusServerState) -> String {
 </div>"#, name = name, status_color = status_color, status_text = status_text, desc = desc, count = count)
     }).collect::<Vec<_>>().join("");
 
-    format!(r#"
+    format!(
+        r#"
 <div class="mb-4">
   <h2 class="text-lg font-semibold text-foreground">连接器管理</h2>
   <p class="text-sm text-muted-foreground">管理与外部服务的数据连接</p>
 </div>
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4">{cards}</div>"#, cards = cards)
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">{cards}</div>"#,
+        cards = cards
+    )
 }
 
 async fn build_collectors_page() -> String {
     let collectors = [
-        ("file", "文件采集器", "监控文件系统变更，采集文件创建/修改/删除事件"),
-        ("process", "进程采集器", "监控系统进程，采集进程启动/退出事件"),
-        ("network", "网络采集器", "监控网络连接，采集 TCP/UDP 连接状态变更"),
-        ("clipboard", "剪贴板采集器", "监控剪贴板内容变更，采集复制事件"),
+        (
+            "file",
+            "文件采集器",
+            "监控文件系统变更，采集文件创建/修改/删除事件",
+        ),
+        (
+            "process",
+            "进程采集器",
+            "监控系统进程，采集进程启动/退出事件",
+        ),
+        (
+            "network",
+            "网络采集器",
+            "监控网络连接，采集 TCP/UDP 连接状态变更",
+        ),
+        (
+            "clipboard",
+            "剪贴板采集器",
+            "监控剪贴板内容变更，采集复制事件",
+        ),
     ];
 
     let cards: String = collectors.iter().map(|(_id, name, desc)| {
@@ -774,12 +802,15 @@ async fn build_collectors_page() -> String {
 </div>"#, name = name, desc = desc)
     }).collect::<Vec<_>>().join("");
 
-    format!(r#"
+    format!(
+        r#"
 <div class="mb-4">
   <h2 class="text-lg font-semibold text-foreground">采集器</h2>
   <p class="text-sm text-muted-foreground">本地数据采集模块</p>
 </div>
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4">{cards}</div>"#, cards = cards)
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">{cards}</div>"#,
+        cards = cards
+    )
 }
 
 async fn build_sync_page(state: &StatusServerState) -> String {
@@ -793,7 +824,8 @@ async fn build_sync_page(state: &StatusServerState) -> String {
         100
     };
 
-    format!(r#"
+    format!(
+        r#"
 <div class="mb-4">
   <h2 class="text-lg font-semibold text-foreground">同步状态</h2>
   <p class="text-sm text-muted-foreground">数据同步到 OpenSoul 的状态</p>
@@ -849,7 +881,8 @@ async fn build_monitor_page(state: &StatusServerState) -> String {
         .unwrap_or_else(|_| "127.0.0.1".to_string());
     let last_error = state.last_error.read().await.clone();
 
-    format!(r#"
+    format!(
+        r#"
 <div class="mb-4">
   <h2 class="text-lg font-semibold text-foreground">系统监控</h2>
   <p class="text-sm text-muted-foreground">系统资源和运行状态</p>
@@ -916,10 +949,15 @@ async fn build_config_page() -> String {
 }
 
 fn format_bytes(bytes: u64) -> String {
-    if bytes < 1024 { format!("{} B", bytes) }
-    else if bytes < 1024 * 1024 { format!("{:.1} KB", bytes as f64 / 1024.0) }
-    else if bytes < 1024 * 1024 * 1024 { format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0)) }
-    else { format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0)) }
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
 }
 
 #[cfg(test)]
@@ -1122,8 +1160,14 @@ mod tests {
         assert_eq!(connectors.len(), 11);
 
         // Verify all connector IDs are present
-        let ids: Vec<&str> = connectors.iter().map(|c| c["id"].as_str().unwrap()).collect();
-        for expected in &["feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git", "obsidian", "slack"] {
+        let ids: Vec<&str> = connectors
+            .iter()
+            .map(|c| c["id"].as_str().unwrap())
+            .collect();
+        for expected in &[
+            "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
+            "obsidian", "slack",
+        ] {
             assert!(ids.contains(expected), "Missing connector: {}", expected);
         }
 
@@ -1347,7 +1391,12 @@ mod tests {
             .unwrap();
 
         let resp = app.oneshot(req).await.unwrap();
-        let content_type = resp.headers().get("content-type").unwrap().to_str().unwrap();
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(content_type.contains("text/plain"));
         assert!(content_type.contains("version=0.0.4"));
     }
@@ -1403,7 +1452,10 @@ mod tests {
         let collectors: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
         assert_eq!(collectors.len(), 4);
-        let ids: Vec<&str> = collectors.iter().map(|c| c["id"].as_str().unwrap()).collect();
+        let ids: Vec<&str> = collectors
+            .iter()
+            .map(|c| c["id"].as_str().unwrap())
+            .collect();
         assert!(ids.contains(&"file"));
         assert!(ids.contains(&"process"));
         assert!(ids.contains(&"network"));

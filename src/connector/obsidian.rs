@@ -33,7 +33,10 @@ impl Connector for ObsidianConnector {
     async fn ping(&self) -> Result<()> {
         let vault_path = Path::new(&self.config.vault_path);
         if !vault_path.is_dir() {
-            anyhow::bail!("Obsidian vault path does not exist: {}", self.config.vault_path);
+            anyhow::bail!(
+                "Obsidian vault path does not exist: {}",
+                self.config.vault_path
+            );
         }
         // Check that we can read the directory
         std::fs::read_dir(vault_path)
@@ -300,7 +303,13 @@ fn extract_markdown_title(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("# ") {
-            return Some(trimmed.strip_prefix("# ").unwrap_or(trimmed).trim().to_string());
+            return Some(
+                trimmed
+                    .strip_prefix("# ")
+                    .unwrap_or(trimmed)
+                    .trim()
+                    .to_string(),
+            );
         }
     }
     None

@@ -63,12 +63,19 @@ async fn main() -> Result<()> {
     };
 
     // Shared cache stats for status server
-    let cache_stats = std::sync::Arc::new(tokio::sync::RwLock::new(status_server::CacheStatsSnapshot::default()));
+    let cache_stats = std::sync::Arc::new(tokio::sync::RwLock::new(
+        status_server::CacheStatsSnapshot::default(),
+    ));
 
     // Start sync engine: processed_rx → cache → upload to Soul
     let cache_clone = cache.clone();
-    let sync_handle =
-        sync::start_engine_with_rx(&config.sync, cache, grpc_client.clone(), processed_rx, cache_stats.clone());
+    let sync_handle = sync::start_engine_with_rx(
+        &config.sync,
+        cache,
+        grpc_client.clone(),
+        processed_rx,
+        cache_stats.clone(),
+    );
 
     // Start HTTP status server for monitoring
     let status_state = status_server::StatusServerState {
@@ -78,8 +85,12 @@ async fn main() -> Result<()> {
         events_synced: std::sync::Arc::new(tokio::sync::RwLock::new(0)),
         connectors_active: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         last_error: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
-        connector_enabled: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
-        connector_event_counts: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        connector_enabled: std::sync::Arc::new(tokio::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
+        connector_event_counts: std::sync::Arc::new(tokio::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         cache_stats: cache_stats.clone(),
         cache: Some(cache_clone),
     };
@@ -230,7 +241,9 @@ fn run_validate_with_path(config_path: &str) -> i32 {
                 ($field:expr) => {
                     if let Some(ref c) = $field {
                         connector_count += 1;
-                        if c.enabled { enabled_count += 1; }
+                        if c.enabled {
+                            enabled_count += 1;
+                        }
                     }
                 };
             }
@@ -250,7 +263,10 @@ fn run_validate_with_path(config_path: &str) -> i32 {
             println!("Summary:");
             println!("  Node ID:     {}", config.daemon.node_id);
             println!("  Soul:        {}", config.soul.endpoint);
-            println!("  Connectors:  {}/{} enabled", enabled_count, connector_count);
+            println!(
+                "  Connectors:  {}/{} enabled",
+                enabled_count, connector_count
+            );
             println!("  Watch dirs:  {}", config.collector.watch_dirs.len());
             println!("  Status port: {}", config.daemon.status_port);
             println!("  Batch size:  {}", config.sync.batch_size);
@@ -266,7 +282,10 @@ fn run_validate_with_path(config_path: &str) -> i32 {
 /// Generate a default config.toml at the given path. Returns exit code.
 fn run_init_with_path(config_path: &str) -> i32 {
     if std::path::Path::new(config_path).exists() {
-        eprintln!("⚠️  File '{}' already exists. Remove it first or choose a different path.", config_path);
+        eprintln!(
+            "⚠️  File '{}' already exists. Remove it first or choose a different path.",
+            config_path
+        );
         return 1;
     }
 
@@ -383,7 +402,10 @@ watch_dirs = []
     match std::fs::write(config_path, default_config) {
         Ok(_) => {
             println!("✅ Default config written to '{}'", config_path);
-            println!("   Edit the file to configure your node, then run: opensoma -c {}", config_path);
+            println!(
+                "   Edit the file to configure your node, then run: opensoma -c {}",
+                config_path
+            );
             0
         }
         Err(e) => {

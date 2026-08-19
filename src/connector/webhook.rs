@@ -1,9 +1,5 @@
 use anyhow::{Context, Result};
-use axum::{
-    http::StatusCode,
-    routing::post,
-    Router,
-};
+use axum::{http::StatusCode, routing::post, Router};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 

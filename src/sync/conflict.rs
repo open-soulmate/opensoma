@@ -375,8 +375,8 @@ mod tests {
 
         let snapshots = vec![
             make_snapshot("1", "different_hash", 2000), // conflict
-            make_snapshot("2", &hash_2, 2000),           // same hash — no conflict
-            // "3" not in server — no conflict (no match)
+            make_snapshot("2", &hash_2, 2000),          // same hash — no conflict
+                                                        // "3" not in server — no conflict (no match)
         ];
 
         let conflicts = detect_batch_conflicts(&events, &snapshots, &resolver);

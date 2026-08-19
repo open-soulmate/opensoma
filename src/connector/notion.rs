@@ -28,14 +28,15 @@ impl Connector for NotionConnector {
     }
 
     async fn ping(&self) -> Result<()> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()?;
+        let client = Client::builder().timeout(Duration::from_secs(10)).build()?;
         // Try to query the database to verify credentials
         let url = format!("{}/databases/{}", NOTION_BASE_URL, self.config.database_id);
         let resp = client
             .get(&url)
-            .header("Authorization", format!("Bearer {}", self.config.integration_token))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.integration_token),
+            )
             .header("Notion-Version", NOTION_API_VERSION)
             .send()
             .await

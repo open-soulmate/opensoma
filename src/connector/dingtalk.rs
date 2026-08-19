@@ -201,7 +201,8 @@ pub async fn start(config: DingtalkConfig, tx: EventTx) -> Result<JoinHandle<()>
         // Track seen instance IDs to avoid duplicate events
         let mut seen_approvals: std::collections::HashSet<String> =
             std::collections::HashSet::new();
-        let mut seen_attendance: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut seen_attendance: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         let mut seen_reports: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         loop {
@@ -398,10 +399,7 @@ async fn fetch_approval_list(client: &Client, token: &str) -> Result<Vec<Approva
 /// Fetch attendance check-in records from DingTalk.
 /// Uses the /topapi/attendance/v2/query API.
 /// Requires a configured user_id_list in the DingTalk config.
-async fn fetch_attendance_list(
-    client: &Client,
-    token: &str,
-) -> Result<Vec<AttendanceRecord>> {
+async fn fetch_attendance_list(client: &Client, token: &str) -> Result<Vec<AttendanceRecord>> {
     let url = format!(
         "https://oapi.dingtalk.com/attendance/v2/list?access_token={}",
         token
@@ -430,7 +428,10 @@ async fn fetch_attendance_list(
         if code != 0 {
             // Code 40078 means no attendance permission or no user configured
             // Return empty instead of hard error
-            debug!("DingTalk attendance API returned code {}: {:?} — likely no user_ids configured", code, resp.errmsg);
+            debug!(
+                "DingTalk attendance API returned code {}: {:?} — likely no user_ids configured",
+                code, resp.errmsg
+            );
             return Ok(Vec::new());
         }
     }
@@ -440,10 +441,7 @@ async fn fetch_attendance_list(
 
 /// Fetch work reports (工作报告) from DingTalk.
 /// Uses the /topapi/report/list API.
-async fn fetch_work_reports(
-    client: &Client,
-    token: &str,
-) -> Result<Vec<WorkReport>> {
+async fn fetch_work_reports(client: &Client, token: &str) -> Result<Vec<WorkReport>> {
     let url = format!(
         "https://oapi.dingtalk.com/topapi/report/list?access_token={}",
         token
@@ -470,7 +468,10 @@ async fn fetch_work_reports(
 
     if let Some(code) = resp.errcode {
         if code != 0 {
-            debug!("DingTalk work report API returned code {}: {:?} — may not have permission", code, resp.errmsg);
+            debug!(
+                "DingTalk work report API returned code {}: {:?} — may not have permission",
+                code, resp.errmsg
+            );
             return Ok(Vec::new());
         }
     }

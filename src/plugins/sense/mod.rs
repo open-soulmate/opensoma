@@ -40,7 +40,12 @@ mod tests {
 
     #[test]
     fn test_media_type_serialization_roundtrip() {
-        let types = vec![MediaType::Image, MediaType::Audio, MediaType::Video, MediaType::Pdf];
+        let types = vec![
+            MediaType::Image,
+            MediaType::Audio,
+            MediaType::Video,
+            MediaType::Pdf,
+        ];
         for mt in types {
             let json = serde_json::to_string(&mt).unwrap();
             let deserialized: MediaType = serde_json::from_str(&json).unwrap();
@@ -50,9 +55,18 @@ mod tests {
 
     #[test]
     fn test_media_type_json_values() {
-        assert_eq!(serde_json::to_string(&MediaType::Image).unwrap(), "\"image\"");
-        assert_eq!(serde_json::to_string(&MediaType::Audio).unwrap(), "\"audio\"");
-        assert_eq!(serde_json::to_string(&MediaType::Video).unwrap(), "\"video\"");
+        assert_eq!(
+            serde_json::to_string(&MediaType::Image).unwrap(),
+            "\"image\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MediaType::Audio).unwrap(),
+            "\"audio\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MediaType::Video).unwrap(),
+            "\"video\""
+        );
         assert_eq!(serde_json::to_string(&MediaType::Pdf).unwrap(), "\"pdf\"");
     }
 

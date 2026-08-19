@@ -149,7 +149,8 @@ mod tests {
 
     #[test]
     fn test_ocr_config_deserialize_api() {
-        let json = r#"{"engine": "api", "api_url": "http://ocr.local/parse", "api_key": "secret123"}"#;
+        let json =
+            r#"{"engine": "api", "api_url": "http://ocr.local/parse", "api_key": "secret123"}"#;
         let config: OcrConfig = serde_json::from_str(json).unwrap();
         assert!(matches!(config.engine, OcrEngine::Api));
         assert_eq!(config.api_url.as_deref(), Some("http://ocr.local/parse"));
