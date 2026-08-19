@@ -184,7 +184,7 @@ async fn test_full_pipeline_file_event() {
         enable_enrich: true,
     };
 
-    let handle = processor::start_pipeline(input_rx, output_tx, &config);
+    let handle = processor::start_pipeline(input_rx, output_tx, &config, None);
 
     let mut event = make_event(
         "file-001",
@@ -226,7 +226,7 @@ async fn test_full_pipeline_multiple_sources() {
         enable_enrich: true,
     };
 
-    let handle = processor::start_pipeline(input_rx, output_tx, &config);
+    let handle = processor::start_pipeline(input_rx, output_tx, &config, None);
 
     let sources = [("file", "file_change", "File content here"),
         (
@@ -283,7 +283,7 @@ async fn test_dedup_across_pipeline() {
         enable_enrich: false,
     };
 
-    let handle = processor::start_pipeline(input_rx, output_tx, &config);
+    let handle = processor::start_pipeline(input_rx, output_tx, &config, None);
 
     for _ in 0..3 {
         let event = make_event("dup-test", "file", "file_change", "same content");

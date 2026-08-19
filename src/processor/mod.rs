@@ -15,11 +15,12 @@ pub fn start_pipeline(
     raw_rx: EventRx,
     output_tx: EventTx,
     config: &ProcessorConfig,
+    metrics: Option<crate::metrics::PipelineMetrics>,
 ) -> JoinHandle<()> {
     let config = config.clone();
 
     tokio::spawn(async move {
-        run_pipeline(raw_rx, output_tx, config, None, None).await;
+        run_pipeline(raw_rx, output_tx, config, None, metrics).await;
     })
 }
 
@@ -29,12 +30,13 @@ pub fn start_pipeline_with_sense(
     output_tx: EventTx,
     config: &ProcessorConfig,
     sense_config: &SenseConfig,
+    metrics: Option<crate::metrics::PipelineMetrics>,
 ) -> JoinHandle<()> {
     let config = config.clone();
     let sense_config = sense_config.clone();
 
     tokio::spawn(async move {
-        run_pipeline(raw_rx, output_tx, config, Some(sense_config), None).await;
+        run_pipeline(raw_rx, output_tx, config, Some(sense_config), metrics).await;
     })
 }
 
@@ -193,7 +195,7 @@ mod tests {
             enable_enrich: true,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config);
+        let handle = start_pipeline(input_rx, output_tx, &config, None);
 
         // Send a test event
         let event = make_test_event(
@@ -233,7 +235,7 @@ mod tests {
             enable_enrich: false,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config);
+        let handle = start_pipeline(input_rx, output_tx, &config, None);
 
         // Send the same event twice
         let event1 = make_test_event("evt-dup", "file_change", "file:/tmp/test.txt", "hello");
@@ -270,7 +272,7 @@ mod tests {
             enable_enrich: false,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config);
+        let handle = start_pipeline(input_rx, output_tx, &config, None);
 
         // Send an oversized event
         let event = make_test_event(
@@ -302,7 +304,7 @@ mod tests {
             enable_enrich: true,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config);
+        let handle = start_pipeline(input_rx, output_tx, &config, None);
 
         // Send an event with detectable content
         let event = make_test_event(
@@ -341,7 +343,7 @@ mod tests {
             enable_enrich: false,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config);
+        let handle = start_pipeline(input_rx, output_tx, &config, None);
 
         // Send 5 distinct events
         for i in 0..5 {
@@ -499,7 +501,7 @@ mod tests {
             video: None,
         };
 
-        let handle = start_pipeline_with_sense(input_rx, output_tx, &config, &sense_config);
+        let handle = start_pipeline_with_sense(input_rx, output_tx, &config, &sense_config, None);
 
         let mut event = make_test_event("evt-media", "file_change", "file", "audio data");
         event
@@ -515,6 +517,52 @@ mod tests {
 
         assert_eq!(processed.tags.get("sense_media_type").unwrap(), "audio");
         assert_eq!(processed.tags.get("sense_eligible").unwrap(), "true");
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_pipeline_metrics_wiring() {
+        let (input_tx, input_rx) = tokio::sync::mpsc::channel(64);
+        let (output_tx, mut output_rx) = tokio::sync::mpsc::channel(64);
+
+        let config = ProcessorConfig {
+            normalize_timestamps: true,
+            max_event_size: 1_048_576,
+            dedup_window_secs: 60,
+            enable_classify: true,
+            enable_enrich: true,
+        };
+
+        let metrics = crate::metrics::PipelineMetrics::new();
+        let handle = start_pipeline(input_rx, output_tx, &config, Some(metrics.clone()));
+
+        // Send 3 distinct events (different payloads to avoid dedup)
+        for i in 0..3 {
+            let event = make_test_event(
+                &format!("evt-m-{}", i),
+                "file_change",
+                "file:/tmp/test.json",
+                &format!(r#"{{"key":"value{}"}}"#, i),
+            );
+            input_tx.send(event).await.unwrap();
+        }
+
+        // Receive all 3
+        for _ in 0..3 {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), output_rx.recv())
+                .await
+                .expect("timeout")
+                .expect("channel closed");
+        }
+
+        // Verify metrics were collected
+        let snap = metrics.snapshot();
+        assert_eq!(snap.events_processed, 3, "Should have processed 3 events");
+        assert_eq!(snap.events_normalized, 3, "Should have normalized 3 events");
+        assert_eq!(snap.events_classified, 3, "Should have classified 3 events");
+        assert_eq!(snap.events_enriched, 3, "Should have enriched 3 events");
+        assert!(snap.avg_process_latency_us > 0, "Should have recorded latency");
 
         handle.abort();
     }

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use anyhow::Result;
-use opensoma::{collector, config, connector, grpc, heartbeat, processor, status_server, sync};
+use opensoma::{collector, config, connector, grpc, health, heartbeat, metrics, processor, status_server, sync};
 use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -56,10 +56,11 @@ async fn main() -> Result<()> {
     let connector_handle = connector::start_all(&config.connector, raw_tx.clone()).await?;
 
     // Start processor pipeline: raw_rx → normalize → classify → enrich → dedup → processed_tx
+    let pipeline_metrics = metrics::PipelineMetrics::new();
     let processor_handle = if config.sense.enabled {
-        processor::start_pipeline_with_sense(raw_rx, processed_tx, &config.processor, &config.sense)
+        processor::start_pipeline_with_sense(raw_rx, processed_tx, &config.processor, &config.sense, Some(pipeline_metrics.clone()))
     } else {
-        processor::start_pipeline(raw_rx, processed_tx, &config.processor)
+        processor::start_pipeline(raw_rx, processed_tx, &config.processor, Some(pipeline_metrics.clone()))
     };
 
     // Shared cache stats for status server
@@ -75,6 +76,7 @@ async fn main() -> Result<()> {
         grpc_client.clone(),
         processed_rx,
         cache_stats.clone(),
+        Some(pipeline_metrics.clone()),
     );
 
     // Start HTTP status server for monitoring
@@ -93,8 +95,8 @@ async fn main() -> Result<()> {
         )),
         cache_stats: cache_stats.clone(),
         cache: Some(cache_clone),
-        pipeline_metrics: None,
-        health_checker: None,
+        pipeline_metrics: Some(pipeline_metrics),
+        health_checker: Some(health::HealthChecker::new()),
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;

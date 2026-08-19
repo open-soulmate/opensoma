@@ -17,11 +17,12 @@ pub fn start_engine_with_rx(
     client: SoulClient,
     rx: EventRx,
     cache_stats: std::sync::Arc<tokio::sync::RwLock<CacheStatsSnapshot>>,
+    metrics: Option<crate::metrics::PipelineMetrics>,
 ) -> JoinHandle<()> {
     let config = config.clone();
 
     tokio::spawn(async move {
-        run_sync_engine(config, cache, client, rx, cache_stats).await;
+        run_sync_engine(config, cache, client, rx, cache_stats, metrics).await;
     })
 }
 
@@ -32,6 +33,7 @@ async fn run_sync_engine(
     client: SoulClient,
     mut rx: EventRx,
     cache_stats: std::sync::Arc<tokio::sync::RwLock<CacheStatsSnapshot>>,
+    metrics: Option<crate::metrics::PipelineMetrics>,
 ) {
     info!(
         "Sync engine started — batch_size={}, interval={}s, max_retries={}, streaming={}",
@@ -64,13 +66,13 @@ async fn run_sync_engine(
 
                 // Upload immediately if batch is full
                 if pending.len() >= config.batch_size {
-                    upload_batch(&config, &cache, &client, &mut pending).await;
+                    upload_batch(&config, &cache, &client, &mut pending, &metrics).await;
                 }
             }
             // Periodic upload for partial batches
             _ = upload_interval.tick() => {
                 if !pending.is_empty() {
-                    upload_batch(&config, &cache, &client, &mut pending).await;
+                    upload_batch(&config, &cache, &client, &mut pending, &metrics).await;
                 }
                 // Update cache stats for status server
                 let stats = cache.stats();
@@ -90,13 +92,22 @@ async fn upload_batch(
     cache: &cache::Cache,
     client: &SoulClient,
     pending: &mut Vec<RawEvent>,
+    metrics: &Option<crate::metrics::PipelineMetrics>,
 ) {
     let batch = std::mem::take(pending);
     let mut backoff = config.retry_backoff_ms;
+    let batch_bytes: u64 = batch.iter().map(|e| e.payload.len() as u64).sum();
+    let mut timer = metrics.as_ref().map(|m| m.start_sync_timer());
 
     for attempt in 0..=config.max_retries {
         match upload::upload_events(client, &batch).await {
             Ok(resp) => {
+                if let Some(ref m) = metrics {
+                    m.inc_upload_batches();
+                    m.inc_events_synced_by(resp.accepted as u64);
+                    m.add_upload_bytes(batch_bytes);
+                }
+                if let Some(t) = timer.take() { t.elapsed(); }
                 info!(
                     "Upload success — accepted={}, rejected={}",
                     resp.accepted, resp.rejected
@@ -119,11 +130,16 @@ async fn upload_batch(
                     );
                     tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
                     backoff = (backoff as f64 * 1.5) as u64;
+                    if let Some(ref m) = metrics { m.inc_sync_retries(); }
                 } else {
                     error!(
                         "Upload failed after {} attempts: {}. Events re-queued to cache.",
                         config.max_retries, e
                     );
+                    if let Some(ref m) = metrics {
+                        m.inc_events_sync_failed();
+                    }
+                    if let Some(t) = timer.take() { t.elapsed(); }
                     for event in &batch {
                         let _ = cache.put(event);
                     }
