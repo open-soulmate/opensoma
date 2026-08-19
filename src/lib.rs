@@ -7,6 +7,7 @@ pub mod collector;
 pub mod config;
 pub mod connector;
 pub mod grpc;
+pub mod health;
 pub mod heartbeat;
 pub mod metrics;
 pub mod plugins;

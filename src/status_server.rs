@@ -27,6 +27,10 @@ pub struct StatusServerState {
     pub cache_stats: Arc<RwLock<CacheStatsSnapshot>>,
     /// Direct cache handle for event search queries (read-only usage).
     pub cache: Option<crate::sync::cache::Cache>,
+    /// Pipeline metrics collector for internal pipeline tracking.
+    pub pipeline_metrics: Option<crate::metrics::PipelineMetrics>,
+    /// Connector health checker.
+    pub health_checker: Option<crate::health::HealthChecker>,
 }
 
 /// Snapshot of cache statistics for the status API.
