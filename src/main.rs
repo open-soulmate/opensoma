@@ -752,7 +752,6 @@ mod tests {
         assert_eq!(host, "10.0.0.1:9999");
         assert_eq!(path, "/api/connectors/feishu/toggle");
     }
-}
 
     #[test]
     fn test_parse_http_url_health_endpoint() {
@@ -774,3 +773,4 @@ mod tests {
         assert_eq!(host, "127.0.0.1:8091");
         assert_eq!(path, "/api/connectors/health");
     }
+}
