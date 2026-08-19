@@ -81,6 +81,8 @@ struct ToggleRequest {
 const INDEX_HTML: &str = include_str!("web/index.html");
 const ADMIN_CSS: &str = include_str!("web/admin-framework.css");
 const ADMIN_JS: &str = include_str!("web/admin-framework.js");
+const SIDEBAR_CSS: &str = include_str!("web/sidebar.css");
+const SIDEBAR_JS: &str = include_str!("web/sidebar.js");
 
 /// Start the HTTP status server on the given port.
 /// Exposes /health, /status, /api/* endpoints and the web UI.
@@ -91,6 +93,8 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/shared-sidebar.css", get(css_handler))
         .route("/admin-framework.css", get(css_handler))
         .route("/admin-framework.js", get(js_handler))
+        .route("/sidebar.css", get(sidebar_css_handler))
+        .route("/sidebar.js", get(sidebar_js_handler))
         .route("/health", get(health_handler))
         .route("/status", get(status_handler))
         .route("/metrics", get(metrics_handler))
@@ -117,6 +121,8 @@ pub async fn start_status_server(
         .route("/shared-sidebar.css", get(css_handler))
         .route("/admin-framework.css", get(css_handler))
         .route("/admin-framework.js", get(js_handler))
+        .route("/sidebar.css", get(sidebar_css_handler))
+        .route("/sidebar.js", get(sidebar_js_handler))
         // Existing endpoints
         .route("/health", get(health_handler))
         .route("/status", get(status_handler))
@@ -149,8 +155,11 @@ pub async fn start_status_server(
 }
 
 /// Serve the embedded index.html
-async fn index_handler() -> Json<serde_json::Value> {
-    Json(serde_json::json!({"message": "OpenSoul API — 前端请访问 OpenMate (http://localhost:3002)", "health": "/health", "status": "/status"}))
+async fn index_handler() -> axum::response::Response {
+    axum::response::Response::builder()
+        .header("content-type", "text/html; charset=utf-8")
+        .body(axum::body::Body::from(INDEX_HTML))
+        .unwrap()
 }
 
 /// Serve the shared sidebar CSS
@@ -166,6 +175,22 @@ async fn js_handler() -> axum::response::Response {
     axum::response::Response::builder()
         .header("content-type", "application/javascript; charset=utf-8")
         .body(axum::body::Body::from(ADMIN_JS))
+        .unwrap()
+}
+
+/// Serve the shared sidebar CSS
+async fn sidebar_css_handler() -> axum::response::Response {
+    axum::response::Response::builder()
+        .header("content-type", "text/css; charset=utf-8")
+        .body(axum::body::Body::from(SIDEBAR_CSS))
+        .unwrap()
+}
+
+/// Serve the shared sidebar JS
+async fn sidebar_js_handler() -> axum::response::Response {
+    axum::response::Response::builder()
+        .header("content-type", "application/javascript; charset=utf-8")
+        .body(axum::body::Body::from(SIDEBAR_JS))
         .unwrap()
 }
 
