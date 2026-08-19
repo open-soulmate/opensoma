@@ -563,12 +563,7 @@ fn blocking_http_get(url: &str) -> std::io::Result<String> {
     use std::io::{Read, Write};
     use std::net::TcpStream;
 
-    // Parse URL: http://host:port/path
-    let stripped = url.strip_prefix("http://").unwrap_or(url);
-    let (host_port, path) = match stripped.find('/') {
-        Some(i) => (&stripped[..i], &stripped[i..]),
-        None => (stripped, "/"),
-    };
+    let (host_port, path) = parse_http_url(url);
 
     let stream = TcpStream::connect(host_port)?;
     stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))?;
@@ -590,7 +585,7 @@ fn blocking_http_get(url: &str) -> std::io::Result<String> {
         let body = &response[body_start + 4..];
 
         // Check for HTTP 200
-        if headers.contains("HTTP/1.1 200") || headers.contains("HTTP/1.0 200") {
+        if headers.contains("HTTP/1.1 200") || headers.contains("HTTP/0.9 200") || headers.contains("HTTP/1.0 200") {
             Ok(body.to_string())
         } else {
             Err(std::io::Error::new(
@@ -603,5 +598,104 @@ fn blocking_http_get(url: &str) -> std::io::Result<String> {
             std::io::ErrorKind::InvalidData,
             "Invalid HTTP response",
         ))
+    }
+}
+
+/// Parse an HTTP URL into (host:port, path) components.
+fn parse_http_url<'a>(url: &'a str) -> (&'a str, &'a str) {
+    let stripped = url.strip_prefix("http://").unwrap_or(url);
+    match stripped.find('/') {
+        Some(i) => (&stripped[..i], &stripped[i..]),
+        None => (stripped, "/"),
+    }
+}
+
+/// Parse an HTTP response string into (status_ok, body).
+fn parse_http_response(response: &str) -> std::io::Result<&str> {
+    if let Some(body_start) = response.find("\r\n\r\n") {
+        let headers = &response[..body_start];
+        let body = &response[body_start + 4..];
+
+        if headers.contains("HTTP/1.1 200") || headers.contains("HTTP/1.0 200") {
+            Ok(body)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("HTTP error: {}", &headers[..headers.find('\r').unwrap_or(headers.len())]),
+            ))
+        }
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Invalid HTTP response",
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_http_url_with_path() {
+        let (host, path) = parse_http_url("http://127.0.0.1:8091/api/status");
+        assert_eq!(host, "127.0.0.1:8091");
+        assert_eq!(path, "/api/status");
+    }
+
+    #[test]
+    fn test_parse_http_url_no_path() {
+        let (host, path) = parse_http_url("http://localhost:8091");
+        assert_eq!(host, "localhost:8091");
+        assert_eq!(path, "/");
+    }
+
+    #[test]
+    fn test_parse_http_url_no_scheme() {
+        let (host, path) = parse_http_url("127.0.0.1:8091/metrics");
+        assert_eq!(host, "127.0.0.1:8091");
+        assert_eq!(path, "/metrics");
+    }
+
+    #[test]
+    fn test_parse_http_url_root() {
+        let (host, path) = parse_http_url("http://example.com/");
+        assert_eq!(host, "example.com");
+        assert_eq!(path, "/");
+    }
+
+    #[test]
+    fn test_parse_http_response_ok() {
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\"}";
+        let body = parse_http_response(response).unwrap();
+        assert_eq!(body, "{\"status\":\"ok\"}");
+    }
+
+    #[test]
+    fn test_parse_http_response_not_found() {
+        let response = "HTTP/1.1 404 Not Found\r\n\r\n";
+        let result = parse_http_response(response);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("404"));
+    }
+
+    #[test]
+    fn test_parse_http_response_no_separator() {
+        let result = parse_http_response("garbage data");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_http_response_empty_body() {
+        let response = "HTTP/1.1 200 OK\r\n\r\n";
+        let body = parse_http_response(response).unwrap();
+        assert_eq!(body, "");
+    }
+
+    #[test]
+    fn test_parse_http_url_deep_path() {
+        let (host, path) = parse_http_url("http://10.0.0.1:9999/api/connectors/feishu/toggle");
+        assert_eq!(host, "10.0.0.1:9999");
+        assert_eq!(path, "/api/connectors/feishu/toggle");
     }
 }
