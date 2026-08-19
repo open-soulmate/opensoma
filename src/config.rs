@@ -671,6 +671,30 @@ impl AppConfig {
                 wc.secret = Some(v);
             }
         }
+
+        // Slack overrides
+        if let Some(ref mut sc) = self.connector.slack {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_SLACK_BOT_TOKEN") {
+                sc.bot_token = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_SLACK_CHANNELS") {
+                sc.channels = v
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_SLACK_POLL_INTERVAL") {
+                if let Ok(n) = v.parse() {
+                    sc.poll_interval_secs = n;
+                }
+            }
+        }
+
+        // Streaming override
+        if let Ok(v) = std::env::var("OPENSOMA_SYNC_ENABLE_STREAMING") {
+            self.sync.enable_streaming = v == "true" || v == "1";
+        }
     }
 }
 
