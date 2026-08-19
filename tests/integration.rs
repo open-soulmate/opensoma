@@ -228,7 +228,8 @@ async fn test_full_pipeline_multiple_sources() {
 
     let handle = processor::start_pipeline(input_rx, output_tx, &config, None);
 
-    let sources = [("file", "file_change", "File content here"),
+    let sources = [
+        ("file", "file_change", "File content here"),
         (
             "process",
             "process_started",
@@ -244,7 +245,8 @@ async fn test_full_pipeline_multiple_sources() {
             "connector:daily-digest",
             "connector_event",
             "Daily digest from email",
-        )];
+        ),
+    ];
 
     for (i, (source, event_type, payload)) in sources.iter().enumerate() {
         let event = make_event(&format!("multi-{}", i), source, event_type, payload);

@@ -467,6 +467,12 @@ async fn metrics_handler(State(state): State<StatusServerState>) -> axum::respon
 
     lines.push("".to_string()); // trailing newline required by Prometheus
 
+    // Append pipeline-internal metrics (latency, cache, conflicts, etc.)
+    if let Some(ref pm) = state.pipeline_metrics {
+        let pipeline_prom = pm.to_prometheus();
+        lines.push(pipeline_prom);
+    }
+
     axum::response::Response::builder()
         .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
         .body(axum::body::Body::from(lines.join("\n")))
@@ -483,8 +489,8 @@ async fn api_connectors_health_handler(
     let event_counts = state.connector_event_counts.read().await;
 
     let connectors = vec![
-        "feishu", "dingtalk", "wecom", "rss", "email", "notion",
-        "git", "obsidian", "webhook", "github", "slack",
+        "feishu", "dingtalk", "wecom", "rss", "email", "notion", "git", "obsidian", "webhook",
+        "github", "slack",
     ];
 
     let health: Vec<serde_json::Value> = connectors
@@ -501,7 +507,10 @@ async fn api_connectors_health_handler(
         })
         .collect();
 
-    let enabled_count = health.iter().filter(|c| c["enabled"].as_bool().unwrap_or(false)).count();
+    let enabled_count = health
+        .iter()
+        .filter(|c| c["enabled"].as_bool().unwrap_or(false))
+        .count();
     let total_events: u64 = event_counts.values().sum();
 
     Json(serde_json::json!({
@@ -543,7 +552,11 @@ async fn api_system_info_handler(
     let os_version = sysinfo::System::os_version().unwrap_or_else(|| "unknown".to_string());
     let kernel = sysinfo::System::kernel_version().unwrap_or_else(|| "unknown".to_string());
     let cpu_cores = sys.cpus().len();
-    let cpu_brand = sys.cpus().first().map(|c| c.brand().to_string()).unwrap_or_default();
+    let cpu_brand = sys
+        .cpus()
+        .first()
+        .map(|c| c.brand().to_string())
+        .unwrap_or_default();
     let cpu_percent = sys.global_cpu_usage();
     let memory_total_mb = sys.total_memory() / 1024 / 1024;
     let memory_used_mb = sys.used_memory() / 1024 / 1024;
@@ -1248,8 +1261,8 @@ mod tests {
             .route("/api/cache/evict", post(api_cache_evict_handler))
             .route("/metrics", get(metrics_handler))
             .route("/api/system/info", get(api_system_info_handler))
-        .route("/api/connectors/health", get(api_connectors_health_handler))
-        .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
+            .route("/api/connectors/health", get(api_connectors_health_handler))
+            .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
             .with_state(state)
     }
 

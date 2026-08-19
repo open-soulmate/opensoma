@@ -204,5 +204,4 @@ mod tests {
         let found = snaps.values().any(|s| s.pid == my_pid);
         assert!(found, "Should find own PID {} in process list", my_pid);
     }
-
 }

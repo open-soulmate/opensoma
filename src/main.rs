@@ -1,7 +1,9 @@
 #![allow(dead_code)]
 
 use anyhow::Result;
-use opensoma::{collector, config, connector, grpc, health, heartbeat, metrics, processor, status_server, sync};
+use opensoma::{
+    collector, config, connector, grpc, health, heartbeat, metrics, processor, status_server, sync,
+};
 use tracing::info;
 use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter};
 
@@ -41,7 +43,8 @@ async fn main() -> Result<()> {
                     Err(e) => {
                         tracing::warn!(
                             "Invalid log level '{}' in config (keeping previous): {}",
-                            new_level, e
+                            new_level,
+                            e
                         );
                     }
                 }
@@ -85,9 +88,20 @@ async fn main() -> Result<()> {
     // Start processor pipeline: raw_rx → normalize → classify → enrich → dedup → processed_tx
     let pipeline_metrics = metrics::PipelineMetrics::new();
     let processor_handle = if config.sense.enabled {
-        processor::start_pipeline_with_sense(raw_rx, processed_tx, &config.processor, &config.sense, Some(pipeline_metrics.clone()))
+        processor::start_pipeline_with_sense(
+            raw_rx,
+            processed_tx,
+            &config.processor,
+            &config.sense,
+            Some(pipeline_metrics.clone()),
+        )
     } else {
-        processor::start_pipeline(raw_rx, processed_tx, &config.processor, Some(pipeline_metrics.clone()))
+        processor::start_pipeline(
+            raw_rx,
+            processed_tx,
+            &config.processor,
+            Some(pipeline_metrics.clone()),
+        )
     };
 
     // Shared cache stats for status server
@@ -703,8 +717,18 @@ fn run_connectors_list(config_path: &str) -> i32 {
         };
     }
 
-    collect_connector!(config.connector.feishu, "Feishu", "Feishu (Lark) API", "Webhook + Poll");
-    collect_connector!(config.connector.dingtalk, "DingTalk", "DingTalk Open API", "Poll");
+    collect_connector!(
+        config.connector.feishu,
+        "Feishu",
+        "Feishu (Lark) API",
+        "Webhook + Poll"
+    );
+    collect_connector!(
+        config.connector.dingtalk,
+        "DingTalk",
+        "DingTalk Open API",
+        "Poll"
+    );
     collect_connector!(config.connector.wecom, "WeCom", "Enterprise WeChat", "Poll");
     collect_connector!(config.connector.github, "GitHub", "GitHub REST API", "Poll");
     collect_connector!(config.connector.slack, "Slack", "Slack API", "Poll");
@@ -712,7 +736,12 @@ fn run_connectors_list(config_path: &str) -> i32 {
     collect_connector!(config.connector.email, "Email", "IMAP mailbox", "Poll");
     collect_connector!(config.connector.notion, "Notion", "Notion API", "Poll");
     collect_connector!(config.connector.git, "Git", "Git repository", "Poll");
-    collect_connector!(config.connector.obsidian, "Obsidian", "Obsidian vault", "Watch");
+    collect_connector!(
+        config.connector.obsidian,
+        "Obsidian",
+        "Obsidian vault",
+        "Watch"
+    );
     collect_connector!(config.connector.webhook, "Webhook", "HTTP POST", "Listen");
 
     if connectors.is_empty() {
@@ -733,7 +762,10 @@ fn run_connectors_list(config_path: &str) -> i32 {
 
     for c in &connectors {
         let status = if c.enabled { "✅ ON" } else { "⬜ OFF" };
-        println!("  {:<12} {:<8} {:<22} {}", c.name, status, c.source_type, c.mode);
+        println!(
+            "  {:<12} {:<8} {:<22} {}",
+            c.name, status, c.source_type, c.mode
+        );
     }
 
     println!();
@@ -767,12 +799,16 @@ fn blocking_http_get(url: &str) -> std::io::Result<String> {
         let body = &response[body_start + 4..];
 
         // Check for HTTP 200
-        if headers.contains("HTTP/1.1 200") || headers.contains("HTTP/0.9 200") || headers.contains("HTTP/1.0 200") {
+        if headers.contains("HTTP/1.1 200")
+            || headers.contains("HTTP/0.9 200")
+            || headers.contains("HTTP/1.0 200")
+        {
             Ok(body.to_string())
         } else {
-            Err(std::io::Error::other(
-                format!("HTTP error: {}", &headers[..headers.find('\r').unwrap_or(headers.len())]),
-            ))
+            Err(std::io::Error::other(format!(
+                "HTTP error: {}",
+                &headers[..headers.find('\r').unwrap_or(headers.len())]
+            )))
         }
     } else {
         Err(std::io::Error::new(
@@ -800,9 +836,10 @@ fn parse_http_response(response: &str) -> std::io::Result<&str> {
         if headers.contains("HTTP/1.1 200") || headers.contains("HTTP/1.0 200") {
             Ok(body)
         } else {
-            Err(std::io::Error::other(
-                format!("HTTP error: {}", &headers[..headers.find('\r').unwrap_or(headers.len())]),
-            ))
+            Err(std::io::Error::other(format!(
+                "HTTP error: {}",
+                &headers[..headers.find('\r').unwrap_or(headers.len())]
+            )))
         }
     } else {
         Err(std::io::Error::new(
@@ -846,7 +883,8 @@ mod tests {
 
     #[test]
     fn test_parse_http_response_ok() {
-        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\"}";
+        let response =
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\"}";
         let body = parse_http_response(response).unwrap();
         assert_eq!(body, "{\"status\":\"ok\"}");
     }

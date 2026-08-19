@@ -153,10 +153,7 @@ mod tests {
         // MAX_CHUNK_SIZE events = 1 chunk
         assert_eq!(MAX_CHUNK_SIZE.div_ceil(MAX_CHUNK_SIZE), 1);
         // MAX_CHUNK_SIZE + 1 events = 2 chunks
-        assert_eq!(
-            (MAX_CHUNK_SIZE + 1).div_ceil(MAX_CHUNK_SIZE),
-            2
-        );
+        assert_eq!((MAX_CHUNK_SIZE + 1).div_ceil(MAX_CHUNK_SIZE), 2);
     }
 
     #[test]

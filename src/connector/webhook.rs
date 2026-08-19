@@ -1,5 +1,9 @@
 use anyhow::{Context, Result};
-use axum::{http::StatusCode, routing::post, Router};
+use axum::{
+    http::StatusCode,
+    routing::{get, post},
+    Router,
+};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
@@ -67,8 +71,8 @@ pub async fn start(config: WebhookConfig, tx: EventTx) -> Result<JoinHandle<()>>
 /// Run the webhook HTTP server using axum.
 async fn run_axum_server(listen: &str, state: WebhookState) -> Result<()> {
     let app = Router::new()
-        .route("/{*path}", post(webhook_handler))
-        .route("/", post(webhook_handler))
+        .route("/", get(webhook_health).post(webhook_handler))
+        .route("/{*path}", get(webhook_health).post(webhook_handler))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(listen)
@@ -82,6 +86,17 @@ async fn run_axum_server(listen: &str, state: WebhookState) -> Result<()> {
         .context("Webhook server error")?;
 
     Ok(())
+}
+
+/// Health check endpoint for the webhook server (GET requests).
+async fn webhook_health() -> axum::response::Response {
+    axum::response::Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(
+            r#"{"status":"ok","component":"webhook"}"#,
+        ))
+        .unwrap()
 }
 
 /// Axum handler for incoming webhook POST requests.

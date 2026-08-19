@@ -163,5 +163,4 @@ mod tests {
         assert!(json.contains("connection refused"));
         assert!(json.contains("false"));
     }
-
 }

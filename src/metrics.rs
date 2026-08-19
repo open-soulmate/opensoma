@@ -4,10 +4,10 @@
 //! the collector → processor → sync pipeline. Complements the Prometheus
 //! endpoint in status_server with more granular pipeline-internal metrics.
 
+use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
-use serde::Serialize;
 
 /// Atomic metrics collector for the OpenSoma pipeline.
 ///
@@ -106,17 +106,17 @@ pub struct MetricsSnapshot {
 
 /// Connector index mapping for array-based counters.
 const CONNECTOR_NAMES: &[&str] = &[
-    "feishu",    // 0
-    "dingtalk",  // 1
-    "wecom",     // 2
-    "rss",       // 3
-    "email",     // 4
-    "webhook",   // 5
-    "github",    // 6
-    "notion",     // 7
-    "git",       // 8
-    "obsidian",  // 9
-    "slack",     // 10
+    "feishu",   // 0
+    "dingtalk", // 1
+    "wecom",    // 2
+    "rss",      // 3
+    "email",    // 4
+    "webhook",  // 5
+    "github",   // 6
+    "notion",   // 7
+    "git",      // 8
+    "obsidian", // 9
+    "slack",    // 10
 ];
 
 fn connector_index(name: &str) -> Option<usize> {
@@ -175,7 +175,9 @@ impl PipelineMetrics {
     }
 
     pub fn inc_events_dropped_collector(&self) {
-        self.inner.events_dropped_collector.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .events_dropped_collector
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn inc_collector_errors(&self) {
@@ -201,11 +203,15 @@ impl PipelineMetrics {
     }
 
     pub fn inc_events_deduplicated(&self) {
-        self.inner.events_deduplicated.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .events_deduplicated
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn inc_events_dropped_oversized(&self) {
-        self.inner.events_dropped_oversized.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .events_dropped_oversized
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn inc_processor_errors(&self) {
@@ -223,7 +229,9 @@ impl PipelineMetrics {
     }
 
     pub fn inc_events_sync_failed(&self) {
-        self.inner.events_sync_failed.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .events_sync_failed
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn inc_sync_retries(&self) {
@@ -257,15 +265,23 @@ impl PipelineMetrics {
     /// Record a processing latency sample.
     pub fn record_process_latency(&self, duration: std::time::Duration) {
         let us = duration.as_micros() as u64;
-        self.inner.process_latency_sum_us.fetch_add(us, Ordering::Relaxed);
-        self.inner.process_latency_count.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .process_latency_sum_us
+            .fetch_add(us, Ordering::Relaxed);
+        self.inner
+            .process_latency_count
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record a sync latency sample.
     pub fn record_sync_latency(&self, duration: std::time::Duration) {
         let us = duration.as_micros() as u64;
-        self.inner.sync_latency_sum_us.fetch_add(us, Ordering::Relaxed);
-        self.inner.sync_latency_count.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .sync_latency_sum_us
+            .fetch_add(us, Ordering::Relaxed);
+        self.inner
+            .sync_latency_count
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     // ── Cache counters ──────────────────────────────────────────
@@ -285,11 +301,15 @@ impl PipelineMetrics {
     // ── Conflict counters ───────────────────────────────────────
 
     pub fn inc_conflicts_detected(&self) {
-        self.inner.conflicts_detected.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .conflicts_detected
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn inc_conflicts_resolved(&self) {
-        self.inner.conflicts_resolved.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .conflicts_resolved
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     // ── Snapshot ────────────────────────────────────────────────
@@ -300,7 +320,10 @@ impl PipelineMetrics {
             .iter()
             .enumerate()
             .map(|(i, &name)| {
-                (name.to_string(), self.inner.connector_events[i].load(Ordering::Relaxed))
+                (
+                    name.to_string(),
+                    self.inner.connector_events[i].load(Ordering::Relaxed),
+                )
             })
             .collect();
 
@@ -308,7 +331,10 @@ impl PipelineMetrics {
             .iter()
             .enumerate()
             .map(|(i, &name)| {
-                (name.to_string(), self.inner.connector_errors[i].load(Ordering::Relaxed))
+                (
+                    name.to_string(),
+                    self.inner.connector_errors[i].load(Ordering::Relaxed),
+                )
             })
             .collect();
 
@@ -373,54 +399,201 @@ impl PipelineMetrics {
         // Collector metrics
         lines.push("# HELP opensoma_pipeline_collected_total Events entering the pipeline.".into());
         lines.push("# TYPE opensoma_pipeline_collected_total counter".into());
-        lines.push(format!("opensoma_pipeline_collected_total {}", snap.events_collected));
+        lines.push(format!(
+            "opensoma_pipeline_collected_total {}",
+            snap.events_collected
+        ));
 
-        lines.push("# HELP opensoma_pipeline_dropped_collector_total Events dropped at collector stage.".into());
+        lines.push(
+            "# HELP opensoma_pipeline_dropped_collector_total Events dropped at collector stage."
+                .into(),
+        );
         lines.push("# TYPE opensoma_pipeline_dropped_collector_total counter".into());
-        lines.push(format!("opensoma_pipeline_dropped_collector_total {}", snap.events_dropped_collector));
+        lines.push(format!(
+            "opensoma_pipeline_dropped_collector_total {}",
+            snap.events_dropped_collector
+        ));
 
         // Processor metrics
-        lines.push("# HELP opensoma_pipeline_processed_total Events passing through processor.".into());
+        lines.push(
+            "# HELP opensoma_pipeline_processed_total Events passing through processor.".into(),
+        );
         lines.push("# TYPE opensoma_pipeline_processed_total counter".into());
-        lines.push(format!("opensoma_pipeline_processed_total {}", snap.events_processed));
+        lines.push(format!(
+            "opensoma_pipeline_processed_total {}",
+            snap.events_processed
+        ));
 
         lines.push("# HELP opensoma_pipeline_deduplicated_total Duplicate events removed.".into());
         lines.push("# TYPE opensoma_pipeline_deduplicated_total counter".into());
-        lines.push(format!("opensoma_pipeline_deduplicated_total {}", snap.events_deduplicated));
+        lines.push(format!(
+            "opensoma_pipeline_deduplicated_total {}",
+            snap.events_deduplicated
+        ));
 
         lines.push("# HELP opensoma_pipeline_oversized_total Oversized events dropped.".into());
         lines.push("# TYPE opensoma_pipeline_oversized_total counter".into());
-        lines.push(format!("opensoma_pipeline_oversized_total {}", snap.events_dropped_oversized));
+        lines.push(format!(
+            "opensoma_pipeline_oversized_total {}",
+            snap.events_dropped_oversized
+        ));
 
         // Sync metrics
         lines.push("# HELP opensoma_pipeline_synced_total Events synced to Soul.".into());
         lines.push("# TYPE opensoma_pipeline_synced_total counter".into());
-        lines.push(format!("opensoma_pipeline_synced_total {}", snap.events_synced));
+        lines.push(format!(
+            "opensoma_pipeline_synced_total {}",
+            snap.events_synced
+        ));
 
         lines.push("# HELP opensoma_pipeline_sync_failed_total Failed sync attempts.".into());
         lines.push("# TYPE opensoma_pipeline_sync_failed_total counter".into());
-        lines.push(format!("opensoma_pipeline_sync_failed_total {}", snap.events_sync_failed));
+        lines.push(format!(
+            "opensoma_pipeline_sync_failed_total {}",
+            snap.events_sync_failed
+        ));
 
         // Latency
-        lines.push("# HELP opensoma_process_latency_avg_us Average processing latency in microseconds.".into());
+        lines.push(
+            "# HELP opensoma_process_latency_avg_us Average processing latency in microseconds."
+                .into(),
+        );
         lines.push("# TYPE opensoma_process_latency_avg_us gauge".into());
-        lines.push(format!("opensoma_process_latency_avg_us {}", snap.avg_process_latency_us));
+        lines.push(format!(
+            "opensoma_process_latency_avg_us {}",
+            snap.avg_process_latency_us
+        ));
 
-        lines.push("# HELP opensoma_sync_latency_avg_us Average sync latency in microseconds.".into());
+        lines.push(
+            "# HELP opensoma_sync_latency_avg_us Average sync latency in microseconds.".into(),
+        );
         lines.push("# TYPE opensoma_sync_latency_avg_us gauge".into());
-        lines.push(format!("opensoma_sync_latency_avg_us {}", snap.avg_sync_latency_us));
+        lines.push(format!(
+            "opensoma_sync_latency_avg_us {}",
+            snap.avg_sync_latency_us
+        ));
 
         // Cache
         lines.push("# HELP opensoma_cache_hit_rate Cache hit rate (0.0-1.0).".into());
         lines.push("# TYPE opensoma_cache_hit_rate gauge".into());
-        lines.push(format!("opensoma_cache_hit_rate {:.4}", snap.cache_hit_rate));
+        lines.push(format!(
+            "opensoma_cache_hit_rate {:.4}",
+            snap.cache_hit_rate
+        ));
 
         // Per-connector events
         lines.push("# HELP opensoma_connector_events_total Events per connector.".into());
         lines.push("# TYPE opensoma_connector_events_total counter".into());
         for (name, count) in &snap.connector_events {
-            lines.push(format!("opensoma_connector_events_total{{connector=\"{}\"}} {}", name, count));
+            lines.push(format!(
+                "opensoma_connector_events_total{{connector=\"{}\"}} {}",
+                name, count
+            ));
         }
+
+        // Cache details
+        lines.push("# HELP opensoma_cache_hits_total Cache hits.".into());
+        lines.push("# TYPE opensoma_cache_hits_total counter".into());
+        lines.push(format!("opensoma_cache_hits_total {}", snap.cache_hits));
+
+        lines.push("# HELP opensoma_cache_misses_total Cache misses.".into());
+        lines.push("# TYPE opensoma_cache_misses_total counter".into());
+        lines.push(format!("opensoma_cache_misses_total {}", snap.cache_misses));
+
+        lines.push("# HELP opensoma_cache_evictions_total Cache evictions.".into());
+        lines.push("# TYPE opensoma_cache_evictions_total counter".into());
+        lines.push(format!(
+            "opensoma_cache_evictions_total {}",
+            snap.cache_evictions
+        ));
+
+        // Per-connector errors
+        lines.push("# HELP opensoma_connector_errors_total Errors per connector.".into());
+        lines.push("# TYPE opensoma_connector_errors_total counter".into());
+        for (name, count) in &snap.connector_errors {
+            lines.push(format!(
+                "opensoma_connector_errors_total{{connector=\"{}\"}} {}",
+                name, count
+            ));
+        }
+
+        // Conflict resolution
+        lines.push(
+            "# HELP opensoma_conflicts_detected_total Conflicts detected during sync.".into(),
+        );
+        lines.push("# TYPE opensoma_conflicts_detected_total counter".into());
+        lines.push(format!(
+            "opensoma_conflicts_detected_total {}",
+            snap.conflicts_detected
+        ));
+
+        lines.push("# HELP opensoma_conflicts_resolved_total Conflicts resolved.".into());
+        lines.push("# TYPE opensoma_conflicts_resolved_total counter".into());
+        lines.push(format!(
+            "opensoma_conflicts_resolved_total {}",
+            snap.conflicts_resolved
+        ));
+
+        // Processor breakdown
+        lines.push("# HELP opensoma_pipeline_normalized_total Events normalized.".into());
+        lines.push("# TYPE opensoma_pipeline_normalized_total counter".into());
+        lines.push(format!(
+            "opensoma_pipeline_normalized_total {}",
+            snap.events_normalized
+        ));
+
+        lines.push("# HELP opensoma_pipeline_classified_total Events classified.".into());
+        lines.push("# TYPE opensoma_pipeline_classified_total counter".into());
+        lines.push(format!(
+            "opensoma_pipeline_classified_total {}",
+            snap.events_classified
+        ));
+
+        lines.push("# HELP opensoma_pipeline_enriched_total Events enriched.".into());
+        lines.push("# TYPE opensoma_pipeline_enriched_total counter".into());
+        lines.push(format!(
+            "opensoma_pipeline_enriched_total {}",
+            snap.events_enriched
+        ));
+
+        // Sync retries
+        lines.push("# HELP opensoma_sync_retries_total Sync retry attempts.".into());
+        lines.push("# TYPE opensoma_sync_retries_total counter".into());
+        lines.push(format!("opensoma_sync_retries_total {}", snap.sync_retries));
+
+        // Upload stats
+        lines.push("# HELP opensoma_upload_batches_total Upload batch count.".into());
+        lines.push("# TYPE opensoma_upload_batches_total counter".into());
+        lines.push(format!(
+            "opensoma_upload_batches_total {}",
+            snap.upload_batches
+        ));
+
+        lines.push("# HELP opensoma_upload_bytes_total Total bytes uploaded.".into());
+        lines.push("# TYPE opensoma_upload_bytes_total counter".into());
+        lines.push(format!("opensoma_upload_bytes_total {}", snap.upload_bytes));
+
+        // Collector breakdown
+        lines.push("# HELP opensoma_collector_dropped_total Events dropped at collector.".into());
+        lines.push("# TYPE opensoma_collector_dropped_total counter".into());
+        lines.push(format!(
+            "opensoma_collector_dropped_total {}",
+            snap.events_dropped_collector
+        ));
+
+        lines.push("# HELP opensoma_collector_errors_total Collector errors.".into());
+        lines.push("# TYPE opensoma_collector_errors_total counter".into());
+        lines.push(format!(
+            "opensoma_collector_errors_total {}",
+            snap.collector_errors
+        ));
+
+        lines.push("# HELP opensoma_processor_errors_total Processor errors.".into());
+        lines.push("# TYPE opensoma_processor_errors_total counter".into());
+        lines.push(format!(
+            "opensoma_processor_errors_total {}",
+            snap.processor_errors
+        ));
 
         lines.push("".into()); // trailing newline
         lines.join("\n")
@@ -547,13 +720,25 @@ mod tests {
 
         let snap = m.snapshot();
         // Find github count
-        let github_events = snap.connector_events.iter().find(|(n, _)| n == "github").unwrap();
+        let github_events = snap
+            .connector_events
+            .iter()
+            .find(|(n, _)| n == "github")
+            .unwrap();
         assert_eq!(github_events.1, 2);
 
-        let feishu_events = snap.connector_events.iter().find(|(n, _)| n == "feishu").unwrap();
+        let feishu_events = snap
+            .connector_events
+            .iter()
+            .find(|(n, _)| n == "feishu")
+            .unwrap();
         assert_eq!(feishu_events.1, 1);
 
-        let github_errors = snap.connector_errors.iter().find(|(n, _)| n == "github").unwrap();
+        let github_errors = snap
+            .connector_errors
+            .iter()
+            .find(|(n, _)| n == "github")
+            .unwrap();
         assert_eq!(github_errors.1, 1);
     }
 
@@ -639,6 +824,126 @@ mod tests {
         assert!(prom.contains("opensoma_pipeline_synced_total 1"));
         assert!(prom.contains("# TYPE"));
         assert!(prom.contains("# HELP"));
+    }
+
+    #[test]
+    fn test_prometheus_format_comprehensive() {
+        let m = PipelineMetrics::new();
+        // Populate various counters
+        m.inc_events_collected();
+        m.inc_events_collected();
+        m.inc_events_normalized();
+        m.inc_events_classified();
+        m.inc_events_enriched();
+        m.inc_events_deduplicated();
+        m.inc_events_processed();
+        m.inc_events_synced_by(5);
+        m.inc_events_sync_failed();
+        m.inc_sync_retries();
+        m.inc_upload_batches();
+        m.add_upload_bytes(4096);
+        m.inc_cache_hits();
+        m.inc_cache_hits();
+        m.inc_cache_misses();
+        m.inc_cache_evictions();
+        m.inc_conflicts_detected();
+        m.inc_conflicts_resolved();
+        m.inc_connector_events("github");
+        m.inc_connector_errors("github");
+        m.inc_collector_errors();
+        m.inc_processor_errors();
+        m.inc_events_dropped_collector();
+        m.inc_events_dropped_oversized();
+
+        let prom = m.to_prometheus();
+
+        // Conflict metrics
+        assert!(
+            prom.contains("opensoma_conflicts_detected_total 1"),
+            "Missing conflicts_detected"
+        );
+        assert!(
+            prom.contains("opensoma_conflicts_resolved_total 1"),
+            "Missing conflicts_resolved"
+        );
+
+        // Cache detail metrics
+        assert!(
+            prom.contains("opensoma_cache_hits_total 2"),
+            "Missing cache_hits"
+        );
+        assert!(
+            prom.contains("opensoma_cache_misses_total 1"),
+            "Missing cache_misses"
+        );
+        assert!(
+            prom.contains("opensoma_cache_evictions_total 1"),
+            "Missing cache_evictions"
+        );
+        assert!(
+            prom.contains("opensoma_cache_hit_rate"),
+            "Missing cache_hit_rate"
+        );
+
+        // Per-connector errors
+        assert!(
+            prom.contains("opensoma_connector_errors_total{connector=\"github\"} 1"),
+            "Missing connector_errors"
+        );
+
+        // Processor breakdown
+        assert!(
+            prom.contains("opensoma_pipeline_normalized_total 1"),
+            "Missing normalized"
+        );
+        assert!(
+            prom.contains("opensoma_pipeline_classified_total 1"),
+            "Missing classified"
+        );
+        assert!(
+            prom.contains("opensoma_pipeline_enriched_total 1"),
+            "Missing enriched"
+        );
+
+        // Sync details
+        assert!(
+            prom.contains("opensoma_sync_retries_total 1"),
+            "Missing sync_retries"
+        );
+        assert!(
+            prom.contains("opensoma_upload_batches_total 1"),
+            "Missing upload_batches"
+        );
+        assert!(
+            prom.contains("opensoma_upload_bytes_total 4096"),
+            "Missing upload_bytes"
+        );
+
+        // Error counters
+        assert!(
+            prom.contains("opensoma_collector_errors_total 1"),
+            "Missing collector_errors"
+        );
+        assert!(
+            prom.contains("opensoma_processor_errors_total 1"),
+            "Missing processor_errors"
+        );
+        assert!(
+            prom.contains("opensoma_collector_dropped_total 1"),
+            "Missing collector_dropped"
+        );
+
+        // Verify all lines have HELP/TYPE pairs for new metrics
+        let lines: Vec<&str> = prom.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            if line.starts_with("# HELP opensoma_conflicts") {
+                assert!(
+                    lines[i + 1].starts_with("# TYPE"),
+                    "Missing TYPE after HELP at line {}",
+                    i
+                );
+            }
+        }
     }
 
     #[test]

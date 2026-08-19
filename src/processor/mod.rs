@@ -61,16 +61,22 @@ async fn run_pipeline(
 
     while let Some(mut event) = input.recv().await {
         let timer = metrics.as_ref().map(|m| m.start_process_timer());
-        if let Some(ref m) = metrics { m.inc_events_processed(); }
+        if let Some(ref m) = metrics {
+            m.inc_events_processed();
+        }
 
         // Step 1: Normalize
         normalize::normalize_event(&mut event, &config);
-        if let Some(ref m) = metrics { m.inc_events_normalized(); }
+        if let Some(ref m) = metrics {
+            m.inc_events_normalized();
+        }
 
         // Step 2: Size check
         if event.payload.len() > config.max_event_size {
             debug!("Dropping oversized event: {} bytes", event.payload.len());
-            if let Some(ref m) = metrics { m.inc_events_dropped_oversized(); }
+            if let Some(ref m) = metrics {
+                m.inc_events_dropped_oversized();
+            }
             continue;
         }
 
@@ -85,25 +91,33 @@ async fn run_pipeline(
         if config.enable_classify {
             let classification = classify::classify_event(&event);
             classify::apply_classification(&mut event, &classification);
-            if let Some(ref m) = metrics { m.inc_events_classified(); }
+            if let Some(ref m) = metrics {
+                m.inc_events_classified();
+            }
         }
 
         // Step 5: Enrich (if enabled)
         if config.enable_enrich {
             let enrichment = enrich::enrich_event(&event);
             enrich::apply_enrichment(&mut event, &enrichment);
-            if let Some(ref m) = metrics { m.inc_events_enriched(); }
+            if let Some(ref m) = metrics {
+                m.inc_events_enriched();
+            }
         }
 
         // Step 6: Dedup check
         if dedup.is_duplicate(&event).await {
             debug!("Dropping duplicate event: {}", event.id);
-            if let Some(ref m) = metrics { m.inc_events_deduplicated(); }
+            if let Some(ref m) = metrics {
+                m.inc_events_deduplicated();
+            }
             continue;
         }
 
         // Step 7: Forward to output
-        if let Some(t) = timer { t.elapsed(); }
+        if let Some(t) = timer {
+            t.elapsed();
+        }
         if let Err(e) = output.send(event).await {
             error!("Pipeline output send error: {}", e);
             break;
@@ -562,7 +576,10 @@ mod tests {
         assert_eq!(snap.events_normalized, 3, "Should have normalized 3 events");
         assert_eq!(snap.events_classified, 3, "Should have classified 3 events");
         assert_eq!(snap.events_enriched, 3, "Should have enriched 3 events");
-        assert!(snap.avg_process_latency_us > 0, "Should have recorded latency");
+        assert!(
+            snap.avg_process_latency_us > 0,
+            "Should have recorded latency"
+        );
 
         handle.abort();
     }

@@ -53,14 +53,16 @@ impl HealthChecker {
     pub async fn record_healthy(&self, name: &str) {
         let now = chrono::Utc::now().timestamp_millis();
         let mut states = self.states.write().await;
-        let entry = states.entry(name.to_string()).or_insert_with(|| ConnectorHealth {
-            name: name.to_string(),
-            status: HealthStatus::Unknown,
-            last_check_ms: 0,
-            last_healthy_ms: None,
-            consecutive_failures: 0,
-            error_message: None,
-        });
+        let entry = states
+            .entry(name.to_string())
+            .or_insert_with(|| ConnectorHealth {
+                name: name.to_string(),
+                status: HealthStatus::Unknown,
+                last_check_ms: 0,
+                last_healthy_ms: None,
+                consecutive_failures: 0,
+                error_message: None,
+            });
 
         entry.status = HealthStatus::Healthy;
         entry.last_check_ms = now;
@@ -74,14 +76,16 @@ impl HealthChecker {
     pub async fn record_unhealthy(&self, name: &str, error: &str) {
         let now = chrono::Utc::now().timestamp_millis();
         let mut states = self.states.write().await;
-        let entry = states.entry(name.to_string()).or_insert_with(|| ConnectorHealth {
-            name: name.to_string(),
-            status: HealthStatus::Unknown,
-            last_check_ms: 0,
-            last_healthy_ms: None,
-            consecutive_failures: 0,
-            error_message: None,
-        });
+        let entry = states
+            .entry(name.to_string())
+            .or_insert_with(|| ConnectorHealth {
+                name: name.to_string(),
+                status: HealthStatus::Unknown,
+                last_check_ms: 0,
+                last_healthy_ms: None,
+                consecutive_failures: 0,
+                error_message: None,
+            });
 
         entry.consecutive_failures += 1;
         entry.last_check_ms = now;
@@ -117,9 +121,18 @@ impl HealthChecker {
     pub async fn summary(&self) -> HealthSummary {
         let states = self.states.read().await;
         let total = states.len();
-        let healthy = states.values().filter(|h| h.status == HealthStatus::Healthy).count();
-        let degraded = states.values().filter(|h| h.status == HealthStatus::Degraded).count();
-        let unhealthy = states.values().filter(|h| h.status == HealthStatus::Unhealthy).count();
+        let healthy = states
+            .values()
+            .filter(|h| h.status == HealthStatus::Healthy)
+            .count();
+        let degraded = states
+            .values()
+            .filter(|h| h.status == HealthStatus::Degraded)
+            .count();
+        let unhealthy = states
+            .values()
+            .filter(|h| h.status == HealthStatus::Unhealthy)
+            .count();
 
         HealthSummary {
             total,

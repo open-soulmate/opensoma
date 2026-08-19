@@ -107,7 +107,9 @@ async fn upload_batch(
                     m.inc_events_synced_by(resp.accepted as u64);
                     m.add_upload_bytes(batch_bytes);
                 }
-                if let Some(t) = timer.take() { t.elapsed(); }
+                if let Some(t) = timer.take() {
+                    t.elapsed();
+                }
                 info!(
                     "Upload success — accepted={}, rejected={}",
                     resp.accepted, resp.rejected
@@ -130,7 +132,9 @@ async fn upload_batch(
                     );
                     tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
                     backoff = (backoff as f64 * 1.5) as u64;
-                    if let Some(ref m) = metrics { m.inc_sync_retries(); }
+                    if let Some(ref m) = metrics {
+                        m.inc_sync_retries();
+                    }
                 } else {
                     error!(
                         "Upload failed after {} attempts: {}. Events re-queued to cache.",
@@ -139,7 +143,9 @@ async fn upload_batch(
                     if let Some(ref m) = metrics {
                         m.inc_events_sync_failed();
                     }
-                    if let Some(t) = timer.take() { t.elapsed(); }
+                    if let Some(t) = timer.take() {
+                        t.elapsed();
+                    }
                     for event in &batch {
                         let _ = cache.put(event);
                     }

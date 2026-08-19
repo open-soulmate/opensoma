@@ -144,5 +144,4 @@ mod tests {
         assert!(json.get("disk_used_mb").is_some());
         assert!(json.get("timestamp_ms").is_some());
     }
-
 }

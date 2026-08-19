@@ -62,7 +62,10 @@ mod tests {
     #[test]
     fn test_version_string_format() {
         let vs = version_string();
-        assert!(vs.starts_with("opensoma v"), "Should start with 'opensoma v'");
+        assert!(
+            vs.starts_with("opensoma v"),
+            "Should start with 'opensoma v'"
+        );
         assert!(vs.contains(VERSION));
     }
 

@@ -310,8 +310,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_async_succeeds_first_try_value() {
-        let result: anyhow::Result<String> =
-            retry_async!("test_string", 3, { Ok::<String, anyhow::Error>("hello".to_string()) });
+        let result: anyhow::Result<String> = retry_async!("test_string", 3, {
+            Ok::<String, anyhow::Error>("hello".to_string())
+        });
         assert_eq!(result.unwrap(), "hello");
     }
 
@@ -328,5 +329,4 @@ mod tests {
             retry_async!("single_fail", 1, { Err(anyhow::anyhow!("oops")) });
         assert!(result.is_err());
     }
-
 }
