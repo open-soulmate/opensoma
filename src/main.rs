@@ -150,10 +150,22 @@ fn parse_config_path() -> String {
         println!("    --status               Query running daemon status and exit");
         println!("    --metrics              Print Prometheus metrics from running daemon");
         println!("    --health               Quick health check (exit 0=ok, 1=down)");
+        println!("    --connectors           List configured connectors and their status");
         println!("    -V, --version          Print version information");
         println!("    --version-json         Print version as JSON (for scripts)");
         println!("    -h, --help             Print this help message");
         std::process::exit(0);
+    }
+
+    // Handle --connectors
+    if args.iter().any(|a| a == "--connectors") {
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_connectors_list(&config_path));
     }
 
     // Handle --status
@@ -612,6 +624,80 @@ fn run_health_check(port: u16) -> i32 {
             1
         }
     }
+}
+
+/// List configured connectors from config.toml and display their status.
+fn run_connectors_list(config_path: &str) -> i32 {
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    println!("╔══════════════════════════════════════════════╗");
+    println!("║         OpenSoma Connectors                  ║");
+    println!("╚══════════════════════════════════════════════╝");
+    println!();
+
+    struct ConnectorInfo {
+        name: &'static str,
+        enabled: bool,
+        source_type: &'static str,
+        mode: &'static str,
+    }
+
+    let mut connectors: Vec<ConnectorInfo> = Vec::new();
+
+    macro_rules! collect_connector {
+        ($field:expr, $name:expr, $source:expr, $mode:expr) => {
+            if let Some(ref c) = $field {
+                connectors.push(ConnectorInfo {
+                    name: $name,
+                    enabled: c.enabled,
+                    source_type: $source,
+                    mode: $mode,
+                });
+            }
+        };
+    }
+
+    collect_connector!(config.connector.feishu, "Feishu", "Feishu (Lark) API", "Webhook + Poll");
+    collect_connector!(config.connector.dingtalk, "DingTalk", "DingTalk Open API", "Poll");
+    collect_connector!(config.connector.wecom, "WeCom", "Enterprise WeChat", "Poll");
+    collect_connector!(config.connector.github, "GitHub", "GitHub REST API", "Poll");
+    collect_connector!(config.connector.slack, "Slack", "Slack API", "Poll");
+    collect_connector!(config.connector.rss, "RSS", "RSS/Atom feeds", "Poll");
+    collect_connector!(config.connector.email, "Email", "IMAP mailbox", "Poll");
+    collect_connector!(config.connector.notion, "Notion", "Notion API", "Poll");
+    collect_connector!(config.connector.git, "Git", "Git repository", "Poll");
+    collect_connector!(config.connector.obsidian, "Obsidian", "Obsidian vault", "Watch");
+    collect_connector!(config.connector.webhook, "Webhook", "HTTP POST", "Listen");
+
+    if connectors.is_empty() {
+        println!("  No connectors configured.");
+        println!("  Run 'opensoma --init' to generate a config with connector examples.");
+        return 0;
+    }
+
+    let enabled_count = connectors.iter().filter(|c| c.enabled).count();
+    println!(
+        "  {}/{} connectors enabled\n",
+        enabled_count,
+        connectors.len()
+    );
+
+    println!("  {:<12} {:<8} {:<22} {}", "Name", "Status", "Source", "Mode");
+    println!("  {:<12} {:<8} {:<22} {}", "────", "──────", "──────", "────");
+
+    for c in &connectors {
+        let status = if c.enabled { "✅ ON" } else { "⬜ OFF" };
+        println!("  {:<12} {:<8} {:<22} {}", c.name, status, c.source_type, c.mode);
+    }
+
+    println!();
+    0
 }
 
 /// Blocking HTTP GET using std::net::TcpStream (no async runtime needed).
