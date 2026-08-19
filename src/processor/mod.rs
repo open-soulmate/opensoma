@@ -19,7 +19,7 @@ pub fn start_pipeline(
     let config = config.clone();
 
     tokio::spawn(async move {
-        run_pipeline(raw_rx, output_tx, config, None).await;
+        run_pipeline(raw_rx, output_tx, config, None, None).await;
     })
 }
 
@@ -34,7 +34,7 @@ pub fn start_pipeline_with_sense(
     let sense_config = sense_config.clone();
 
     tokio::spawn(async move {
-        run_pipeline(raw_rx, output_tx, config, Some(sense_config)).await;
+        run_pipeline(raw_rx, output_tx, config, Some(sense_config), None).await;
     })
 }
 
@@ -44,6 +44,7 @@ async fn run_pipeline(
     output: EventTx,
     config: ProcessorConfig,
     sense_config: Option<SenseConfig>,
+    metrics: Option<crate::metrics::PipelineMetrics>,
 ) {
     let dedup = dedup::Deduplicator::new(config.dedup_window_secs);
     let sense_enabled = sense_config.as_ref().is_some_and(|s| s.enabled);
@@ -57,12 +58,17 @@ async fn run_pipeline(
     );
 
     while let Some(mut event) = input.recv().await {
+        let timer = metrics.as_ref().map(|m| m.start_process_timer());
+        if let Some(ref m) = metrics { m.inc_events_processed(); }
+
         // Step 1: Normalize
         normalize::normalize_event(&mut event, &config);
+        if let Some(ref m) = metrics { m.inc_events_normalized(); }
 
         // Step 2: Size check
         if event.payload.len() > config.max_event_size {
             debug!("Dropping oversized event: {} bytes", event.payload.len());
+            if let Some(ref m) = metrics { m.inc_events_dropped_oversized(); }
             continue;
         }
 
@@ -77,21 +83,25 @@ async fn run_pipeline(
         if config.enable_classify {
             let classification = classify::classify_event(&event);
             classify::apply_classification(&mut event, &classification);
+            if let Some(ref m) = metrics { m.inc_events_classified(); }
         }
 
         // Step 5: Enrich (if enabled)
         if config.enable_enrich {
             let enrichment = enrich::enrich_event(&event);
             enrich::apply_enrichment(&mut event, &enrichment);
+            if let Some(ref m) = metrics { m.inc_events_enriched(); }
         }
 
         // Step 6: Dedup check
         if dedup.is_duplicate(&event).await {
             debug!("Dropping duplicate event: {}", event.id);
+            if let Some(ref m) = metrics { m.inc_events_deduplicated(); }
             continue;
         }
 
         // Step 7: Forward to output
+        if let Some(t) = timer { t.elapsed(); }
         if let Err(e) = output.send(event).await {
             error!("Pipeline output send error: {}", e);
             break;
