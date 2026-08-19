@@ -265,17 +265,30 @@
     async function renderMonitor() {
       const status = await apiFetch('/status');
       const connectors = await apiFetch('/connectors') || [];
+      const sysInfo = await apiFetch('/system/info');
+
+      const cpuCores = sysInfo ? sysInfo.cpu.cores : '-';
+      const cpuBrand = sysInfo ? sysInfo.cpu.brand : '';
+      const memPct = sysInfo ? sysInfo.memory.usage_percent : '-';
+      const memAvail = sysInfo ? sysInfo.memory.available_mb : '-';
+      const osName = sysInfo ? sysInfo.os : '-';
+      const kernel = sysInfo ? sysInfo.kernel : '-';
+      const disks = sysInfo ? sysInfo.disks : [];
+      const networks = sysInfo ? sysInfo.networks : [];
+
+      let diskRows = disks.map(d => `<tr><td class="monospace">${d.mount}</td><td>${d.total_gb} GB</td><td>${d.available_gb} GB</td><td>${d.filesystem}</td></tr>`).join('');
+      let netRows = networks.slice(0, 6).map(n => `<tr><td class="monospace">${n.name}</td><td>${(n.rx_bytes/1024/1024).toFixed(1)} MB</td><td>${(n.tx_bytes/1024/1024).toFixed(1)} MB</td></tr>`).join('');
 
       return `
         <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">系统监控</h2>
         <div class="stats-grid">
           <div class="stat-card">
             <div class="stat-value" style="color:#22c55e;">${status ? status.cpu_percent.toFixed(1) + '%' : '-'}</div>
-            <div class="stat-label">CPU 使用率</div>
+            <div class="stat-label">CPU 使用率 (${cpuCores} cores)</div>
           </div>
           <div class="stat-card">
-            <div class="stat-value">${status ? Math.round(status.memory_used_mb / status.memory_total_mb * 100) + '%' : '-'}</div>
-            <div class="stat-label">内存使用率</div>
+            <div class="stat-value">${memPct}%</div>
+            <div class="stat-label">内存使用率 (${memAvail} MB 可用)</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${connectors.filter(c => c.status === 'running').length} / ${connectors.length}</div>
@@ -286,6 +299,18 @@
             <div class="stat-label">运行时间</div>
           </div>
         </div>
+        <div class="card">
+          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">系统信息</h3>
+          <table>
+            <tbody>
+              <tr><td style="color:#71717a;width:120px;">操作系统</td><td class="monospace">${osName}</td></tr>
+              <tr><td style="color:#71717a;">内核</td><td class="monospace">${kernel}</td></tr>
+              <tr><td style="color:#71717a;">CPU</td><td class="monospace">${cpuBrand} (${cpuCores} cores)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        ${diskRows ? '<div class="card"><h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">磁盘使用</h3><table><thead><tr><th>挂载点</th><th>总量</th><th>可用</th><th>文件系统</th></tr></thead><tbody>' + diskRows + '</tbody></table></div>' : ''}
+        ${netRows ? '<div class="card"><h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">网络接口</h3><table><thead><tr><th>接口</th><th>接收</th><th>发送</th></tr></thead><tbody>' + netRows + '</tbody></table></div>' : ''}
         <div class="card">
           <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">最近事件</h3>
           <div id="recent-events" style="font-size:13px;color:#71717a;">加载中...</div>

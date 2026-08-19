@@ -108,6 +108,7 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/api/page/:page", get(api_page_handler))
         .route("/api/events/recent", get(api_events_recent_handler))
         .route("/api/events/search", get(api_events_search_handler))
+        .route("/api/system/info", get(api_system_info_handler))
         .with_state(state)
 }
 
@@ -139,6 +140,7 @@ pub async fn start_status_server(
         .route("/api/page/:page", get(api_page_handler))
         .route("/api/events/recent", get(api_events_recent_handler))
         .route("/api/events/search", get(api_events_search_handler))
+        .route("/api/system/info", get(api_system_info_handler))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", port);
@@ -459,6 +461,78 @@ async fn metrics_handler(State(state): State<StatusServerState>) -> axum::respon
         .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
         .body(axum::body::Body::from(lines.join("\n")))
         .unwrap()
+}
+
+/// /api/system/info — detailed system diagnostics for monitoring and troubleshooting.
+/// Returns OS, kernel, CPU cores, disk usage, network interfaces, and process info.
+async fn api_system_info_handler(
+    State(state): State<StatusServerState>,
+) -> Json<serde_json::Value> {
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_all();
+
+    let hostname = sysinfo::System::host_name().unwrap_or_else(|| "unknown".to_string());
+    let os_name = sysinfo::System::name().unwrap_or_else(|| "unknown".to_string());
+    let os_version = sysinfo::System::os_version().unwrap_or_else(|| "unknown".to_string());
+    let kernel = sysinfo::System::kernel_version().unwrap_or_else(|| "unknown".to_string());
+    let cpu_cores = sys.cpus().len();
+    let cpu_brand = sys.cpus().first().map(|c| c.brand().to_string()).unwrap_or_default();
+    let cpu_percent = sys.global_cpu_usage();
+    let memory_total_mb = sys.total_memory() / 1024 / 1024;
+    let memory_used_mb = sys.used_memory() / 1024 / 1024;
+    let memory_available_mb = sys.available_memory() / 1024 / 1024;
+    let uptime = state.start_time.elapsed().as_secs();
+
+    // Disk usage
+    let disks: Vec<serde_json::Value> = sysinfo::Disks::new_with_refreshed_list()
+        .iter()
+        .map(|d| {
+            serde_json::json!({
+                "mount": d.mount_point().to_string_lossy(),
+                "total_gb": d.total_space() / 1024 / 1024 / 1024,
+                "available_gb": d.available_space() / 1024 / 1024 / 1024,
+                "filesystem": d.file_system().to_string_lossy(),
+            })
+        })
+        .collect();
+
+    // Network interfaces
+    let networks: Vec<serde_json::Value> = sysinfo::Networks::new_with_refreshed_list()
+        .iter()
+        .map(|(name, data)| {
+            serde_json::json!({
+                "name": name,
+                "rx_bytes": data.total_received(),
+                "tx_bytes": data.total_transmitted(),
+            })
+        })
+        .collect();
+
+    Json(serde_json::json!({
+        "node_id": state.node_id,
+        "version": env!("CARGO_PKG_VERSION"),
+        "uptime_seconds": uptime,
+        "hostname": hostname,
+        "os": os_name,
+        "os_version": os_version,
+        "kernel": kernel,
+        "cpu": {
+            "cores": cpu_cores,
+            "brand": cpu_brand,
+            "usage_percent": cpu_percent,
+        },
+        "memory": {
+            "total_mb": memory_total_mb,
+            "used_mb": memory_used_mb,
+            "available_mb": memory_available_mb,
+            "usage_percent": if memory_total_mb > 0 { (memory_used_mb as f64 / memory_total_mb as f64 * 100.0).round() } else { 0.0 },
+        },
+        "disks": disks,
+        "networks": networks,
+        "collectors": ["file", "process", "network", "clipboard"],
+        "connectors_count": 11,
+        "start_time": chrono::Utc::now().checked_sub_signed(chrono::Duration::seconds(uptime as i64)).map(|t| t.to_rfc3339()),
+    }))
 }
 
 /// /api/cache/stats — return current cache statistics
@@ -1101,6 +1175,7 @@ mod tests {
             .route("/api/cache/stats", get(api_cache_stats_handler))
             .route("/api/cache/evict", post(api_cache_evict_handler))
             .route("/metrics", get(metrics_handler))
+            .route("/api/system/info", get(api_system_info_handler))
             .with_state(state)
     }
 
@@ -1539,5 +1614,41 @@ mod tests {
         // Health endpoint always returns "ok" regardless of last_error
         assert_eq!(json["status"], "ok");
         assert_eq!(json["node_id"], "error-node");
+    }
+
+    #[tokio::test]
+    async fn test_system_info_endpoint() {
+        use tower::ServiceExt;
+
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/api/system/info")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Verify required fields exist
+        assert!(json["node_id"].is_string());
+        assert!(json["version"].is_string());
+        assert!(json["hostname"].is_string());
+        assert!(json["os"].is_string());
+        assert!(json["kernel"].is_string());
+        assert!(json["cpu"]["cores"].is_number());
+        assert!(json["memory"]["total_mb"].is_number());
+        assert!(json["memory"]["usage_percent"].is_number());
+        assert!(json["disks"].is_array());
+        assert!(json["networks"].is_array());
+        assert!(json["collectors"].is_array());
+        assert_eq!(json["node_id"], "test-node");
+        assert_eq!(json["connectors_count"], 11);
     }
 }
