@@ -3,15 +3,15 @@
 use anyhow::Result;
 use opensoma::{collector, config, connector, grpc, health, heartbeat, metrics, processor, status_server, sync};
 use tracing::info;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Parse CLI args
     let config_path = parse_config_path();
 
-    // Initialize logging
-    init_logging();
+    // Initialize logging (returns reload handle for runtime log level changes)
+    let filter_handle = init_logging();
 
     info!("OpenSoma starting — Deploy Everywhere, Collect Everything.");
     info!("Loading config from: {}", config_path);
@@ -20,7 +20,34 @@ async fn main() -> Result<()> {
     let config = config::AppConfig::load(&config_path)?;
 
     // Initialize config hot-reload watcher
-    let (_config_handle, _config_rx) = config::watch_config(&config_path)?;
+    let (_config_handle, config_rx) = config::watch_config(&config_path)?;
+
+    // Wire up config hot-reload: update log level when config.toml changes
+    {
+        let mut config_rx = config_rx;
+        let fh = filter_handle;
+        tokio::spawn(async move {
+            while config_rx.changed().await.is_ok() {
+                let new_config = config_rx.borrow().clone();
+                let new_level = &new_config.daemon.log_level;
+                match new_level.parse::<EnvFilter>() {
+                    Ok(new_filter) => {
+                        if let Err(e) = fh.modify(|f| *f = new_filter) {
+                            tracing::warn!("Failed to update log level: {}", e);
+                        } else {
+                            tracing::info!("Log level hot-reloaded to: {}", new_level);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Invalid log level '{}' in config (keeping previous): {}",
+                            new_level, e
+                        );
+                    }
+                }
+            }
+        });
+    }
 
     // Initialize local cache (sled)
     let cache = sync::cache::Cache::open(&config.daemon.data_dir)?;
@@ -249,17 +276,26 @@ fn parse_config_path() -> String {
     "config.toml".to_string()
 }
 
-/// Initialize tracing subscriber with env filter
-fn init_logging() {
+/// Initialize tracing subscriber with env filter and return a reload handle
+/// for runtime log level changes via config hot-reload.
+fn init_logging() -> reload::Handle<EnvFilter, tracing_subscriber::Registry> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let (filter_layer, filter_handle) = reload::Layer::new(filter);
 
-    fmt()
-        .with_env_filter(filter)
-        .with_target(true)
-        .with_thread_ids(true)
-        .with_file(true)
-        .with_line_number(true)
-        .init();
+    let subscriber = tracing_subscriber::Registry::default()
+        .with(filter_layer)
+        .with(
+            fmt::layer()
+                .with_target(true)
+                .with_thread_ids(true)
+                .with_file(true)
+                .with_line_number(true),
+        );
+
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Failed to set global default subscriber");
+
+    filter_handle
 }
 
 /// Wait for SIGINT or SIGTERM
