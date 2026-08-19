@@ -326,4 +326,60 @@ mod tests {
         let key = conn_key(&conn);
         assert_eq!(key, "127.0.0.1:8080-10.0.0.1:443-tcp");
     }
+
+    #[test]
+    fn test_parse_address_ipv4_loopback() {
+        let (ip, port) = parse_address("0100007F:0050");
+        assert_eq!(ip, "127.0.0.1");
+        assert_eq!(port, 0x0050); // 80
+    }
+
+    #[test]
+    fn test_parse_address_ipv4_zero() {
+        let (ip, port) = parse_address("00000000:0000");
+        assert_eq!(ip, "0.0.0.0");
+        assert_eq!(port, 0);
+    }
+
+    #[test]
+    fn test_parse_address_ipv6_loopback() {
+        let (ip, port) = parse_address("00000000000000000000000001000000:0050");
+        assert_eq!(ip, "::1");
+        assert_eq!(port, 0x0050);
+    }
+
+    #[test]
+    fn test_parse_address_ipv6_all_zeros() {
+        let (ip, port) = parse_address("00000000000000000000000000000000:0000");
+        assert_eq!(ip, "::");
+        assert_eq!(port, 0);
+    }
+
+    #[test]
+    fn test_parse_address_malformed() {
+        // When hex parsing fails, parse_address falls through with the raw string
+        // and port 0. The actual behavior depends on the u32::from_str_radix call.
+        let (ip, port) = parse_address("invalid");
+        // Invalid hex → falls through, returns raw input with port 0
+        assert_eq!(port, 0);
+        // The actual IP depends on how the parsing handles the error
+        // Just verify it doesn't panic and returns something
+        assert!(!ip.is_empty());
+    }
+
+    #[test]
+    fn test_tcp_state_all_values() {
+        assert_eq!(tcp_state("01"), "ESTABLISHED");
+        assert_eq!(tcp_state("02"), "SYN_SENT");
+        assert_eq!(tcp_state("03"), "SYN_RECV");
+        assert_eq!(tcp_state("04"), "FIN_WAIT1");
+        assert_eq!(tcp_state("05"), "FIN_WAIT2");
+        assert_eq!(tcp_state("06"), "TIME_WAIT");
+        assert_eq!(tcp_state("07"), "CLOSE");
+        assert_eq!(tcp_state("08"), "CLOSE_WAIT");
+        assert_eq!(tcp_state("09"), "LAST_ACK");
+        assert_eq!(tcp_state("0A"), "LISTEN");
+        assert_eq!(tcp_state("0B"), "CLOSING");
+        assert_eq!(tcp_state("00"), "UNKNOWN");
+    }
 }

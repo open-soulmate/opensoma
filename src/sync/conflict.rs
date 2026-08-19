@@ -309,4 +309,89 @@ mod tests {
             panic!("Expected KeptBoth resolution");
         }
     }
+
+    #[test]
+    fn test_resolve_local_wins() {
+        let mut resolver = ConflictResolver::new(ConflictStrategy::LocalWins);
+        let event = make_event("1", b"local");
+        let snapshot = make_snapshot("1", "server_hash", 2000);
+
+        let conflict = resolver.detect(&event, &snapshot).unwrap();
+        let result = resolver.resolve(conflict);
+        assert!(matches!(result.resolution, Resolution::UsedLocal));
+    }
+
+    #[test]
+    fn test_resolve_merge() {
+        let mut resolver = ConflictResolver::new(ConflictStrategy::Merge);
+        let event = make_event("1", b"local");
+        let snapshot = make_snapshot("1", "server_hash", 2000);
+
+        let conflict = resolver.detect(&event, &snapshot).unwrap();
+        let result = resolver.resolve(conflict);
+        assert!(matches!(result.resolution, Resolution::Merged));
+    }
+
+    #[test]
+    fn test_resolve_newest_wins_server() {
+        let mut resolver = ConflictResolver::new(ConflictStrategy::NewestWins);
+        let mut event = make_event("1", b"local");
+        event.timestamp_ms = 1000;
+        let snapshot = make_snapshot("1", "server_hash", 5000);
+
+        let conflict = resolver.detect(&event, &snapshot).unwrap();
+        let result = resolver.resolve(conflict);
+        if let Resolution::UsedNewest { winner } = result.resolution {
+            assert_eq!(winner, "server");
+        } else {
+            panic!("Expected UsedNewest resolution");
+        }
+    }
+
+    #[test]
+    fn test_conflict_count_and_history() {
+        let mut resolver = ConflictResolver::new(ConflictStrategy::ServerWins);
+        assert_eq!(resolver.conflict_count(), 0);
+
+        // Create 3 conflicts
+        for i in 0..3 {
+            let event = make_event(&format!("{}", i), b"local");
+            let snapshot = make_snapshot(&format!("{}", i), "server_hash", 2000);
+            let conflict = resolver.detect(&event, &snapshot).unwrap();
+            resolver.resolve(conflict);
+        }
+        assert_eq!(resolver.conflict_count(), 3);
+        assert_eq!(resolver.recent_conflicts(2).len(), 2);
+        assert_eq!(resolver.recent_conflicts(10).len(), 3);
+    }
+
+    #[test]
+    fn test_detect_batch_conflicts() {
+        let resolver = ConflictResolver::new(ConflictStrategy::NewestWins);
+
+        let events = vec![
+            make_event("1", b"local1"),
+            make_event("2", b"local2"),
+            make_event("3", b"local3"),
+        ];
+
+        // Compute hash for event "2" so we can match it
+        let hash_2 = crate::sync::cache::Cache::hash_event(&events[1]);
+
+        let snapshots = vec![
+            make_snapshot("1", "different_hash", 2000), // conflict
+            make_snapshot("2", &hash_2, 2000),           // same hash — no conflict
+            // "3" not in server — no conflict (no match)
+        ];
+
+        let conflicts = detect_batch_conflicts(&events, &snapshots, &resolver);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].event_id, "1");
+    }
+
+    #[test]
+    fn test_default_strategy_is_newest_wins() {
+        let strategy = ConflictStrategy::default();
+        assert!(matches!(strategy, ConflictStrategy::NewestWins));
+    }
 }

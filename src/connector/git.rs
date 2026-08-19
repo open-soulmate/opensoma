@@ -333,4 +333,81 @@ mod tests {
         assert_eq!(event.tags.get("content_hash").unwrap(), "abc123");
         assert_eq!(event.tags.get("title").unwrap(), "Hello");
     }
+
+    #[test]
+    fn test_find_markdown_files_empty_dir() {
+        let dir = std::env::temp_dir().join("opensoma_test_empty_md");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let result = find_markdown_files(&dir).unwrap();
+        assert!(result.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_find_markdown_files_with_files() {
+        let dir = std::env::temp_dir().join("opensoma_test_md_files");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("readme.md"), "# Test").unwrap();
+        std::fs::write(dir.join("notes.txt"), "not markdown").unwrap();
+        std::fs::write(dir.join("guide.md"), "# Guide").unwrap();
+        // .md in subdirectory
+        let subdir = dir.join("subdir");
+        std::fs::create_dir_all(&subdir).unwrap();
+        std::fs::write(subdir.join("nested.md"), "# Nested").unwrap();
+
+        let mut result = find_markdown_files(&dir).unwrap();
+        result.sort();
+        assert_eq!(result.len(), 3);
+        assert!(result.iter().any(|p| p.ends_with("readme.md")));
+        assert!(result.iter().any(|p| p.ends_with("guide.md")));
+        assert!(result.iter().any(|p| p.ends_with("nested.md")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_find_markdown_files_skips_hidden_dirs() {
+        let dir = std::env::temp_dir().join("opensoma_test_md_hidden");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("visible.md"), "# Visible").unwrap();
+        let hidden = dir.join(".hidden");
+        std::fs::create_dir_all(&hidden).unwrap();
+        std::fs::write(hidden.join("secret.md"), "# Secret").unwrap();
+
+        let result = find_markdown_files(&dir).unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].ends_with("visible.md"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_find_markdown_files_nonexistent_dir() {
+        let dir = std::path::Path::new("/nonexistent/path/that/does/not/exist");
+        let result = find_markdown_files(dir).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_walkdir_or_fallback_skips_hidden() {
+        let dir = std::env::temp_dir().join("opensoma_test_walkdir");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".hidden/sub")).unwrap();
+        std::fs::create_dir_all(dir.join("visible")).unwrap();
+        std::fs::write(dir.join("file.txt"), "content").unwrap();
+        std::fs::write(dir.join(".hidden/secret.txt"), "secret").unwrap();
+
+        let result = walkdir_or_fallback(&dir).unwrap();
+        assert!(result.iter().any(|p| p.ends_with("file.txt")));
+        assert!(!result.iter().any(|p| p.to_string_lossy().contains(".hidden")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_extract_markdown_title_no_heading() {
+        assert_eq!(extract_markdown_title(""), None);
+        assert_eq!(extract_markdown_title("Just text\nNo heading"), None);
+        assert_eq!(extract_markdown_title("## Sub heading only"), None);
+    }
 }

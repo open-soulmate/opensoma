@@ -323,5 +323,91 @@ mod tests {
     fn test_decode_entities() {
         assert_eq!(decode_html_entities("a &amp; b"), "a & b");
         assert_eq!(decode_html_entities("&lt;html&gt;"), "<html>");
+        assert_eq!(decode_html_entities("&quot;quoted&quot;"), "\"quoted\"");
+        assert_eq!(decode_html_entities("it&apos;s"), "it's");
+        assert_eq!(decode_html_entities("no entities"), "no entities");
+    }
+
+    #[test]
+    fn test_extract_tag_simple() {
+        let xml = "<title>Hello World</title>";
+        assert_eq!(extract_tag(xml, "title"), Some("Hello World".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tag_with_attributes() {
+        let xml = "<link rel=\"alternate\" href=\"https://example.com\">https://example.com</link>";
+        assert_eq!(extract_tag(xml, "link"), Some("https://example.com".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tag_self_closing() {
+        let xml = "<link href=\"https://example.com\"/>";
+        assert_eq!(extract_tag(xml, "link"), None);
+    }
+
+    #[test]
+    fn test_extract_tag_missing() {
+        let xml = "<title>Only title</title>";
+        assert_eq!(extract_tag(xml, "description"), None);
+    }
+
+    #[test]
+    fn test_extract_attr_simple() {
+        let xml = "<link href=\"https://example.com\"/>";
+        assert_eq!(extract_attr(xml, "link", "href"), Some("https://example.com".to_string()));
+    }
+
+    #[test]
+    fn test_extract_attr_single_quotes() {
+        let xml = "<link href='https://example.com'/>";
+        assert_eq!(extract_attr(xml, "link", "href"), Some("https://example.com".to_string()));
+    }
+
+    #[test]
+    fn test_extract_attr_missing() {
+        let xml = "<link href=\"https://example.com\"/>";
+        assert_eq!(extract_attr(xml, "link", "type"), None);
+    }
+
+    #[test]
+    fn test_parse_rss_empty() {
+        let xml = "<rss version=\"2.0\"><channel></channel></rss>";
+        let entries = parse_rss_entries(xml);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_parse_atom_empty() {
+        let xml = "<feed xmlns=\"http://www.w3.org/2005/Atom\"></feed>";
+        let entries = parse_rss_entries(xml);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_parse_rss_with_entities() {
+        let xml = r#"<rss version="2.0"><channel>
+            <item>
+                <title>A &amp; B &lt; C</title>
+                <link>https://example.com/1</link>
+            </item>
+        </channel></rss>"#;
+        let entries = parse_rss_entries(xml);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].title, "A & B < C");
+    }
+
+    #[test]
+    fn test_parse_rss_no_guid_uses_link() {
+        let xml = r#"<rss version="2.0"><channel>
+            <item>
+                <title>No GUID</title>
+                <link>https://example.com/noguid</link>
+            </item>
+        </channel></rss>"#;
+        let entries = parse_rss_entries(xml);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].guid.is_none());
+        assert_eq!(entries[0].link.as_deref(), Some("https://example.com/noguid"));
     }
 }

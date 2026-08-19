@@ -218,3 +218,58 @@ pub async fn start_all(config: &ConnectorConfig, tx: EventTx) -> Result<JoinHand
 
     Ok(handle)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_retry_delay_exponential_backoff() {
+        let d0 = retry_delay(0);
+        let d1 = retry_delay(1);
+        let d2 = retry_delay(2);
+        let d3 = retry_delay(3);
+
+        // 500 * 2^attempt
+        assert_eq!(d0.as_millis(), 500);
+        assert_eq!(d1.as_millis(), 1000);
+        assert_eq!(d2.as_millis(), 2000);
+        assert_eq!(d3.as_millis(), 4000);
+    }
+
+    #[tokio::test]
+    async fn test_retry_async_succeeds_first_try() {
+        let result: anyhow::Result<i32> = retry_async!("test_op", 3, {
+            Ok::<i32, anyhow::Error>(42)
+        });
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[tokio::test]
+    async fn test_retry_async_succeeds_after_retries() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+        let attempts = Arc::new(AtomicU32::new(0));
+        let attempts_clone = attempts.clone();
+
+        let result: anyhow::Result<i32> = retry_async!("test_op", 3, {
+            let n = attempts_clone.fetch_add(1, Ordering::SeqCst);
+            if n < 2 {
+                Err(anyhow::anyhow!("not yet"))
+            } else {
+                Ok::<i32, anyhow::Error>(99)
+            }
+        });
+        assert_eq!(result.unwrap(), 99);
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn test_retry_async_exhausts_retries() {
+        let result: anyhow::Result<i32> = retry_async!("test_op", 2, {
+            Err(anyhow::anyhow!("permanent failure"))
+        });
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("permanent failure"));
+    }
+}
