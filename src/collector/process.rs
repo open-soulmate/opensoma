@@ -167,4 +167,42 @@ mod tests {
         };
         assert_eq!(a, b);
     }
+
+    #[test]
+    fn test_process_snapshot_fields() {
+        let snap = ProcessSnapshot {
+            pid: 1234,
+            name: "test-proc".into(),
+            cpu_usage: 5.5,
+            memory_bytes: 1024 * 1024,
+        };
+        assert_eq!(snap.pid, 1234);
+        assert_eq!(snap.name, "test-proc");
+        assert!((snap.cpu_usage - 5.5).abs() < f32::EPSILON);
+        assert_eq!(snap.memory_bytes, 1048576);
+    }
+
+    #[test]
+    fn test_process_snapshot_clone() {
+        let a = ProcessSnapshot {
+            pid: 42,
+            name: "clone-test".into(),
+            cpu_usage: 1.0,
+            memory_bytes: 512,
+        };
+        let b = a.clone();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_collect_process_snapshot_contains_self() {
+        let result = collect_process_snapshot();
+        assert!(result.is_ok());
+        let snaps = result.unwrap();
+        // The current process should be in the list
+        let my_pid = std::process::id() as i32;
+        let found = snaps.values().any(|s| s.pid == my_pid);
+        assert!(found, "Should find own PID {} in process list", my_pid);
+    }
+
 }

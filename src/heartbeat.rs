@@ -115,4 +115,34 @@ mod tests {
         assert_eq!(json["ip"], "10.0.0.1");
         assert!(json["memory_total_mb"].as_u64().unwrap() > 0);
     }
+
+    #[test]
+    fn test_collect_node_status_cpu_count() {
+        let payload = collect_node_status("node-cpu", "host", "127.0.0.1");
+        assert!(payload.cpu_usage >= 0.0, "CPU usage should be non-negative");
+    }
+
+    #[test]
+    fn test_collect_node_status_disk_usage() {
+        let payload = collect_node_status("node-disk", "host", "127.0.0.1");
+        // disk_total_mb should be > 0 on any real system
+        assert!(payload.disk_total_mb > 0, "Should report disk total");
+    }
+
+    #[test]
+    fn test_heartbeat_payload_json_structure() {
+        let payload = collect_node_status("struct-test", "myhost", "192.168.1.1");
+        let json = serde_json::to_value(&payload).unwrap();
+        // Verify all expected fields exist
+        assert!(json.get("node_id").is_some());
+        assert!(json.get("hostname").is_some());
+        assert!(json.get("ip").is_some());
+        assert!(json.get("cpu_usage").is_some());
+        assert!(json.get("memory_total_mb").is_some());
+        assert!(json.get("memory_used_mb").is_some());
+        assert!(json.get("disk_total_mb").is_some());
+        assert!(json.get("disk_used_mb").is_some());
+        assert!(json.get("timestamp_ms").is_some());
+    }
+
 }

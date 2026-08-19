@@ -287,4 +287,46 @@ mod tests {
             .to_string()
             .contains("permanent failure"));
     }
+
+    #[test]
+    fn test_retry_delay_zero_attempt() {
+        let d = retry_delay(0);
+        assert_eq!(d.as_millis(), 500);
+    }
+
+    #[test]
+    fn test_retry_delay_large_attempt() {
+        let d = retry_delay(10);
+        // 500 * 2^10 = 512000ms
+        assert_eq!(d.as_millis(), 512000);
+    }
+
+    #[test]
+    fn test_retry_delay_monotonically_increasing() {
+        for i in 0..8 {
+            assert!(retry_delay(i) < retry_delay(i + 1));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_retry_async_succeeds_first_try_value() {
+        let result: anyhow::Result<String> =
+            retry_async!("test_string", 3, { Ok::<String, anyhow::Error>("hello".to_string()) });
+        assert_eq!(result.unwrap(), "hello");
+    }
+
+    #[tokio::test]
+    async fn test_retry_async_single_attempt_success() {
+        let result: anyhow::Result<i32> =
+            retry_async!("single", 1, { Ok::<i32, anyhow::Error>(7) });
+        assert_eq!(result.unwrap(), 7);
+    }
+
+    #[tokio::test]
+    async fn test_retry_async_single_attempt_failure() {
+        let result: anyhow::Result<i32> =
+            retry_async!("single_fail", 1, { Err(anyhow::anyhow!("oops")) });
+        assert!(result.is_err());
+    }
+
 }

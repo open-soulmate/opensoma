@@ -117,4 +117,51 @@ mod tests {
         assert!(json.contains("\"running\":true"));
         assert!(json.contains("\"events_collected\":42"));
     }
+
+    #[test]
+    fn test_raw_event_empty_tags() {
+        let event = RawEvent {
+            id: "no-tags".to_string(),
+            source: "clipboard".to_string(),
+            event_type: "clipboard_change".to_string(),
+            timestamp_ms: 1700000000000,
+            payload: b"clipboard text".to_vec(),
+            tags: std::collections::HashMap::new(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("no-tags"));
+        let deserialized: RawEvent = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.tags.is_empty());
+    }
+
+    #[test]
+    fn test_raw_event_large_payload() {
+        let large_data = vec![0u8; 1024 * 1024]; // 1MB
+        let event = RawEvent {
+            id: "large-1".to_string(),
+            source: "file".to_string(),
+            event_type: "file_change".to_string(),
+            timestamp_ms: 1700000000000,
+            payload: large_data.clone(),
+            tags: std::collections::HashMap::new(),
+        };
+        assert_eq!(event.payload.len(), 1024 * 1024);
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: RawEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.payload.len(), 1024 * 1024);
+    }
+
+    #[test]
+    fn test_collector_status_with_error() {
+        let status = CollectorStatus {
+            name: "network".to_string(),
+            running: false,
+            events_collected: 0,
+            last_error: Some("connection refused".to_string()),
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("connection refused"));
+        assert!(json.contains("false"));
+    }
+
 }
