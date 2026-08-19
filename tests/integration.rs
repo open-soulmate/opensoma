@@ -228,8 +228,7 @@ async fn test_full_pipeline_multiple_sources() {
 
     let handle = processor::start_pipeline(input_rx, output_tx, &config);
 
-    let sources = vec![
-        ("file", "file_change", "File content here"),
+    let sources = [("file", "file_change", "File content here"),
         (
             "process",
             "process_started",
@@ -245,8 +244,7 @@ async fn test_full_pipeline_multiple_sources() {
             "connector:daily-digest",
             "connector_event",
             "Daily digest from email",
-        ),
-    ];
+        )];
 
     for (i, (source, event_type, payload)) in sources.iter().enumerate() {
         let event = make_event(&format!("multi-{}", i), source, event_type, payload);
@@ -256,7 +254,7 @@ async fn test_full_pipeline_multiple_sources() {
     for i in 0..5 {
         let processed = tokio::time::timeout(Duration::from_secs(3), output_rx.recv())
             .await
-            .expect(&format!("timeout waiting for event {}", i))
+            .unwrap_or_else(|_| panic!("timeout waiting for event {}", i))
             .expect("channel closed");
 
         assert!(processed.tags.contains_key("class_category"));

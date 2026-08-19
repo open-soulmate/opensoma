@@ -187,7 +187,7 @@ mod tests {
     fn test_batch_drain_logic() {
         // Simulate the drain logic used in upload_batch
         let mut pending: Vec<i32> = vec![1, 2, 3, 4, 5];
-        let batch: Vec<i32> = pending.drain(..).collect();
+        let batch: Vec<i32> = std::mem::take(&mut pending);
         assert!(pending.is_empty());
         assert_eq!(batch.len(), 5);
         assert_eq!(batch, vec![1, 2, 3, 4, 5]);

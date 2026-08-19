@@ -140,21 +140,21 @@ mod tests {
     #[test]
     fn test_max_chunk_size_constant() {
         // Verify the constant is reasonable
-        assert!(MAX_CHUNK_SIZE > 0);
-        assert!(MAX_CHUNK_SIZE <= 1000);
+        const _: () = assert!(MAX_CHUNK_SIZE > 0);
+        const _: () = assert!(MAX_CHUNK_SIZE <= 1000);
     }
 
     #[test]
     fn test_chunk_count_calculation() {
         // 0 events = 0 chunks
-        assert_eq!((0usize + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE, 0);
+        assert_eq!((MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE, 0);
         // 1 event = 1 chunk
-        assert_eq!((1usize + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE, 1);
+        assert_eq!(1usize.div_ceil(MAX_CHUNK_SIZE), 1);
         // MAX_CHUNK_SIZE events = 1 chunk
-        assert_eq!((MAX_CHUNK_SIZE + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE, 1);
+        assert_eq!(MAX_CHUNK_SIZE.div_ceil(MAX_CHUNK_SIZE), 1);
         // MAX_CHUNK_SIZE + 1 events = 2 chunks
         assert_eq!(
-            (MAX_CHUNK_SIZE + 1 + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE,
+            (MAX_CHUNK_SIZE + 1).div_ceil(MAX_CHUNK_SIZE),
             2
         );
     }

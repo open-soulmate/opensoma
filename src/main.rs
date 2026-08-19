@@ -644,8 +644,7 @@ fn blocking_http_get(url: &str) -> std::io::Result<String> {
         if headers.contains("HTTP/1.1 200") || headers.contains("HTTP/0.9 200") || headers.contains("HTTP/1.0 200") {
             Ok(body.to_string())
         } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(std::io::Error::other(
                 format!("HTTP error: {}", &headers[..headers.find('\r').unwrap_or(headers.len())]),
             ))
         }
@@ -658,7 +657,7 @@ fn blocking_http_get(url: &str) -> std::io::Result<String> {
 }
 
 /// Parse an HTTP URL into (host:port, path) components.
-fn parse_http_url<'a>(url: &'a str) -> (&'a str, &'a str) {
+fn parse_http_url(url: &str) -> (&str, &str) {
     let stripped = url.strip_prefix("http://").unwrap_or(url);
     match stripped.find('/') {
         Some(i) => (&stripped[..i], &stripped[i..]),
@@ -675,8 +674,7 @@ fn parse_http_response(response: &str) -> std::io::Result<&str> {
         if headers.contains("HTTP/1.1 200") || headers.contains("HTTP/1.0 200") {
             Ok(body)
         } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(std::io::Error::other(
                 format!("HTTP error: {}", &headers[..headers.find('\r').unwrap_or(headers.len())]),
             ))
         }

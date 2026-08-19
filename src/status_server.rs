@@ -468,7 +468,6 @@ async fn metrics_handler(State(state): State<StatusServerState>) -> axum::respon
 }
 
 /// /api/system/info — detailed system diagnostics for monitoring and troubleshooting.
-
 /// /api/connectors/health — summary of all connector health statuses.
 /// Returns a JSON array of connector health objects with name, enabled, and status.
 async fn api_connectors_health_handler(

@@ -234,7 +234,13 @@ mod tests {
 
     #[test]
     fn test_module_compiles() {
-        assert!(true);
+        // Module compilation test — if we reach here, the module compiles.
+        let config = EmailConfig {
+            enabled: false,
+            accounts: vec![],
+            poll_interval_secs: 120,
+        };
+        assert!(!config.enabled);
     }
 
     #[test]

@@ -667,7 +667,7 @@ mod tests {
         assert_eq!(cache.get("U123"), Some(&"John".to_string()));
 
         // Simulate cache miss
-        assert!(cache.get("U999").is_none());
+        assert!(!cache.contains_key("U999"));
     }
 
     #[test]

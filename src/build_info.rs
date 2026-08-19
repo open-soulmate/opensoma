@@ -2,7 +2,6 @@
 ///
 /// This module provides a central source of truth for version info
 /// used by the CLI, status server, and heartbeat metadata.
-
 /// Package version from Cargo.toml (e.g., "0.1.0")
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
