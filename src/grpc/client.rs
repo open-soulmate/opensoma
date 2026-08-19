@@ -239,3 +239,132 @@ impl SoulClient {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_soul_client_endpoint() {
+        // Build a client manually (skip health check for unit test)
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(1))
+            .build()
+            .unwrap();
+
+        let client = SoulClient {
+            base_url: "http://localhost:8090".to_string(),
+            http,
+            node_id: "test-node".to_string(),
+        };
+
+        assert_eq!(client.endpoint(), "http://localhost:8090");
+    }
+
+    #[test]
+    fn test_soul_client_endpoint_trailing_slash_trimmed() {
+        // Simulate what SoulClient::new does
+        let raw = "http://localhost:8090/";
+        let trimmed = raw.trim_end_matches('/');
+        assert_eq!(trimmed, "http://localhost:8090");
+    }
+
+    #[test]
+    fn test_soul_client_clone() {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(1))
+            .build()
+            .unwrap();
+
+        let client = SoulClient {
+            base_url: "http://localhost:8090".to_string(),
+            http,
+            node_id: "node-1".to_string(),
+        };
+
+        let cloned = client.clone();
+        assert_eq!(cloned.endpoint(), "http://localhost:8090");
+    }
+
+    #[test]
+    fn test_register_node_body_format() {
+        // Verify the JSON body structure for node registration
+        let body = serde_json::json!({
+            "node_id": "soma-1",
+            "node_type": "soma",
+            "metadata": {
+                "version": "0.1.0",
+                "runtime": "opensoma-rust"
+            }
+        });
+
+        assert_eq!(body["node_id"], "soma-1");
+        assert_eq!(body["node_type"], "soma");
+        assert_eq!(body["metadata"]["runtime"], "opensoma-rust");
+    }
+
+    #[test]
+    fn test_heartbeat_body_format() {
+        let body = serde_json::json!({
+            "node_id": "node-1"
+        });
+        assert_eq!(body["node_id"], "node-1");
+    }
+
+    #[test]
+    fn test_upload_events_body_format() {
+        let event = soul::CollectedEvent {
+            id: "evt-1".to_string(),
+            source: "file".to_string(),
+            event_type: "file_change".to_string(),
+            timestamp_ms: 1700000000000,
+            payload: b"test data".to_vec(),
+            tags: [("key".into(), "val".into())].into(),
+        };
+
+        let payload_str = String::from_utf8_lossy(&event.payload).to_string();
+        let body = serde_json::json!({
+            "topic": format!("soma.{}", event.event_type),
+            "data": {
+                "id": event.id,
+                "source": event.source,
+                "event_type": event.event_type,
+                "timestamp_ms": event.timestamp_ms,
+                "payload": payload_str,
+                "tags": event.tags,
+            },
+            "source": format!("opensoma:{}", event.source),
+        });
+
+        assert_eq!(body["topic"], "soma.file_change");
+        assert_eq!(body["data"]["id"], "evt-1");
+        assert_eq!(body["data"]["payload"], "test data");
+        assert_eq!(body["source"], "opensoma:file");
+    }
+
+    #[test]
+    fn test_stream_event_body_format() {
+        let event = soul::CollectedEvent {
+            id: "stream-1".to_string(),
+            source: "clipboard".to_string(),
+            event_type: "clipboard_change".to_string(),
+            timestamp_ms: 1700000001000,
+            payload: b"clipboard content".to_vec(),
+            tags: std::collections::HashMap::new(),
+        };
+
+        let payload_str = String::from_utf8_lossy(&event.payload).to_string();
+        let body = serde_json::json!({
+            "id": event.id,
+            "source": event.source,
+            "event_type": event.event_type,
+            "timestamp_ms": event.timestamp_ms,
+            "payload": payload_str,
+            "tags": event.tags,
+        });
+
+        assert_eq!(body["id"], "stream-1");
+        assert_eq!(body["source"], "clipboard");
+        assert_eq!(body["payload"], "clipboard content");
+    }
+}

@@ -154,3 +154,57 @@ impl SensePlugin for AsrPlugin {
         "asr"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_asr_config_deserialize_whisper() {
+        let json = r#"{"engine": "whisper", "whisper_model": "small", "segment_duration_secs": 300}"#;
+        let config: AsrConfig = serde_json::from_str(json).unwrap();
+        assert!(matches!(config.engine, AsrEngine::Whisper));
+        assert_eq!(config.whisper_model, "small");
+        assert_eq!(config.segment_duration_secs, 300);
+        assert!(config.api_url.is_none());
+    }
+
+    #[test]
+    fn test_asr_config_deserialize_api() {
+        let json = r#"{"engine": "api", "api_url": "http://whisper.local/transcribe", "api_key": "key123"}"#;
+        let config: AsrConfig = serde_json::from_str(json).unwrap();
+        assert!(matches!(config.engine, AsrEngine::Api));
+        assert_eq!(config.api_url.as_deref(), Some("http://whisper.local/transcribe"));
+        assert_eq!(config.api_key.as_deref(), Some("key123"));
+    }
+
+    #[test]
+    fn test_asr_config_defaults() {
+        let json = r#"{"engine": "whisper"}"#;
+        let config: AsrConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.whisper_model, "base");
+        assert_eq!(config.segment_duration_secs, 600);
+    }
+
+    #[test]
+    fn test_asr_plugin_name() {
+        let config = AsrConfig {
+            engine: AsrEngine::Whisper,
+            api_url: None,
+            api_key: None,
+            whisper_model: "base".to_string(),
+            segment_duration_secs: 600,
+        };
+        let plugin = AsrPlugin::new(config);
+        assert_eq!(plugin.name(), "asr");
+    }
+
+    #[test]
+    fn test_asr_engine_deserialize() {
+        let whisper: AsrEngine = serde_json::from_str("\"whisper\"").unwrap();
+        assert!(matches!(whisper, AsrEngine::Whisper));
+
+        let api: AsrEngine = serde_json::from_str("\"api\"").unwrap();
+        assert!(matches!(api, AsrEngine::Api));
+    }
+}

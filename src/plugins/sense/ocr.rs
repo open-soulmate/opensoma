@@ -132,3 +132,59 @@ fn base64_encode(data: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(data)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ocr_config_deserialize_tesseract() {
+        let json = r#"{"engine": "tesseract", "tesseract_lang": "eng"}"#;
+        let config: OcrConfig = serde_json::from_str(json).unwrap();
+        assert!(matches!(config.engine, OcrEngine::Tesseract));
+        assert_eq!(config.tesseract_lang, "eng");
+        assert!(config.api_url.is_none());
+        assert!(config.api_key.is_none());
+    }
+
+    #[test]
+    fn test_ocr_config_deserialize_api() {
+        let json = r#"{"engine": "api", "api_url": "http://ocr.local/parse", "api_key": "secret123"}"#;
+        let config: OcrConfig = serde_json::from_str(json).unwrap();
+        assert!(matches!(config.engine, OcrEngine::Api));
+        assert_eq!(config.api_url.as_deref(), Some("http://ocr.local/parse"));
+        assert_eq!(config.api_key.as_deref(), Some("secret123"));
+    }
+
+    #[test]
+    fn test_ocr_config_default_lang() {
+        let json = r#"{"engine": "tesseract"}"#;
+        let config: OcrConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.tesseract_lang, "chi_sim+eng");
+    }
+
+    #[test]
+    fn test_ocr_plugin_name() {
+        let config = OcrConfig {
+            engine: OcrEngine::Tesseract,
+            api_url: None,
+            api_key: None,
+            tesseract_lang: "eng".to_string(),
+        };
+        let plugin = OcrPlugin::new(config);
+        assert_eq!(plugin.name(), "ocr");
+    }
+
+    #[test]
+    fn test_base64_encode() {
+        let data = b"hello world";
+        let encoded = base64_encode(data);
+        assert_eq!(encoded, "aGVsbG8gd29ybGQ=");
+    }
+
+    #[test]
+    fn test_base64_encode_empty() {
+        let encoded = base64_encode(b"");
+        assert_eq!(encoded, "");
+    }
+}

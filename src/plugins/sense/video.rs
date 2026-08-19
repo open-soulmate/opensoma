@@ -162,3 +162,53 @@ async fn run_tesseract(data: &[u8]) -> Result<String> {
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_video_config_defaults() {
+        let json = r#"{}"#;
+        let config: VideoConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.frame_interval_sec, 5);
+        assert_eq!(config.max_frames, 60);
+        assert_eq!(config.frame_analyzer, "ocr");
+    }
+
+    #[test]
+    fn test_video_config_custom() {
+        let json = r#"{"frame_interval_sec": 10, "max_frames": 120, "frame_analyzer": "image"}"#;
+        let config: VideoConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.frame_interval_sec, 10);
+        assert_eq!(config.max_frames, 120);
+        assert_eq!(config.frame_analyzer, "image");
+    }
+
+    #[test]
+    fn test_video_plugin_name() {
+        let config = VideoConfig {
+            frame_interval_sec: 5,
+            max_frames: 60,
+            frame_analyzer: "ocr".to_string(),
+        };
+        let plugin = VideoPlugin::new(config);
+        assert_eq!(plugin.name(), "video");
+    }
+
+    #[test]
+    fn test_video_config_partial() {
+        let json = r#"{"max_frames": 30}"#;
+        let config: VideoConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.frame_interval_sec, 5); // default
+        assert_eq!(config.max_frames, 30); // custom
+        assert_eq!(config.frame_analyzer, "ocr"); // default
+    }
+
+    #[test]
+    fn test_default_functions() {
+        assert_eq!(default_frame_interval(), 5);
+        assert_eq!(default_max_frames(), 60);
+        assert_eq!(default_frame_analyzer(), "ocr");
+    }
+}

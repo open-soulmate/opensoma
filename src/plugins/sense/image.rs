@@ -107,3 +107,50 @@ fn base64_encode(data: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(data)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_image_config_deserialize() {
+        let json = r#"{"model": "gpt-4o", "api_url": "https://api.openai.com/v1/chat/completions", "api_key": "sk-123"}"#;
+        let config: ImageConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.model, "gpt-4o");
+        assert_eq!(config.api_url, "https://api.openai.com/v1/chat/completions");
+        assert_eq!(config.api_key.as_deref(), Some("sk-123"));
+    }
+
+    #[test]
+    fn test_image_config_no_api_key() {
+        let json = r#"{"model": "claude-sonnet-4-20250514", "api_url": "http://localhost:8080/v1"}"#;
+        let config: ImageConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.model, "claude-sonnet-4-20250514");
+        assert!(config.api_key.is_none());
+    }
+
+    #[test]
+    fn test_image_plugin_name() {
+        let config = ImageConfig {
+            model: "gpt-4o".to_string(),
+            api_url: "http://localhost".to_string(),
+            api_key: None,
+        };
+        let plugin = ImagePlugin::new(config);
+        assert_eq!(plugin.name(), "image");
+    }
+
+    #[test]
+    fn test_chat_response_deserialize() {
+        let json = r#"{"choices": [{"message": {"content": "A red car on the road"}}]}"#;
+        let resp: ChatResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.choices[0].message.content, "A red car on the road");
+    }
+
+    #[test]
+    fn test_chat_response_empty_choices() {
+        let json = r#"{"choices": []}"#;
+        let resp: ChatResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.choices.is_empty());
+    }
+}
