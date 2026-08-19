@@ -125,6 +125,8 @@ struct ConversationsResponse {
     channels: Vec<ChannelInfo>,
     #[serde(default)]
     error: Option<String>,
+    #[serde(default)]
+    response_metadata: Option<ResponseMetadata>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -211,7 +213,7 @@ pub async fn start(config: SlackConfig, tx: EventTx) -> Result<JoinHandle<()>> {
 async fn discover_channels(bot_token: &str) -> Result<Vec<String>> {
     let client = Client::new();
     let mut channels = Vec::new();
-    let cursor: Option<String> = None;
+    let mut cursor: Option<String> = None;
 
     loop {
         let mut url = "https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200&exclude_archived=true".to_string();
@@ -243,9 +245,16 @@ async fn discover_channels(bot_token: &str) -> Result<Vec<String>> {
         }
 
         // Check for pagination cursor
-        // Note: The ConversationsResponse doesn't have response_metadata,
-        // so we'll break after first page for now.
-        break;
+        let next_cursor = resp
+            .response_metadata
+            .as_ref()
+            .and_then(|m| m.next_cursor.as_deref())
+            .unwrap_or("");
+
+        if next_cursor.is_empty() {
+            break;
+        }
+        cursor = Some(next_cursor.to_string());
     }
 
     Ok(channels)

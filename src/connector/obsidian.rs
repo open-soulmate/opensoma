@@ -210,14 +210,14 @@ fn find_markdown_files(dir: &Path) -> Result<Vec<PathBuf>> {
             // Skip .obsidian config directory
             if path
                 .file_name()
-                .map_or(false, |n| n.to_string_lossy() == ".obsidian")
+                .is_some_and(|n| n.to_string_lossy() == ".obsidian")
             {
                 continue;
             }
 
             if path.is_dir() {
                 stack.push(path);
-            } else if path.extension().map_or(false, |ext| ext == "md") {
+            } else if path.extension().is_some_and(|ext| ext == "md") {
                 results.push(path);
             }
         }
@@ -300,7 +300,7 @@ fn extract_markdown_title(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("# ") {
-            return Some(trimmed[2..].trim().to_string());
+            return Some(trimmed.strip_prefix("# ").unwrap_or(trimmed).trim().to_string());
         }
     }
     None

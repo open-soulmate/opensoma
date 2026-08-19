@@ -201,7 +201,7 @@ fn find_markdown_files(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>>
 
     for entry in walkdir_or_fallback(dir)? {
         let path = entry;
-        if path.extension().map_or(false, |ext| ext == "md") {
+        if path.extension().is_some_and(|ext| ext == "md") {
             results.push(path);
         }
     }
@@ -231,7 +231,7 @@ fn walkdir_or_fallback(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>>
             // Skip hidden directories (like .git)
             if path
                 .file_name()
-                .map_or(false, |n| n.to_string_lossy().starts_with('.'))
+                .is_some_and(|n| n.to_string_lossy().starts_with('.'))
             {
                 continue;
             }
@@ -282,7 +282,7 @@ fn extract_markdown_title(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("# ") {
-            return Some(trimmed[2..].trim().to_string());
+            return Some(trimmed.strip_prefix("# ").unwrap_or(trimmed).trim().to_string());
         }
     }
     None

@@ -43,7 +43,7 @@ pub async fn upload_events(client: &SoulClient, events: &[RawEvent]) -> Result<U
         "Uploading {} events to Soul ({} bytes total, {} chunks max)",
         events.len(),
         total_bytes,
-        (events.len() + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE
+        events.len().div_ceil(MAX_CHUNK_SIZE)
     );
 
     let mut total_accepted: i64 = 0;
@@ -67,7 +67,7 @@ pub async fn upload_events(client: &SoulClient, events: &[RawEvent]) -> Result<U
                 debug!(
                     "Chunk {}/{}: accepted={}, rejected={}",
                     chunk_idx + 1,
-                    (events.len() + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE,
+                    events.len().div_ceil(MAX_CHUNK_SIZE),
                     resp.accepted,
                     resp.rejected
                 );

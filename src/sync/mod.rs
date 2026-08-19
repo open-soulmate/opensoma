@@ -91,7 +91,7 @@ async fn upload_batch(
     client: &SoulClient,
     pending: &mut Vec<RawEvent>,
 ) {
-    let batch: Vec<_> = pending.drain(..).collect();
+    let batch = std::mem::take(pending);
     let mut backoff = config.retry_backoff_ms;
 
     for attempt in 0..=config.max_retries {

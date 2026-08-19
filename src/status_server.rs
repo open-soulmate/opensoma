@@ -29,18 +29,12 @@ pub struct StatusServerState {
 }
 
 /// Snapshot of cache statistics for the status API.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct CacheStatsSnapshot {
     pub total: usize,
     pub uploaded: usize,
     pub pending: usize,
     pub cache_size_bytes: u64,
-}
-
-impl Default for CacheStatsSnapshot {
-    fn default() -> Self {
-        Self { total: 0, uploaded: 0, pending: 0, cache_size_bytes: 0 }
-    }
 }
 
 #[derive(Serialize)]
@@ -88,6 +82,27 @@ const ADMIN_JS: &str = include_str!("web/admin-framework.js");
 
 /// Start the HTTP status server on the given port.
 /// Exposes /health, /status, /api/* endpoints and the web UI.
+/// Build the axum router for testing or embedding.
+pub fn build_router(state: StatusServerState) -> Router {
+    Router::new()
+        .route("/", get(index_handler))
+        .route("/shared-sidebar.css", get(css_handler))
+        .route("/admin-framework.css", get(css_handler))
+        .route("/admin-framework.js", get(js_handler))
+        .route("/health", get(health_handler))
+        .route("/status", get(status_handler))
+        .route("/metrics", get(metrics_handler))
+        .route("/api/status", get(api_status_handler))
+        .route("/api/connectors", get(api_connectors_handler))
+        .route("/api/collectors", get(api_collectors_handler))
+        .route("/api/connectors/:name/toggle", post(api_connector_toggle))
+        .route("/api/connectors/:name/events", get(api_connector_events))
+        .route("/api/cache/stats", get(api_cache_stats_handler))
+        .route("/api/cache/evict", post(api_cache_evict_handler))
+        .route("/api/page/:page", get(api_page_handler))
+        .with_state(state)
+}
+
 pub async fn start_status_server(
     port: u16,
     state: StatusServerState,

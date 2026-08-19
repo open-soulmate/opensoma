@@ -216,10 +216,10 @@ fn parse_address(hex_str: &str) -> (String, u16) {
         // IPv6 — parse as 4 x u32 little-endian groups
         let mut segments = [0u32; 4];
         let mut ok = true;
-        for i in 0..4 {
+        for (i, segment) in segments.iter_mut().enumerate() {
             let start = i * 8;
             match u32::from_str_radix(&addr_hex[start..start + 8], 16) {
-                Ok(n) => segments[i] = n,
+                Ok(n) => *segment = n,
                 Err(_) => {
                     ok = false;
                     break;

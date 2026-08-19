@@ -4,24 +4,19 @@ use tracing::debug;
 use crate::collector::RawEvent;
 
 /// Conflict resolution strategy.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum ConflictStrategy {
     /// Server always wins — discard local if server has newer version.
     ServerWins,
     /// Local always wins — overwrite server with local data.
     LocalWins,
     /// Newest timestamp wins.
+    #[default]
     NewestWins,
     /// Merge both (concatenate payloads, union tags).
     Merge,
     /// Keep both versions (create duplicate with conflict marker).
     KeepBoth,
-}
-
-impl Default for ConflictStrategy {
-    fn default() -> Self {
-        ConflictStrategy::NewestWins
-    }
 }
 
 /// Represents a conflict between a local event and a server-side version.

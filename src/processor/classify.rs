@@ -135,7 +135,7 @@ fn detect_urgency(event: &RawEvent, content_type: &ContentType) -> Urgency {
     // Network events from unusual ports
     if let Some(remote) = event.tags.get("remote") {
         // Flag connections to known suspicious ports
-        if let Some(port_str) = remote.split(':').last() {
+        if let Some(port_str) = remote.split(':').next_back() {
             if let Ok(port) = port_str.parse::<u16>() {
                 match port {
                     4444 | 5555 | 6666 | 1234 | 31337 => return Urgency::Critical,

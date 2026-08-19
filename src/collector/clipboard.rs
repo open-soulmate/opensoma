@@ -160,10 +160,10 @@ fn sniff_content_type(content: &str) -> &'static str {
     if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         return "url";
     }
-    if trimmed.starts_with('{') || trimmed.starts_with('[') {
-        if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
-            return "json";
-        }
+    if (trimmed.starts_with('{') || trimmed.starts_with('['))
+        && serde_json::from_str::<serde_json::Value>(trimmed).is_ok()
+    {
+        return "json";
     }
     if trimmed.contains('@')
         && trimmed.contains('.')

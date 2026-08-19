@@ -46,11 +46,7 @@ pub async fn start_process_monitor(interval_ms: u64, tx: EventTx) -> Result<()> 
             if let Some(prev) = prev_snapshot.get(pid) {
                 // Check for significant CPU change (>20%) or memory change (>10MB)
                 let cpu_delta = (snap.cpu_usage - prev.cpu_usage).abs();
-                let mem_delta = if snap.memory_bytes > prev.memory_bytes {
-                    snap.memory_bytes - prev.memory_bytes
-                } else {
-                    prev.memory_bytes - snap.memory_bytes
-                };
+                let mem_delta = snap.memory_bytes.abs_diff(prev.memory_bytes);
 
                 if cpu_delta > 20.0 || mem_delta > 10 * 1024 * 1024 {
                     let mut tags = HashMap::new();

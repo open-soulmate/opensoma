@@ -46,7 +46,7 @@ async fn run_pipeline(
     sense_config: Option<SenseConfig>,
 ) {
     let dedup = dedup::Deduplicator::new(config.dedup_window_secs);
-    let sense_enabled = sense_config.as_ref().map_or(false, |s| s.enabled);
+    let sense_enabled = sense_config.as_ref().is_some_and(|s| s.enabled);
     info!(
         "Processor pipeline started — normalize={}, classify={}, enrich={}, dedup_window={}s, sense={}",
         config.normalize_timestamps,

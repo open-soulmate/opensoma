@@ -1,15 +1,7 @@
 #![allow(dead_code)]
-mod collector;
-mod config;
-mod connector;
-mod grpc;
-mod heartbeat;
-mod plugins;
-mod processor;
-mod status_server;
-mod sync;
 
 use anyhow::Result;
+use opensoma::{collector, config, connector, grpc, heartbeat, processor, status_server, sync};
 use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -209,7 +201,7 @@ async fn wait_for_signal() {
 fn run_validate_with_path(config_path: &str) -> i32 {
     println!("Validating config: {}", config_path);
 
-    let config = match config::AppConfig::load(&config_path) {
+    let config = match config::AppConfig::load(config_path) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("❌ FATAL: Failed to load config: {:#}", e);
@@ -357,7 +349,7 @@ watch_dirs = []
 
 # [connector.slack]
 # enabled = true
-# bot_token = "xoxb-your-token"
+# bot_token = "«redacted:xox…»"
 # channels = ["C01ABC123"]
 # poll_interval_secs = 60
 # include_threads = true

@@ -173,16 +173,14 @@ impl Cache {
         let mut pending = 0usize;
         let mut cache_size_bytes = 0u64;
 
-        for item in self.db.iter() {
-            if let Ok((_, value)) = item {
-                if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&value) {
-                    total += 1;
-                    cache_size_bytes += value.len() as u64;
-                    if entry.uploaded {
-                        uploaded += 1;
-                    } else {
-                        pending += 1;
-                    }
+        for (_, value) in self.db.iter().flatten() {
+            if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&value) {
+                total += 1;
+                cache_size_bytes += value.len() as u64;
+                if entry.uploaded {
+                    uploaded += 1;
+                } else {
+                    pending += 1;
                 }
             }
         }

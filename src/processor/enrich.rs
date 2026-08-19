@@ -208,7 +208,7 @@ fn extract_keywords(text: &str) -> Vec<String> {
     }
 
     let mut words: Vec<(String, usize)> = word_counts.into_iter().collect();
-    words.sort_by(|a, b| b.1.cmp(&a.1));
+    words.sort_by_key(|a| std::cmp::Reverse(a.1));
 
     // Return top 10 keywords that appear more than once
     words
@@ -227,7 +227,7 @@ fn generate_summary(text: &str, max_chars: usize) -> String {
     }
 
     // Try to get the first sentence
-    if let Some(end) = trimmed.find(|c: char| c == '.' || c == '!' || c == '?') {
+    if let Some(end) = trimmed.find(['.', '!', '?']) {
         let sentence = &trimmed[..=end];
         if sentence.len() <= max_chars {
             return sentence.to_string();

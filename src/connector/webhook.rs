@@ -97,11 +97,11 @@ async fn webhook_handler(
 ) -> Result<axum::response::Response, StatusCode> {
     // Check allowed origins
     if let Some(origin) = headers.get("origin").and_then(|v| v.to_str().ok()) {
-        if !state.allowed_origins.is_empty() {
-            if !state.allowed_origins.iter().any(|o| origin.starts_with(o)) {
-                warn!("Webhook rejected: origin '{}' not in allowed list", origin);
-                return Err(StatusCode::FORBIDDEN);
-            }
+        if !state.allowed_origins.is_empty()
+            && !state.allowed_origins.iter().any(|o| origin.starts_with(o))
+        {
+            warn!("Webhook rejected: origin '{}' not in allowed list", origin);
+            return Err(StatusCode::FORBIDDEN);
         }
     }
 

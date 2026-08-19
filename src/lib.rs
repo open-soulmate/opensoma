@@ -1,0 +1,13 @@
+//! OpenSoma library — Deploy Everywhere, Collect Everything.
+//!
+//! This library exposes the internal modules for testing and programmatic access.
+
+pub mod collector;
+pub mod config;
+pub mod connector;
+pub mod grpc;
+pub mod heartbeat;
+pub mod plugins;
+pub mod processor;
+pub mod status_server;
+pub mod sync;
