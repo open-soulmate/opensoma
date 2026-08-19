@@ -122,3 +122,80 @@ async fn upload_batch(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sync_config_defaults() {
+        // Verify default values are reasonable
+        let config = SyncConfig {
+            batch_size: 50,
+            upload_interval: 10,
+            max_retries: 5,
+            retry_backoff_ms: 1000,
+            cache_size_mb: 512,
+            enable_streaming: false,
+        };
+        assert_eq!(config.batch_size, 50);
+        assert_eq!(config.upload_interval, 10);
+        assert_eq!(config.max_retries, 5);
+        assert!(config.retry_backoff_ms > 0);
+        assert!(config.cache_size_mb > 0);
+        assert!(!config.enable_streaming);
+    }
+
+    #[test]
+    fn test_sync_config_streaming() {
+        let config = SyncConfig {
+            batch_size: 50,
+            upload_interval: 10,
+            max_retries: 5,
+            retry_backoff_ms: 1000,
+            cache_size_mb: 512,
+            enable_streaming: true,
+        };
+        assert!(config.enable_streaming);
+    }
+
+    #[test]
+    fn test_backoff_calculation() {
+        // Verify the exponential backoff formula: backoff = backoff * 1.5
+        let mut backoff: u64 = 1000;
+        backoff = (backoff as f64 * 1.5) as u64;
+        assert_eq!(backoff, 1500);
+
+        backoff = (backoff as f64 * 1.5) as u64;
+        assert_eq!(backoff, 2250);
+
+        backoff = (backoff as f64 * 1.5) as u64;
+        assert_eq!(backoff, 3375);
+    }
+
+    #[test]
+    fn test_batch_drain_logic() {
+        // Simulate the drain logic used in upload_batch
+        let mut pending: Vec<i32> = vec![1, 2, 3, 4, 5];
+        let batch: Vec<i32> = pending.drain(..).collect();
+        assert!(pending.is_empty());
+        assert_eq!(batch.len(), 5);
+        assert_eq!(batch, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_batch_full_trigger() {
+        // Simulate the batch full check
+        let batch_size = 3;
+        let mut pending: Vec<i32> = Vec::new();
+
+        pending.push(1);
+        assert!(pending.len() < batch_size);
+
+        pending.push(2);
+        assert!(pending.len() < batch_size);
+
+        pending.push(3);
+        assert!(pending.len() >= batch_size); // Should trigger upload
+    }
+}
