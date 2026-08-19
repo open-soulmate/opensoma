@@ -688,8 +688,8 @@ fn run_connectors_list(config_path: &str) -> i32 {
         connectors.len()
     );
 
-    println!("  {:<12} {:<8} {:<22} {}", "Name", "Status", "Source", "Mode");
-    println!("  {:<12} {:<8} {:<22} {}", "────", "──────", "──────", "────");
+    println!("  {:<12} {:<8} {:<22} Mode", "Name", "Status", "Source");
+    println!("  {:<12} {:<8} {:<22} ────", "────", "──────", "──────");
 
     for c in &connectors {
         let status = if c.enabled { "✅ ON" } else { "⬜ OFF" };

@@ -176,6 +176,20 @@ mod tests {
     }
 
     #[test]
+    fn test_glob_match_exact() {
+        assert!(simple_glob_match("Makefile", "Makefile"));
+        assert!(!simple_glob_match("Makefile", "makefile"));
+        assert!(!simple_glob_match("Makefile", "Makefile.bak"));
+    }
+
+    #[test]
+    fn test_glob_match_prefix_wildcard() {
+        assert!(simple_glob_match("test.*", "test.rs"));
+        assert!(simple_glob_match("test.*", "test.py"));
+        assert!(!simple_glob_match("test.*", "main.rs"));
+    }
+
+    #[test]
     fn test_matches_pattern() {
         let include = vec!["*.json".to_string(), "*.csv".to_string()];
         let exclude = vec!["*.tmp".to_string()];
@@ -184,5 +198,87 @@ mod tests {
         assert!(matches_pattern("/data/file.csv", &include, &exclude));
         assert!(!matches_pattern("/data/file.txt", &include, &exclude));
         assert!(!matches_pattern("/data/file.tmp", &include, &exclude));
+    }
+
+    #[test]
+    fn test_matches_pattern_empty_include_accepts_all() {
+        let include: Vec<String> = vec![];
+        let exclude: Vec<String> = vec![];
+
+        assert!(matches_pattern("/data/anything.xyz", &include, &exclude));
+        assert!(matches_pattern("/data/file.json", &include, &exclude));
+    }
+
+    #[test]
+    fn test_matches_pattern_exclude_overrides_include() {
+        let include = vec!["*.json".to_string()];
+        let exclude = vec!["secret.json".to_string()];
+
+        assert!(matches_pattern("/data/file.json", &include, &exclude));
+        assert!(!matches_pattern("/data/secret.json", &include, &exclude));
+    }
+
+    #[test]
+    fn test_build_tags() {
+        let path = Path::new("/home/user/documents/report.pdf");
+        let tags = build_tags(path);
+
+        assert_eq!(tags.get("filename").unwrap(), "report.pdf");
+        assert_eq!(tags.get("extension").unwrap(), "pdf");
+        assert_eq!(tags.get("directory").unwrap(), "/home/user/documents");
+    }
+
+    #[test]
+    fn test_build_tags_no_extension() {
+        let path = Path::new("/tmp/Makefile");
+        let tags = build_tags(path);
+
+        assert_eq!(tags.get("filename").unwrap(), "Makefile");
+        assert_eq!(tags.get("extension").unwrap(), "");
+    }
+
+    #[test]
+    fn test_build_tags_hidden_file() {
+        let path = Path::new("/home/user/.bashrc");
+        let tags = build_tags(path);
+
+        assert_eq!(tags.get("filename").unwrap(), ".bashrc");
+    }
+
+    #[test]
+    fn test_read_file_payload_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        std::fs::write(&file_path, b"hello world").unwrap();
+
+        let payload = read_file_payload(&file_path);
+        assert_eq!(payload, b"hello world");
+    }
+
+    #[test]
+    fn test_read_file_payload_nonexistent() {
+        let payload = read_file_payload(Path::new("/nonexistent/path/file.txt"));
+        assert!(payload.is_empty());
+    }
+
+    #[test]
+    fn test_read_file_payload_truncates_large() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("large.bin");
+        // Write 2MB
+        std::fs::write(&file_path, vec![0u8; 2 * 1024 * 1024]).unwrap();
+
+        let payload = read_file_payload(&file_path);
+        assert_eq!(payload.len(), 1_048_576); // truncated to 1MB
+    }
+
+    #[test]
+    fn test_read_file_payload_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("empty.txt");
+        std::fs::write(&file_path, b"").unwrap();
+
+        let payload = read_file_payload(&file_path);
+        assert!(payload.is_empty());
     }
 }

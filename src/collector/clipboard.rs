@@ -216,4 +216,49 @@ mod tests {
         assert_eq!(sniff_content_type("/home/user/file.txt"), "filepath");
         assert_eq!(sniff_content_type("line1\nline2"), "multiline_text");
     }
+
+    #[test]
+    fn test_sniff_content_type_pem() {
+        assert_eq!(
+            sniff_content_type("-----BEGIN CERTIFICATE-----\nMIIE..."),
+            "pem"
+        );
+    }
+
+    #[test]
+    fn test_sniff_content_type_json_array() {
+        assert_eq!(sniff_content_type("[1, 2, 3]"), "json");
+    }
+
+    #[test]
+    fn test_sniff_content_type_invalid_json() {
+        assert_eq!(sniff_content_type("{not valid json}"), "text");
+    }
+
+    #[test]
+    fn test_sniff_content_type_email_with_spaces() {
+        // Should NOT match email if it contains spaces
+        assert_eq!(sniff_content_type("send to user@example.com now"), "text");
+    }
+
+    #[test]
+    fn test_sniff_content_type_windows_path() {
+        assert_eq!(sniff_content_type("C:\\Users\\test"), "filepath");
+    }
+
+    #[test]
+    fn test_hash_content_empty() {
+        let h = hash_content("");
+        // Should not panic, just produce a hash
+        assert_eq!(h, hash_content(""));
+    }
+
+    #[test]
+    fn test_hash_content_unicode() {
+        let h1 = hash_content("你好世界");
+        let h2 = hash_content("你好世界");
+        let h3 = hash_content("hello world");
+        assert_eq!(h1, h2);
+        assert_ne!(h1, h3);
+    }
 }
