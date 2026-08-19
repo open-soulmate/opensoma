@@ -109,6 +109,7 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/api/events/recent", get(api_events_recent_handler))
         .route("/api/events/search", get(api_events_search_handler))
         .route("/api/system/info", get(api_system_info_handler))
+        .route("/api/connectors/health", get(api_connectors_health_handler))
         .with_state(state)
 }
 
@@ -141,6 +142,7 @@ pub async fn start_status_server(
         .route("/api/events/recent", get(api_events_recent_handler))
         .route("/api/events/search", get(api_events_search_handler))
         .route("/api/system/info", get(api_system_info_handler))
+        .route("/api/connectors/health", get(api_connectors_health_handler))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", port);
@@ -466,6 +468,47 @@ async fn metrics_handler(State(state): State<StatusServerState>) -> axum::respon
 }
 
 /// /api/system/info — detailed system diagnostics for monitoring and troubleshooting.
+
+/// /api/connectors/health — summary of all connector health statuses.
+/// Returns a JSON array of connector health objects with name, enabled, and status.
+async fn api_connectors_health_handler(
+    State(state): State<StatusServerState>,
+) -> Json<serde_json::Value> {
+    let enabled_map = state.connector_enabled.read().await;
+    let event_counts = state.connector_event_counts.read().await;
+
+    let connectors = vec![
+        "feishu", "dingtalk", "wecom", "rss", "email", "notion",
+        "git", "obsidian", "webhook", "github", "slack",
+    ];
+
+    let health: Vec<serde_json::Value> = connectors
+        .iter()
+        .map(|name| {
+            let enabled = enabled_map.get(*name).copied().unwrap_or(false);
+            let events = event_counts.get(*name).copied().unwrap_or(0);
+            serde_json::json!({
+                "name": name,
+                "enabled": enabled,
+                "status": if enabled { "active" } else { "disabled" },
+                "events_collected": events,
+            })
+        })
+        .collect();
+
+    let enabled_count = health.iter().filter(|c| c["enabled"].as_bool().unwrap_or(false)).count();
+    let total_events: u64 = event_counts.values().sum();
+
+    Json(serde_json::json!({
+        "connectors": health,
+        "summary": {
+            "total": connectors.len(),
+            "enabled": enabled_count,
+            "disabled": connectors.len() - enabled_count,
+            "total_events": total_events,
+        }
+    }))
+}
 /// Returns OS, kernel, CPU cores, disk usage, network interfaces, and process info.
 async fn api_system_info_handler(
     State(state): State<StatusServerState>,
@@ -1181,6 +1224,7 @@ mod tests {
             .route("/api/cache/evict", post(api_cache_evict_handler))
             .route("/metrics", get(metrics_handler))
             .route("/api/system/info", get(api_system_info_handler))
+        .route("/api/connectors/health", get(api_connectors_health_handler))
             .with_state(state)
     }
 
@@ -1655,5 +1699,47 @@ mod tests {
         assert!(json["collectors"].is_array());
         assert_eq!(json["node_id"], "test-node");
         assert_eq!(json["connectors_count"], 11);
+    }
+
+    #[tokio::test]
+    async fn test_connectors_health_endpoint() {
+        use tower::ServiceExt;
+        let app = build_test_app();
+
+        let req = axum::http::Request::builder()
+            .uri("/api/connectors/health")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Verify structure
+        assert!(json["connectors"].is_array());
+        assert!(json["summary"].is_object());
+
+        let connectors = json["connectors"].as_array().unwrap();
+        assert_eq!(connectors.len(), 11);
+
+        // Verify summary
+        let summary = &json["summary"];
+        assert_eq!(summary["total"].as_u64().unwrap(), 11);
+        assert!(summary["enabled"].as_u64().is_some());
+        assert!(summary["disabled"].as_u64().is_some());
+        assert!(summary["total_events"].as_u64().is_some());
+
+        // Verify each connector has required fields
+        for conn in connectors {
+            assert!(conn["name"].is_string());
+            assert!(conn["enabled"].as_bool().is_some());
+            assert!(conn["status"].is_string());
+            assert!(conn["events_collected"].is_number());
+        }
     }
 }

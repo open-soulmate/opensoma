@@ -129,6 +129,12 @@ fn parse_config_path() -> String {
         std::process::exit(0);
     }
 
+    // Handle --version-json
+    if args.iter().any(|a| a == "--version-json") {
+        println!("{}", opensoma::build_info::version_json());
+        std::process::exit(0);
+    }
+
     // Handle --help / -h
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("OpenSoma — Deploy Everywhere, Collect Everything");
@@ -143,7 +149,9 @@ fn parse_config_path() -> String {
         println!("    --init                 Generate a default config.toml and exit");
         println!("    --status               Query running daemon status and exit");
         println!("    --metrics              Print Prometheus metrics from running daemon");
+        println!("    --health               Quick health check (exit 0=ok, 1=down)");
         println!("    -V, --version          Print version information");
+        println!("    --version-json         Print version as JSON (for scripts)");
         println!("    -h, --help             Print this help message");
         std::process::exit(0);
     }
@@ -177,6 +185,21 @@ fn parse_config_path() -> String {
             port = config.daemon.status_port;
         }
         std::process::exit(run_metrics_query(port));
+    }
+
+    // Handle --health
+    if args.iter().any(|a| a == "--health") {
+        let mut port: u16 = 8091;
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        if let Ok(config) = config::AppConfig::load(&config_path) {
+            port = config.daemon.status_port;
+        }
+        std::process::exit(run_health_check(port));
     }
 
     // Handle --init
@@ -558,6 +581,39 @@ fn run_metrics_query(port: u16) -> i32 {
     }
 }
 
+/// Quick health check — exit 0 if healthy, 1 if not.
+/// Designed for use in monitoring scripts, load balancers, and systemd watchdog.
+fn run_health_check(port: u16) -> i32 {
+    let url = format!("http://127.0.0.1:{}/health", port);
+
+    match blocking_http_get(&url) {
+        Ok(body) => {
+            // Parse the JSON health response
+            match serde_json::from_str::<serde_json::Value>(&body) {
+                Ok(json) => {
+                    let status = json["status"].as_str().unwrap_or("unknown");
+                    if status == "ok" {
+                        println!("OK");
+                        0
+                    } else {
+                        eprintln!("UNHEALTHY: {}", status);
+                        1
+                    }
+                }
+                Err(_) => {
+                    // If we got a 200 response, consider it healthy
+                    println!("OK");
+                    0
+                }
+            }
+        }
+        Err(_) => {
+            // Silent failure — just exit non-zero
+            1
+        }
+    }
+}
+
 /// Blocking HTTP GET using std::net::TcpStream (no async runtime needed).
 fn blocking_http_get(url: &str) -> std::io::Result<String> {
     use std::io::{Read, Write};
@@ -699,3 +755,24 @@ mod tests {
         assert_eq!(path, "/api/connectors/feishu/toggle");
     }
 }
+
+    #[test]
+    fn test_parse_http_url_health_endpoint() {
+        let (host, path) = parse_http_url("http://127.0.0.1:8091/health");
+        assert_eq!(host, "127.0.0.1:8091");
+        assert_eq!(path, "/health");
+    }
+
+    #[test]
+    fn test_parse_http_url_metrics_endpoint() {
+        let (host, path) = parse_http_url("http://localhost:8091/metrics");
+        assert_eq!(host, "localhost:8091");
+        assert_eq!(path, "/metrics");
+    }
+
+    #[test]
+    fn test_parse_http_url_connectors_health() {
+        let (host, path) = parse_http_url("http://127.0.0.1:8091/api/connectors/health");
+        assert_eq!(host, "127.0.0.1:8091");
+        assert_eq!(path, "/api/connectors/health");
+    }
