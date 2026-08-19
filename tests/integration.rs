@@ -390,6 +390,7 @@ async fn test_status_server_health_endpoint() {
         connector_enabled: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         connector_event_counts: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         cache_stats: std::sync::Arc::new(tokio::sync::RwLock::new(opensoma::status_server::CacheStatsSnapshot::default())),
+        cache: None,
     };
 
     let app = opensoma::status_server::build_router(state);

@@ -66,6 +66,7 @@ async fn main() -> Result<()> {
     let cache_stats = std::sync::Arc::new(tokio::sync::RwLock::new(status_server::CacheStatsSnapshot::default()));
 
     // Start sync engine: processed_rx → cache → upload to Soul
+    let cache_clone = cache.clone();
     let sync_handle =
         sync::start_engine_with_rx(&config.sync, cache, grpc_client.clone(), processed_rx, cache_stats.clone());
 
@@ -80,6 +81,7 @@ async fn main() -> Result<()> {
         connector_enabled: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         connector_event_counts: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         cache_stats: cache_stats.clone(),
+        cache: Some(cache_clone),
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;

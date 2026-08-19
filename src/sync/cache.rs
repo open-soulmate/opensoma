@@ -19,6 +19,8 @@ struct CacheEntry {
 }
 
 /// Local event cache backed by sled.
+/// Clone is cheap — sled::Db uses Arc internally.
+#[derive(Clone)]
 pub struct Cache {
     db: sled::Db,
 }
@@ -198,6 +200,86 @@ impl Cache {
         self.db.flush()?;
         Ok(())
     }
+
+    /// Get the N most recent events (for the event search API).
+    /// Returns events sorted by creation time (newest first).
+    pub fn get_recent(&self, limit: usize) -> Result<Vec<RawEvent>> {
+        let mut entries: Vec<(i64, RawEvent)> = Vec::new();
+        for item in self.db.iter().flatten() {
+            if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&item.1) {
+                entries.push((entry.created_at, entry.event));
+            }
+        }
+        // Sort newest first
+        entries.sort_by(|a, b| b.0.cmp(&a.0));
+        Ok(entries.into_iter().take(limit).map(|(_, e)| e).collect())
+    }
+
+    /// Search events by source prefix (e.g. "file:", "process:", "connector:github").
+    pub fn search_by_source(&self, source_prefix: &str, limit: usize) -> Result<Vec<RawEvent>> {
+        let mut results = Vec::new();
+        for item in self.db.iter().flatten() {
+            if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&item.1) {
+                if entry.event.source.starts_with(source_prefix) {
+                    results.push((entry.created_at, entry.event));
+                }
+            }
+        }
+        results.sort_by(|a, b| b.0.cmp(&a.0));
+        Ok(results.into_iter().take(limit).map(|(_, e)| e).collect())
+    }
+
+    /// Search events by event type (exact match or prefix).
+    pub fn search_by_type(&self, event_type: &str, limit: usize) -> Result<Vec<RawEvent>> {
+        let mut results = Vec::new();
+        for item in self.db.iter().flatten() {
+            if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&item.1) {
+                if entry.event.event_type == event_type
+                    || entry.event.event_type.starts_with(event_type)
+                {
+                    results.push((entry.created_at, entry.event));
+                }
+            }
+        }
+        results.sort_by(|a, b| b.0.cmp(&a.0));
+        Ok(results.into_iter().take(limit).map(|(_, e)| e).collect())
+    }
+
+    /// Search events by time range (inclusive).
+    pub fn search_by_time_range(
+        &self,
+        after_ms: i64,
+        before_ms: i64,
+        limit: usize,
+    ) -> Result<Vec<RawEvent>> {
+        let mut results = Vec::new();
+        for item in self.db.iter().flatten() {
+            if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&item.1) {
+                let ts = entry.event.timestamp_ms;
+                if ts >= after_ms && ts <= before_ms {
+                    results.push((entry.created_at, entry.event));
+                }
+            }
+        }
+        results.sort_by(|a, b| b.0.cmp(&a.0));
+        Ok(results.into_iter().take(limit).map(|(_, e)| e).collect())
+    }
+
+    /// Full-text search on event payload (simple substring match).
+    pub fn search_by_payload(&self, query: &str, limit: usize) -> Result<Vec<RawEvent>> {
+        let query_lower = query.to_lowercase();
+        let mut results = Vec::new();
+        for item in self.db.iter().flatten() {
+            if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&item.1) {
+                let payload_str = String::from_utf8_lossy(&entry.event.payload).to_lowercase();
+                if payload_str.contains(&query_lower) {
+                    results.push((entry.created_at, entry.event));
+                }
+            }
+        }
+        results.sort_by(|a, b| b.0.cmp(&a.0));
+        Ok(results.into_iter().take(limit).map(|(_, e)| e).collect())
+    }
 }
 
 #[derive(Debug)]
@@ -337,5 +419,115 @@ mod tests {
         cache.put(&make_event("ev6", b"data")).unwrap();
         cache.remove("ev6").unwrap();
         assert_eq!(cache.stats().total, 0);
+    }
+}
+
+// Additional tests for search methods
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn temp_cache() -> Cache {
+        let dir = tempfile::tempdir().unwrap();
+        Cache::open(dir.path().to_str().unwrap()).unwrap()
+    }
+
+    fn make_event_with_source(id: &str, source: &str, event_type: &str, payload: &[u8]) -> RawEvent {
+        RawEvent {
+            id: id.to_string(),
+            source: source.to_string(),
+            event_type: event_type.to_string(),
+            timestamp_ms: chrono::Utc::now().timestamp_millis(),
+            payload: payload.to_vec(),
+            tags: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_get_recent() {
+        let cache = temp_cache();
+        cache.put(&make_event_with_source("a", "file:1", "file_change", b"data1")).unwrap();
+        cache.put(&make_event_with_source("b", "process:2", "process_started", b"data2")).unwrap();
+        cache.put(&make_event_with_source("c", "file:3", "file_change", b"data3")).unwrap();
+
+        let recent = cache.get_recent(10).unwrap();
+        assert_eq!(recent.len(), 3);
+
+        let recent_limited = cache.get_recent(2).unwrap();
+        assert_eq!(recent_limited.len(), 2);
+    }
+
+    #[test]
+    fn test_search_by_source() {
+        let cache = temp_cache();
+        cache.put(&make_event_with_source("a", "file:/tmp/test.txt", "file_change", b"data")).unwrap();
+        cache.put(&make_event_with_source("b", "process:1234", "process_started", b"data")).unwrap();
+        cache.put(&make_event_with_source("c", "file:/tmp/other.txt", "file_change", b"data")).unwrap();
+
+        let file_events = cache.search_by_source("file:", 10).unwrap();
+        assert_eq!(file_events.len(), 2);
+
+        let proc_events = cache.search_by_source("process:", 10).unwrap();
+        assert_eq!(proc_events.len(), 1);
+
+        let none_events = cache.search_by_source("clipboard:", 10).unwrap();
+        assert_eq!(none_events.len(), 0);
+    }
+
+    #[test]
+    fn test_search_by_type() {
+        let cache = temp_cache();
+        cache.put(&make_event_with_source("a", "src", "file_change", b"data")).unwrap();
+        cache.put(&make_event_with_source("b", "src", "process_started", b"data")).unwrap();
+        cache.put(&make_event_with_source("c", "src", "file_change", b"data")).unwrap();
+        cache.put(&make_event_with_source("d", "src", "clipboard_change", b"data")).unwrap();
+
+        let file_changes = cache.search_by_type("file_change", 10).unwrap();
+        assert_eq!(file_changes.len(), 2);
+
+        let clipboard = cache.search_by_type("clipboard_change", 10).unwrap();
+        assert_eq!(clipboard.len(), 1);
+    }
+
+    #[test]
+    fn test_search_by_payload() {
+        let cache = temp_cache();
+        cache.put(&make_event_with_source("a", "src", "test", b"Hello World")).unwrap();
+        cache.put(&make_event_with_source("b", "src", "test", b"Goodbye World")).unwrap();
+        cache.put(&make_event_with_source("c", "src", "test", b"Hello Again")).unwrap();
+
+        let hello = cache.search_by_payload("hello", 10).unwrap();
+        assert_eq!(hello.len(), 2); // case-insensitive
+
+        let world = cache.search_by_payload("World", 10).unwrap();
+        assert_eq!(world.len(), 2);
+
+        let nomatch = cache.search_by_payload("xyz", 10).unwrap();
+        assert_eq!(nomatch.len(), 0);
+    }
+
+    #[test]
+    fn test_search_by_time_range() {
+        let cache = temp_cache();
+
+        // Use fixed timestamps
+        let mut e1 = make_event_with_source("a", "src", "test", b"data");
+        e1.timestamp_ms = 1000;
+        let mut e2 = make_event_with_source("b", "src", "test", b"data");
+        e2.timestamp_ms = 2000;
+        let mut e3 = make_event_with_source("c", "src", "test", b"data");
+        e3.timestamp_ms = 3000;
+
+        cache.put(&e1).unwrap();
+        cache.put(&e2).unwrap();
+        cache.put(&e3).unwrap();
+
+        let range = cache.search_by_time_range(1500, 2500, 10).unwrap();
+        assert_eq!(range.len(), 1);
+        assert_eq!(range[0].id, "b");
+
+        let all = cache.search_by_time_range(0, 5000, 10).unwrap();
+        assert_eq!(all.len(), 3);
     }
 }

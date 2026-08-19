@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Html,
     routing::{get, post},
@@ -26,6 +26,8 @@ pub struct StatusServerState {
     pub connector_event_counts: Arc<RwLock<HashMap<String, u64>>>,
     /// Cache statistics snapshot (updated periodically by sync engine).
     pub cache_stats: Arc<RwLock<CacheStatsSnapshot>>,
+    /// Direct cache handle for event search queries (read-only usage).
+    pub cache: Option<crate::sync::cache::Cache>,
 }
 
 /// Snapshot of cache statistics for the status API.
@@ -100,6 +102,8 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/api/cache/stats", get(api_cache_stats_handler))
         .route("/api/cache/evict", post(api_cache_evict_handler))
         .route("/api/page/:page", get(api_page_handler))
+        .route("/api/events/recent", get(api_events_recent_handler))
+        .route("/api/events/search", get(api_events_search_handler))
         .with_state(state)
 }
 
@@ -127,6 +131,8 @@ pub async fn start_status_server(
         .route("/api/cache/stats", get(api_cache_stats_handler))
         .route("/api/cache/evict", post(api_cache_evict_handler))
         .route("/api/page/:page", get(api_page_handler))
+        .route("/api/events/recent", get(api_events_recent_handler))
+        .route("/api/events/search", get(api_events_search_handler))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", port);
@@ -475,6 +481,139 @@ async fn api_page_handler(
         ),
     };
     Json(serde_json::json!({ "html": html }))
+}
+
+/// Query parameters for event search.
+#[derive(Deserialize)]
+struct EventSearchQuery {
+    /// Filter by source prefix (e.g. "file:", "connector:github")
+    source: Option<String>,
+    /// Filter by event type (exact or prefix match)
+    event_type: Option<String>,
+    /// Full-text search on payload
+    q: Option<String>,
+    /// Start timestamp (ms since epoch)
+    after: Option<i64>,
+    /// End timestamp (ms since epoch)
+    before: Option<i64>,
+    /// Max results to return (default 50, max 200)
+    limit: Option<usize>,
+}
+
+/// /api/events/recent — return the N most recent cached events.
+async fn api_events_recent_handler(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    State(state): State<StatusServerState>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(50)
+        .min(200);
+
+    match &state.cache {
+        Some(cache) => match cache.get_recent(limit) {
+            Ok(events) => {
+                let summaries: Vec<serde_json::Value> = events
+                    .iter()
+                    .map(|e| {
+                        serde_json::json!({
+                            "id": e.id,
+                            "source": e.source,
+                            "event_type": e.event_type,
+                            "timestamp_ms": e.timestamp_ms,
+                            "payload_size": e.payload.len(),
+                            "tags": e.tags,
+                        })
+                    })
+                    .collect();
+                Ok(Json(serde_json::json!({
+                    "count": summaries.len(),
+                    "events": summaries,
+                })))
+            }
+            Err(e) => {
+                tracing::error!("Event recent query failed: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        },
+        None => Ok(Json(serde_json::json!({
+            "count": 0,
+            "events": [],
+            "error": "Cache not available for queries",
+        }))),
+    }
+}
+
+/// /api/events/search — search cached events by source, type, query, or time range.
+async fn api_events_search_handler(
+    Query(query): Query<EventSearchQuery>,
+    State(state): State<StatusServerState>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let limit = query.limit.unwrap_or(50).min(200);
+
+    let cache = match &state.cache {
+        Some(c) => c,
+        None => {
+            return Ok(Json(serde_json::json!({
+                "count": 0,
+                "events": [],
+                "error": "Cache not available for queries",
+            })));
+        }
+    };
+
+    let events = if let Some(ref q) = query.q {
+        // Full-text search has highest priority
+        cache.search_by_payload(q, limit)
+    } else if let Some(ref after) = query.after {
+        // Time range search
+        let before = query.before.unwrap_or(i64::MAX);
+        cache.search_by_time_range(*after, before, limit)
+    } else if let Some(ref source) = query.source {
+        // Source prefix search
+        cache.search_by_source(source, limit)
+    } else if let Some(ref et) = query.event_type {
+        // Event type search
+        cache.search_by_type(et, limit)
+    } else {
+        // No filter — return recent
+        cache.get_recent(limit)
+    };
+
+    match events {
+        Ok(events) => {
+            let summaries: Vec<serde_json::Value> = events
+                .iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "id": e.id,
+                        "source": e.source,
+                        "event_type": e.event_type,
+                        "timestamp_ms": e.timestamp_ms,
+                        "payload_size": e.payload.len(),
+                        "tags": e.tags,
+                    })
+                })
+                .collect();
+            Ok(Json(serde_json::json!({
+                "count": summaries.len(),
+                "events": summaries,
+                "query": {
+                    "source": query.source,
+                    "event_type": query.event_type,
+                    "q": query.q,
+                    "after": query.after,
+                    "before": query.before,
+                    "limit": limit,
+                },
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Event search failed: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 async fn build_dashboard_page(state: &StatusServerState) -> String {
@@ -885,6 +1024,7 @@ mod tests {
                 pending: 50,
                 cache_size_bytes: 1024 * 256,
             })),
+            cache: None,
         };
 
         Router::new()
@@ -1259,6 +1399,7 @@ mod tests {
             connector_enabled: Arc::new(RwLock::new(HashMap::new())),
             connector_event_counts: Arc::new(RwLock::new(HashMap::new())),
             cache_stats: Arc::new(RwLock::new(CacheStatsSnapshot::default())),
+            cache: None,
         };
 
         // Verify github is active before toggle
@@ -1299,6 +1440,7 @@ mod tests {
             connector_enabled: Arc::new(RwLock::new(HashMap::new())),
             connector_event_counts: Arc::new(RwLock::new(HashMap::new())),
             cache_stats: Arc::new(RwLock::new(CacheStatsSnapshot::default())),
+            cache: None,
         };
 
         let app = build_test_app_with_state(state);
