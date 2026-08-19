@@ -171,11 +171,13 @@ impl Cache {
         let mut total = 0usize;
         let mut uploaded = 0usize;
         let mut pending = 0usize;
+        let mut cache_size_bytes = 0u64;
 
         for item in self.db.iter() {
             if let Ok((_, value)) = item {
                 if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&value) {
                     total += 1;
+                    cache_size_bytes += value.len() as u64;
                     if entry.uploaded {
                         uploaded += 1;
                     } else {
@@ -189,6 +191,7 @@ impl Cache {
             total,
             uploaded,
             pending,
+            cache_size_bytes,
         }
     }
 
@@ -204,6 +207,7 @@ pub struct CacheStats {
     pub total: usize,
     pub uploaded: usize,
     pub pending: usize,
+    pub cache_size_bytes: u64,
 }
 
 #[cfg(test)]

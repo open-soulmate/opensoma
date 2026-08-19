@@ -8,6 +8,7 @@ use tracing::{error, info};
 use crate::collector::{EventRx, RawEvent};
 use crate::config::SyncConfig;
 use crate::grpc::client::SoulClient;
+use crate::status_server::CacheStatsSnapshot;
 
 /// Start the sync engine with an explicit event receiver.
 pub fn start_engine_with_rx(
@@ -15,11 +16,12 @@ pub fn start_engine_with_rx(
     cache: cache::Cache,
     client: SoulClient,
     rx: EventRx,
+    cache_stats: std::sync::Arc<tokio::sync::RwLock<CacheStatsSnapshot>>,
 ) -> JoinHandle<()> {
     let config = config.clone();
 
     tokio::spawn(async move {
-        run_sync_engine(config, cache, client, rx).await;
+        run_sync_engine(config, cache, client, rx, cache_stats).await;
     })
 }
 
@@ -29,6 +31,7 @@ async fn run_sync_engine(
     cache: cache::Cache,
     client: SoulClient,
     mut rx: EventRx,
+    cache_stats: std::sync::Arc<tokio::sync::RwLock<CacheStatsSnapshot>>,
 ) {
     info!(
         "Sync engine started — batch_size={}, interval={}s, max_retries={}, streaming={}",
@@ -69,6 +72,13 @@ async fn run_sync_engine(
                 if !pending.is_empty() {
                     upload_batch(&config, &cache, &client, &mut pending).await;
                 }
+                // Update cache stats for status server
+                let stats = cache.stats();
+                let mut snapshot = cache_stats.write().await;
+                snapshot.total = stats.total;
+                snapshot.uploaded = stats.uploaded;
+                snapshot.pending = stats.pending;
+                snapshot.cache_size_bytes = stats.cache_size_bytes;
             }
         }
     }

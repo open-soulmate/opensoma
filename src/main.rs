@@ -70,9 +70,12 @@ async fn main() -> Result<()> {
         processor::start_pipeline(raw_rx, processed_tx, &config.processor)
     };
 
+    // Shared cache stats for status server
+    let cache_stats = std::sync::Arc::new(tokio::sync::RwLock::new(status_server::CacheStatsSnapshot::default()));
+
     // Start sync engine: processed_rx → cache → upload to Soul
     let sync_handle =
-        sync::start_engine_with_rx(&config.sync, cache, grpc_client.clone(), processed_rx);
+        sync::start_engine_with_rx(&config.sync, cache, grpc_client.clone(), processed_rx, cache_stats.clone());
 
     // Start HTTP status server for monitoring
     let status_state = status_server::StatusServerState {
@@ -84,7 +87,7 @@ async fn main() -> Result<()> {
         last_error: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
         connector_enabled: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         connector_event_counts: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
-        cache_stats: std::sync::Arc::new(tokio::sync::RwLock::new(status_server::CacheStatsSnapshot::default())),
+        cache_stats: cache_stats.clone(),
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;
