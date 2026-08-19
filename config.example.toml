@@ -114,6 +114,13 @@ include_releases = true
 include_closed = false
 max_items_per_fetch = 30
 
+[connector.slack]
+enabled = false
+bot_token = ""
+channels = []
+poll_interval_secs = 60
+include_threads = true
+
 # ---------------------------------------------------------------------------
 # Processor — normalization and deduplication
 # ---------------------------------------------------------------------------

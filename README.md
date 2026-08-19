@@ -56,6 +56,7 @@ OpenSoma is a headless daemon that acts as your digital twin's sensory layer. It
 | **Obsidian** | Obsidian vault           | Watch        | Monitors vault files for changes (notes, etc.)   |
 | **Webhook**  | HTTP POST                | Listen       | Generic webhook receiver with HMAC verification  |
 | **GitHub**   | GitHub REST API          | Poll         | Syncs issues, PRs, and releases from repositories |
+| **Slack**    | Slack API                | Poll         | Collects messages and thread replies from channels |
 
 ## Quick Start
 
