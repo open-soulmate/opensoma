@@ -394,9 +394,11 @@ async fn metrics_handler(State(state): State<StatusServerState>) -> axum::respon
     lines.push("# HELP opensoma_info OpenSoma daemon information.".to_string());
     lines.push("# TYPE opensoma_info gauge".to_string());
     lines.push(format!(
-        "opensoma_info{{node_id=\"{}\",version=\"{}\"}} 1",
+        "opensoma_info{{node_id=\"{}\",version=\"{}\",git_hash=\"{}\",branch=\"{}\"}} 1",
         state.node_id,
-        env!("CARGO_PKG_VERSION")
+        crate::build_info::VERSION,
+        crate::build_info::GIT_HASH,
+        crate::build_info::GIT_BRANCH
     ));
 
     // Uptime
@@ -508,9 +510,12 @@ async fn api_system_info_handler(
         })
         .collect();
 
+    let build = crate::build_info::version_json();
+
     Json(serde_json::json!({
         "node_id": state.node_id,
         "version": env!("CARGO_PKG_VERSION"),
+        "build": build,
         "uptime_seconds": uptime,
         "hostname": hostname,
         "os": os_name,

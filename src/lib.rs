@@ -2,6 +2,7 @@
 //!
 //! This library exposes the internal modules for testing and programmatic access.
 
+pub mod build_info;
 pub mod collector;
 pub mod config;
 pub mod connector;

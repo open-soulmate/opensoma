@@ -125,14 +125,14 @@ fn parse_config_path() -> String {
 
     // Handle --version / -V
     if args.iter().any(|a| a == "--version" || a == "-V") {
-        println!("opensoma {}", env!("CARGO_PKG_VERSION"));
+        println!("{}", opensoma::build_info::version_string());
         std::process::exit(0);
     }
 
     // Handle --help / -h
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("OpenSoma — Deploy Everywhere, Collect Everything");
-        println!("Version: {}", env!("CARGO_PKG_VERSION"));
+        println!("{}", opensoma::build_info::version_string());
         println!();
         println!("USAGE:");
         println!("    opensoma [OPTIONS]");
