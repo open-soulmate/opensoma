@@ -1,53 +1,14 @@
 pub mod client;
 
-// Include generated protobuf code if proto file was compiled
+// Include generated protobuf code from tonic-build (compiled from proto/soul.proto).
+// This provides: HeartbeatRequest, HeartbeatResponse, UploadEventsRequest,
+// UploadEventsResponse, CollectedEvent, EventStream, SoulCommand, PingCommand,
+// ConfigUpdate, NodeStatus enum, StreamControl enum, and SoulServiceClient.
 pub mod soul {
     #![allow(dead_code)]
     #![allow(clippy::all)]
 
-    // Stub types for when proto is not compiled.
-    // When tonic-build generates from soul.proto, these get replaced.
-    // For now, we provide manual stubs so the crate compiles standalone.
-
-    #[derive(Debug, Clone, Default)]
-    pub struct HeartbeatRequest {
-        pub node_id: String,
-        pub timestamp_ms: i64,
-        pub status: i32,
-        pub metadata: std::collections::HashMap<String, String>,
-    }
-
-    #[derive(Debug, Clone, Default)]
-    pub struct HeartbeatResponse {
-        pub server_timestamp_ms: i64,
-        pub ok: bool,
-        pub message: String,
-    }
-
-    #[derive(Debug, Clone, Default)]
-    pub struct UploadEventsRequest {
-        pub node_id: String,
-        pub events: Vec<CollectedEvent>,
-        pub cursor: String,
-    }
-
-    #[derive(Debug, Clone, Default)]
-    pub struct UploadEventsResponse {
-        pub accepted: i64,
-        pub rejected: i64,
-        pub new_cursor: String,
-        pub reject_reasons: Vec<String>,
-    }
-
-    #[derive(Debug, Clone, Default)]
-    pub struct CollectedEvent {
-        pub id: String,
-        pub source: String,
-        pub event_type: String,
-        pub timestamp_ms: i64,
-        pub payload: Vec<u8>,
-        pub tags: std::collections::HashMap<String, String>,
-    }
+    tonic::include_proto!("soul");
 }
 
 #[cfg(test)]
@@ -174,5 +135,53 @@ mod tests {
         assert_eq!(resp.rejected, 2);
         assert_eq!(resp.reject_reasons.len(), 2);
         assert_eq!(resp.new_cursor, "cursor-abc");
+    }
+
+    #[test]
+    fn test_node_status_enum() {
+        assert_eq!(NodeStatus::Unknown as i32, 0);
+        assert_eq!(NodeStatus::Healthy as i32, 1);
+        assert_eq!(NodeStatus::Degraded as i32, 2);
+        assert_eq!(NodeStatus::Error as i32, 3);
+
+        assert_eq!(NodeStatus::from_str_name("NODE_STATUS_HEALTHY"), Some(NodeStatus::Healthy));
+        assert_eq!(NodeStatus::Healthy.as_str_name(), "NODE_STATUS_HEALTHY");
+    }
+
+    #[test]
+    fn test_stream_control_enum() {
+        assert_eq!(StreamControl::StreamResume as i32, 0);
+        assert_eq!(StreamControl::StreamPause as i32, 1);
+    }
+
+    #[test]
+    fn test_ping_command_default() {
+        let ping = PingCommand::default();
+        // PingCommand is an empty message
+        assert_eq!(ping, PingCommand {});
+    }
+
+    #[test]
+    fn test_config_update_with_data() {
+        let update = ConfigUpdate {
+            config_toml: b"[daemon]\nnode_id = \"test\"".to_vec(),
+        };
+        assert!(!update.config_toml.is_empty());
+        let text = String::from_utf8(update.config_toml).unwrap();
+        assert!(text.contains("node_id"));
+    }
+
+    #[test]
+    fn test_collected_event_equality() {
+        let a = CollectedEvent {
+            id: "evt-1".to_string(),
+            source: "file".to_string(),
+            event_type: "change".to_string(),
+            timestamp_ms: 100,
+            payload: vec![1, 2, 3],
+            tags: std::collections::HashMap::new(),
+        };
+        let b = a.clone();
+        assert_eq!(a, b);
     }
 }
