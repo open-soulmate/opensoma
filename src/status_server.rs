@@ -31,6 +31,8 @@ pub struct StatusServerState {
     pub pipeline_metrics: Option<crate::metrics::PipelineMetrics>,
     /// Connector health checker.
     pub health_checker: Option<crate::health::HealthChecker>,
+    /// Plugin registry for dynamic plugin management.
+    pub plugin_registry: Option<std::sync::Arc<crate::plugins::PluginRegistry>>,
 }
 
 /// Snapshot of cache statistics for the status API.
@@ -115,6 +117,7 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/api/system/info", get(api_system_info_handler))
         .route("/api/connectors/health", get(api_connectors_health_handler))
         .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
+        .route("/api/plugins", get(api_plugins_handler))
         .with_state(state)
 }
 
@@ -536,6 +539,30 @@ async fn api_pipeline_metrics_handler(
         Json(serde_json::json!({
             "pipeline_metrics": null,
             "message": "Pipeline metrics not initialized",
+        }))
+    }
+}
+
+/// Returns plugin registry status — registered plugins, their state, and health.
+async fn api_plugins_handler(
+    State(state): State<StatusServerState>,
+) -> Json<serde_json::Value> {
+    if let Some(ref registry) = state.plugin_registry {
+        let plugins = registry.list().await;
+        let health = registry.health_all().await;
+        Json(serde_json::json!({
+            "total": plugins.len(),
+            "active": health.iter().filter(|h| h.state == crate::plugins::PluginState::Active).count(),
+            "plugins": plugins,
+            "health": health,
+        }))
+    } else {
+        Json(serde_json::json!({
+            "total": 0,
+            "active": 0,
+            "plugins": [],
+            "health": [],
+            "message": "Plugin registry not initialized",
         }))
     }
 }
@@ -1247,6 +1274,7 @@ mod tests {
             cache: None,
             pipeline_metrics: None,
             health_checker: None,
+            plugin_registry: None,
         };
 
         Router::new()
@@ -1641,6 +1669,7 @@ mod tests {
             cache: None,
             pipeline_metrics: None,
             health_checker: None,
+            plugin_registry: None,
         };
 
         // Verify github is active before toggle
@@ -1684,6 +1713,7 @@ mod tests {
             cache: None,
             pipeline_metrics: None,
             health_checker: None,
+            plugin_registry: None,
         };
 
         let app = build_test_app_with_state(state);

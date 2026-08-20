@@ -55,6 +55,18 @@ async fn main() -> Result<()> {
     // Initialize local cache (sled)
     let cache = sync::cache::Cache::open(&config.daemon.data_dir)?;
 
+    // Initialize plugin registry and register built-in sense plugins
+    let plugin_registry = std::sync::Arc::new(opensoma::plugins::PluginRegistry::new());
+    if let Err(e) = opensoma::plugins::register_sense_plugins(&plugin_registry, &config.sense).await {
+        tracing::warn!("Sense plugin registration failed (non-fatal): {:#}", e);
+    }
+    let plugin_count = plugin_registry.count().await;
+    let active_plugins = plugin_registry.active_count().await;
+    info!(
+        "Plugin registry: {} registered, {} active",
+        plugin_count, active_plugins
+    );
+
     // Build HTTP client (replaces gRPC)
     let grpc_client = grpc::client::SoulClient::new(&config.soul).await?;
 
@@ -138,6 +150,7 @@ async fn main() -> Result<()> {
         cache: Some(cache_clone),
         pipeline_metrics: Some(pipeline_metrics),
         health_checker: Some(health::HealthChecker::new()),
+        plugin_registry: Some(plugin_registry),
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;
