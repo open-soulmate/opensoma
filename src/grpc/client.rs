@@ -131,48 +131,74 @@ impl SoulClient {
     }
 
     /// Upload a batch of collected events to Soul via the Nerve publish API.
-    /// Events are published to topic "soma.events" with the event data.
+    /// Events are published concurrently (up to 8 in parallel) for throughput.
     pub async fn upload_events(
         &self,
         events: &[soul::CollectedEvent],
     ) -> Result<soul::UploadEventsResponse> {
-        debug!("Uploading {} events to Soul", events.len());
+        debug!("Uploading {} events to Soul (concurrent)", events.len());
 
+        const CONCURRENCY: usize = 8;
+
+        // Process events in chunks of CONCURRENCY, sending each chunk concurrently
         let mut accepted: i64 = 0;
         let mut rejected: i64 = 0;
         let mut reject_reasons: Vec<String> = Vec::new();
 
-        // Publish each event to the Nerve bus
-        for event in events {
-            let url = format!("{}/api/nerve/publish", self.base_url);
+        for chunk in events.chunks(CONCURRENCY) {
+            let futs: Vec<_> = chunk
+                .iter()
+                .map(|event| {
+                    let base_url = self.base_url.clone();
+                    let http = self.http.clone();
+                    let event = event.clone();
+                    async move {
+                        let url = format!("{}/api/nerve/publish", base_url);
+                        let payload_str =
+                            String::from_utf8_lossy(&event.payload).to_string();
+                        let body = serde_json::json!({
+                            "topic": format!("soma.{}", event.event_type),
+                            "data": {
+                                "id": event.id,
+                                "source": event.source,
+                                "event_type": event.event_type,
+                                "timestamp_ms": event.timestamp_ms,
+                                "payload": payload_str,
+                                "tags": event.tags,
+                            },
+                            "source": format!("opensoma:{}", event.source),
+                        });
+                        match http.post(&url).json(&body).send().await {
+                            Ok(resp) if resp.status().is_success() => (true, None),
+                            Ok(resp) => (
+                                false,
+                                Some(format!(
+                                    "HTTP {} for event {}",
+                                    resp.status(),
+                                    event.id
+                                )),
+                            ),
+                            Err(e) => (
+                                false,
+                                Some(format!(
+                                    "Network error for event {}: {}",
+                                    event.id, e
+                                )),
+                            ),
+                        }
+                    }
+                })
+                .collect();
 
-            // Convert payload bytes to string (best-effort)
-            let payload_str = String::from_utf8_lossy(&event.payload).to_string();
-
-            let body = serde_json::json!({
-                "topic": format!("soma.{}", event.event_type),
-                "data": {
-                    "id": event.id,
-                    "source": event.source,
-                    "event_type": event.event_type,
-                    "timestamp_ms": event.timestamp_ms,
-                    "payload": payload_str,
-                    "tags": event.tags,
-                },
-                "source": format!("opensoma:{}", event.source),
-            });
-
-            match self.http.post(&url).json(&body).send().await {
-                Ok(resp) if resp.status().is_success() => {
+            let results = futures::future::join_all(futs).await;
+            for (ok, reason) in results {
+                if ok {
                     accepted += 1;
-                }
-                Ok(resp) => {
+                } else {
                     rejected += 1;
-                    reject_reasons.push(format!("HTTP {} for event {}", resp.status(), event.id));
-                }
-                Err(e) => {
-                    rejected += 1;
-                    reject_reasons.push(format!("Network error for event {}: {}", event.id, e));
+                    if let Some(r) = reason {
+                        reject_reasons.push(r);
+                    }
                 }
             }
         }
