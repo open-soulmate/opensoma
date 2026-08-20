@@ -209,6 +209,7 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/api/connectors/health", get(api_connectors_health_handler))
         .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
         .route("/api/plugins", get(api_plugins_handler))
+        .route("/api/config", get(api_config_handler))
         .with_state(state)
 }
 
