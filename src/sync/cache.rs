@@ -113,6 +113,38 @@ impl Cache {
         Ok(pending)
     }
 
+    /// Get the cached content hash for an event by ID.
+    /// Returns None if the event is not in the cache.
+    pub fn get_cached_hash(&self, event_id: &str) -> Result<Option<String>> {
+        if let Some(raw) = self.db.get(event_id.as_bytes())? {
+            let entry: CacheEntry = serde_json::from_slice(&raw)?;
+            Ok(Some(entry.content_hash))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Get the cached event snapshot for conflict detection.
+    /// Returns None if the event is not in the cache.
+    pub fn get_snapshot(
+        &self,
+        event_id: &str,
+    ) -> Result<Option<crate::sync::conflict::EventSnapshot>> {
+        if let Some(raw) = self.db.get(event_id.as_bytes())? {
+            let entry: CacheEntry = serde_json::from_slice(&raw)?;
+            Ok(Some(crate::sync::conflict::EventSnapshot {
+                id: entry.event.id.clone(),
+                source: entry.event.source.clone(),
+                event_type: entry.event.event_type.clone(),
+                timestamp_ms: entry.event.timestamp_ms,
+                content_hash: entry.content_hash,
+                tags: entry.event.tags.clone(),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Check if an event with the given content hash already exists.
     pub fn contains_hash(&self, content_hash: &str) -> Result<bool> {
         for item in self.db.iter() {
@@ -433,6 +465,17 @@ mod search_tests {
         Cache::open(dir.path().to_str().unwrap()).unwrap()
     }
 
+    fn make_event(id: &str, payload: &[u8]) -> RawEvent {
+        RawEvent {
+            id: id.to_string(),
+            source: "test".to_string(),
+            event_type: "test.event".to_string(),
+            timestamp_ms: chrono::Utc::now().timestamp_millis(),
+            payload: payload.to_vec(),
+            tags: HashMap::new(),
+        }
+    }
+
     fn make_event_with_source(
         id: &str,
         source: &str,
@@ -605,5 +648,69 @@ mod search_tests {
 
         let all = cache.search_by_time_range(0, 5000, 10).unwrap();
         assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn test_get_cached_hash_existing() {
+        let cache = temp_cache();
+        let event = make_event("evt-1", b"test_payload");
+        cache.put(&event).unwrap();
+
+        let hash = cache.get_cached_hash("evt-1").unwrap();
+        assert!(hash.is_some());
+        assert_eq!(hash.unwrap(), Cache::hash_event(&event));
+    }
+
+    #[test]
+    fn test_get_cached_hash_nonexistent() {
+        let cache = temp_cache();
+        let hash = cache.get_cached_hash("nonexistent").unwrap();
+        assert!(hash.is_none());
+    }
+
+    #[test]
+    fn test_get_snapshot_existing() {
+        let cache = temp_cache();
+        let event = make_event("evt-1", b"snapshot_test");
+        cache.put(&event).unwrap();
+
+        let snap = cache.get_snapshot("evt-1").unwrap();
+        assert!(snap.is_some());
+        let snap = snap.unwrap();
+        assert_eq!(snap.id, "evt-1");
+        assert_eq!(snap.source, event.source);
+        assert_eq!(snap.event_type, event.event_type);
+        assert_eq!(snap.content_hash, Cache::hash_event(&event));
+    }
+
+    #[test]
+    fn test_get_snapshot_nonexistent() {
+        let cache = temp_cache();
+        let snap = cache.get_snapshot("nonexistent").unwrap();
+        assert!(snap.is_none());
+    }
+
+    #[test]
+    fn test_get_snapshot_after_content_change() {
+        let cache = temp_cache();
+
+        // Put original event
+        let original = make_event("evt-1", b"original");
+        cache.put(&original).unwrap();
+
+        // Get snapshot of original
+        let snap1 = cache.get_snapshot("evt-1").unwrap().unwrap();
+        let hash1 = snap1.content_hash.clone();
+
+        // Put modified event with same ID
+        let modified = make_event("evt-1", b"modified_content");
+        cache.put(&modified).unwrap();
+
+        // Snapshot should now reflect the modified content
+        let snap2 = cache.get_snapshot("evt-1").unwrap().unwrap();
+        let hash2 = snap2.content_hash.clone();
+
+        assert_ne!(hash1, hash2);
+        assert_eq!(hash2, Cache::hash_event(&modified));
     }
 }

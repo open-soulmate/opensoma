@@ -107,6 +107,8 @@ async fn run_sync_engine(
 }
 
 /// Upload a batch of events with retry logic and exponential backoff.
+/// Before uploading, checks for local cache conflicts (same event ID with
+/// different content hash) and resolves them according to the configured strategy.
 async fn upload_batch(
     config: &SyncConfig,
     cache: &cache::Cache,
@@ -115,8 +117,11 @@ async fn upload_batch(
     metrics: &Option<crate::metrics::PipelineMetrics>,
     resolver: &mut ConflictResolver,
 ) {
-    let _ = resolver; // Available for conflict detection when server returns event snapshots
     let batch = std::mem::take(pending);
+
+    // ── Conflict detection: check batch events against cached versions ──
+    let batch = detect_and_resolve_local_conflicts(batch, cache, resolver, metrics);
+
     let mut backoff = config.retry_backoff_ms;
     let batch_bytes: u64 = batch.iter().map(|e| e.payload.len() as u64).sum();
     let mut timer = metrics.as_ref().map(|m| m.start_sync_timer());
@@ -177,9 +182,119 @@ async fn upload_batch(
     }
 }
 
+/// Detect local conflicts: events in the batch that already exist in the cache
+/// with a different content hash (meaning the source data changed between
+/// collection and upload). Resolves conflicts according to the configured strategy.
+///
+/// Returns the filtered/modified batch ready for upload.
+fn detect_and_resolve_local_conflicts(
+    batch: Vec<RawEvent>,
+    cache: &cache::Cache,
+    resolver: &mut ConflictResolver,
+    metrics: &Option<crate::metrics::PipelineMetrics>,
+) -> Vec<RawEvent> {
+    use conflict::Resolution;
+
+    let mut output = Vec::with_capacity(batch.len());
+
+    for event in batch {
+        // Look up the cached snapshot for this event ID
+        let cached_snapshot = match cache.get_snapshot(&event.id) {
+            Ok(snap) => snap,
+            Err(e) => {
+                tracing::warn!("Cache lookup failed for event {}: {}", event.id, e);
+                output.push(event);
+                continue;
+            }
+        };
+
+        let Some(snapshot) = cached_snapshot else {
+            // New event, not in cache yet — no conflict possible
+            output.push(event);
+            continue;
+        };
+
+        let current_hash = cache::Cache::hash_event(&event);
+        if current_hash == snapshot.content_hash {
+            // Same content — no conflict
+            output.push(event);
+            continue;
+        }
+
+        // Conflict detected: same ID, different content
+        if let Some(ref m) = metrics {
+            m.inc_conflicts_detected();
+        }
+        tracing::info!(
+            "Local conflict detected for event {} — resolving with configured strategy",
+            event.id
+        );
+
+        let conflict = conflict::Conflict {
+            event_id: event.id.clone(),
+            local_event: conflict::EventSnapshot {
+                id: event.id.clone(),
+                source: event.source.clone(),
+                event_type: event.event_type.clone(),
+                timestamp_ms: event.timestamp_ms,
+                content_hash: current_hash.clone(),
+                tags: event.tags.clone(),
+            },
+            server_event: snapshot,
+            resolution: Resolution::Pending,
+        };
+
+        let resolved = resolver.resolve(conflict);
+
+        if let Some(ref m) = metrics {
+            m.inc_conflicts_resolved();
+        }
+
+        match resolved.resolution {
+            Resolution::UsedLocal | Resolution::UsedNewest { winner: _ } => {
+                // Keep the local (newer) version for upload
+                tracing::debug!("Conflict resolved: keeping local version of {}", event.id);
+                output.push(event);
+            }
+            Resolution::UsedServer => {
+                // Discard local version, server/cache version is authoritative
+                tracing::debug!(
+                    "Conflict resolved: discarding local version of {}",
+                    event.id
+                );
+                // Don't add to output — skip this event
+            }
+            Resolution::Merged => {
+                // For merge, keep the local version (it will be merged server-side)
+                tracing::debug!("Conflict resolved: merge for {}", event.id);
+                output.push(event);
+            }
+            Resolution::KeptBoth { new_local_id } => {
+                // Upload under a new ID to preserve both versions
+                let old_id = event.id.clone();
+                let mut kept_event = event;
+                kept_event.id = new_local_id;
+                tracing::debug!(
+                    "Conflict resolved: keeping both for {} (new id: {})",
+                    old_id,
+                    kept_event.id
+                );
+                output.push(kept_event);
+            }
+            Resolution::Pending => {
+                // Should not happen — treat as keep local
+                output.push(event);
+            }
+        }
+    }
+
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_sync_config_defaults() {
@@ -301,5 +416,162 @@ mod tests {
             parse_conflict_strategy(""),
             ConflictStrategy::NewestWins
         ));
+    }
+
+    #[test]
+    fn test_detect_local_conflicts_empty_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        let cache = cache::Cache::open(dir.path().join("data").to_str().unwrap()).unwrap();
+        let mut resolver = ConflictResolver::new(ConflictStrategy::NewestWins);
+        let batch: Vec<RawEvent> = Vec::new();
+        let result = detect_and_resolve_local_conflicts(batch, &cache, &mut resolver, &None);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_detect_local_conflicts_new_event_no_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        let cache = cache::Cache::open(dir.path().join("data").to_str().unwrap()).unwrap();
+        let mut resolver = ConflictResolver::new(ConflictStrategy::NewestWins);
+
+        // Event not in cache — no conflict
+        let event = RawEvent {
+            id: "new-1".into(),
+            source: "file:test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 1000,
+            payload: b"hello".to_vec(),
+            tags: HashMap::new(),
+        };
+        let result = detect_and_resolve_local_conflicts(vec![event], &cache, &mut resolver, &None);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "new-1");
+    }
+
+    #[test]
+    fn test_detect_local_conflicts_same_hash_no_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        let cache = cache::Cache::open(dir.path().join("data").to_str().unwrap()).unwrap();
+        let mut resolver = ConflictResolver::new(ConflictStrategy::NewestWins);
+
+        // Put event in cache
+        let event = RawEvent {
+            id: "evt-1".into(),
+            source: "file:test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 1000,
+            payload: b"same_content".to_vec(),
+            tags: HashMap::new(),
+        };
+        cache.put(&event).unwrap();
+
+        // Same event, same content — no conflict
+        let result =
+            detect_and_resolve_local_conflicts(vec![event], &cache, &mut resolver, &None);
+        assert_eq!(result.len(), 1);
+        assert_eq!(resolver.conflict_count(), 0);
+    }
+
+    #[test]
+    fn test_detect_local_conflicts_different_hash_resolves_local_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        let cache = cache::Cache::open(dir.path().join("data").to_str().unwrap()).unwrap();
+        let mut resolver = ConflictResolver::new(ConflictStrategy::LocalWins);
+
+        // Put original event in cache
+        let original = RawEvent {
+            id: "evt-1".into(),
+            source: "file:test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 1000,
+            payload: b"old_content".to_vec(),
+            tags: HashMap::new(),
+        };
+        cache.put(&original).unwrap();
+
+        // Modified event with same ID but different payload
+        let modified = RawEvent {
+            id: "evt-1".into(),
+            source: "file:test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 2000,
+            payload: b"new_content".to_vec(),
+            tags: HashMap::new(),
+        };
+        let result =
+            detect_and_resolve_local_conflicts(vec![modified], &cache, &mut resolver, &None);
+        assert_eq!(result.len(), 1); // LocalWins keeps the local version
+        assert_eq!(resolver.conflict_count(), 1);
+    }
+
+    #[test]
+    fn test_detect_local_conflicts_server_wins_discards_local() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        let cache = cache::Cache::open(dir.path().join("data").to_str().unwrap()).unwrap();
+        let mut resolver = ConflictResolver::new(ConflictStrategy::ServerWins);
+
+        // Put original event in cache
+        let original = RawEvent {
+            id: "evt-1".into(),
+            source: "file:test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 1000,
+            payload: b"server_content".to_vec(),
+            tags: HashMap::new(),
+        };
+        cache.put(&original).unwrap();
+
+        // Modified event
+        let modified = RawEvent {
+            id: "evt-1".into(),
+            source: "file:test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 2000,
+            payload: b"local_content".to_vec(),
+            tags: HashMap::new(),
+        };
+        let result =
+            detect_and_resolve_local_conflicts(vec![modified], &cache, &mut resolver, &None);
+        assert_eq!(result.len(), 0); // ServerWins discards local
+        assert_eq!(resolver.conflict_count(), 1);
+    }
+
+    #[test]
+    fn test_detect_local_conflicts_keep_both_creates_new_id() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        let cache = cache::Cache::open(dir.path().join("data").to_str().unwrap()).unwrap();
+        let mut resolver = ConflictResolver::new(ConflictStrategy::KeepBoth);
+
+        // Put original event in cache
+        let original = RawEvent {
+            id: "evt-1".into(),
+            source: "file:test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 1000,
+            payload: b"version_a".to_vec(),
+            tags: HashMap::new(),
+        };
+        cache.put(&original).unwrap();
+
+        // Modified event
+        let modified = RawEvent {
+            id: "evt-1".into(),
+            source: "file:test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 2000,
+            payload: b"version_b".to_vec(),
+            tags: HashMap::new(),
+        };
+        let result =
+            detect_and_resolve_local_conflicts(vec![modified], &cache, &mut resolver, &None);
+        assert_eq!(result.len(), 1);
+        assert_ne!(result[0].id, "evt-1"); // New ID generated
+        assert_eq!(resolver.conflict_count(), 1);
     }
 }
