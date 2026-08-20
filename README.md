@@ -13,8 +13,10 @@ OpenSoma is a headless daemon that acts as your digital twin's sensory layer. It
 │  ┌────────────┐   ┌───────────┐   ┌──────────────┐  │
 │  │ Collectors │──▶│ Processors│──▶│  Sync Engine │  │
 │  │ (file,     │   │(normalize,│   │(sled cache,  │  │
-│  │  obsidian) │   │  dedup)   │   │ upload, retry)│  │
-│  └────────────┘   └───────────┘   └──────┬───────┘  │
+│  │  process,  │   │ classify, │   │ upload, retry│  │
+│  │  network,  │   │ enrich,   │   │ conflict)    │  │
+│  │  clipboard,│   │  dedup)   │   └──────┬───────┘  │
+│  │  obsidian) │   └───────────┘          │           │
 │                                          │           │
 │  ┌────────────┐   ┌───────────┐   ┌──────▼───────┐  │
 │  │ Connectors │   │ Heartbeat │   │  gRPC Client │  │
@@ -107,6 +109,9 @@ Options:
   --health               Quick health check (exit 0=ok, 1=down)
   --connectors           List configured connectors and their status
   --doctor               Diagnose runtime environment and dependencies
+  --export <FILE>        Export cached events to JSON file
+  --import <FILE>        Import events from JSON file into cache
+  --cache-info           Show local event cache statistics
   -V, --version          Print version information
   --version-json         Print version as JSON (for scripts)
   -h, --help             Print help
@@ -126,6 +131,7 @@ Copy `config.example.toml` to `config.toml` and edit. All options are documented
 | `[connector.*]`| Platform-specific credentials and polling intervals |
 | `[processor]`  | Normalization, deduplication, and event size limits  |
 | `[sync]`       | Upload batch size, retry policy, cache limits       |
+| `[sense]`      | Multimodal plugins (OCR, ASR, image, video)         |
 
 ### Environment Variable Overrides
 
@@ -236,6 +242,8 @@ opensoma/
     ├── main.rs           # Entry point, subsystem wiring
     ├── config.rs         # TOML config + hot-reload
     ├── heartbeat.rs      # Liveness signal
+    ├── health.rs         # Connector health check system
+    ├── metrics.rs        # Pipeline and system metrics (Prometheus)
     ├── status_server.rs  # HTTP monitoring endpoint
     ├── collector/
     │   ├── mod.rs
@@ -255,6 +263,7 @@ opensoma/
     │   ├── obsidian.rs
     │   ├── webhook.rs    # HMAC-verified HTTP receiver
     │   └── github.rs     # Issues, PRs, releases
+    │   └── slack.rs      # Slack channel messages + threads
     ├── grpc/             # HTTP client for Soul API
     ├── plugins/
     │   └── sense/

@@ -31,6 +31,12 @@ watch_dirs = ["/var/data/input"]
 include = ["*.json", "*.csv", "*.txt", "*.log", "*.md"]
 exclude = ["*.tmp", "*.swp", "~*"]
 debounce_ms = 500
+# Poll interval for process monitor in milliseconds (default 5000)
+# process_interval_ms = 5000
+# Poll interval for network monitor in milliseconds (default 10000)
+# network_interval_ms = 10000
+# Poll interval for clipboard monitor in milliseconds (default 2000)
+# clipboard_interval_ms = 2000
 
 # ---------------------------------------------------------------------------
 # Connectors — platform integrations (all disabled by default)
@@ -149,3 +155,35 @@ conflict_strategy = "newest_wins"
 # Enable real-time event streaming alongside batch upload (default: false)
 # When true, each event is also sent immediately via the /api/nerve/stream/upload endpoint.
 enable_streaming = false
+
+# ---------------------------------------------------------------------------
+# Sense — multimodal content parsing plugins (all disabled by default)
+# ---------------------------------------------------------------------------
+[sense]
+enabled = false
+
+# OCR — extract text from images and PDFs
+# [sense.ocr]
+# engine = "tesseract"          # "tesseract" (local) or "api" (remote)
+# tesseract_lang = "chi_sim+eng" # Tesseract language pack(s)
+# api_url = ""                   # Remote OCR API endpoint (if engine = "api")
+# api_key = ""                   # API key for remote OCR
+
+# ASR — speech-to-text from audio files
+# [sense.asr]
+# engine = "whisper"             # "whisper" (local) or "api" (remote)
+# whisper_model = "base"         # Whisper model: tiny, base, small, medium, large
+# api_url = ""                   # Remote ASR API endpoint (if engine = "api")
+# api_key = ""                   # API key for remote ASR
+
+# Image — multimodal LLM image understanding
+# [sense.image]
+# model = "gpt-4o"               # Multimodal model name
+# api_url = "https://api.openai.com/v1"
+# api_key = ""
+
+# Video — keyframe extraction and analysis
+# [sense.video]
+# frame_interval_sec = 5         # Extract a frame every N seconds
+# max_frames = 60                # Maximum frames per video
+# frame_analyzer = "image"       # Analyzer to use for frames ("image" or "api")
