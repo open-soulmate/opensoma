@@ -210,6 +210,9 @@ fn parse_config_path() -> String {
         println!("    --health               Quick health check (exit 0=ok, 1=down)");
         println!("    --connectors           List configured connectors and their status");
         println!("    --doctor               Diagnose runtime environment and dependencies");
+        println!("    --export <FILE>        Export cached events to JSON file");
+        println!("    --import <FILE>        Import events from JSON file into cache");
+        println!("    --cache-info           Show local event cache statistics");
         println!("    -V, --version          Print version information");
         println!("    --version-json         Print version as JSON (for scripts)");
         println!("    -h, --help             Print this help message");
@@ -269,6 +272,51 @@ fn parse_config_path() -> String {
         std::process::exit(run_doctor(&config_path));
     }
 
+
+    // Handle --export
+    if args.iter().any(|a| a == "--export") {
+        let export_idx = args.iter().position(|a| a == "--export").unwrap();
+        if export_idx + 1 >= args.len() {
+            eprintln!("❌ --export requires a file path argument");
+            std::process::exit(1);
+        }
+        let output_file = args[export_idx + 1].clone();
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_export(&config_path, &output_file));
+    }
+
+    // Handle --import
+    if args.iter().any(|a| a == "--import") {
+        let import_idx = args.iter().position(|a| a == "--import").unwrap();
+        if import_idx + 1 >= args.len() {
+            eprintln!("❌ --import requires a file path argument");
+            std::process::exit(1);
+        }
+        let input_file = args[import_idx + 1].clone();
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_import(&config_path, &input_file));
+    }
+
+    // Handle --cache-info
+    if args.iter().any(|a| a == "--cache-info") {
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_cache_info(&config_path));
+    }
     // Handle --health
     if args.iter().any(|a| a == "--health") {
         let mut port: u16 = 8091;
@@ -1043,6 +1091,176 @@ fn run_doctor(config_path: &str) -> i32 {
         0
     }
 }
+/// Export all cached events to a JSON file. Returns exit code.
+fn run_export(config_path: &str, output_file: &str) -> i32 {
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    let cache = match sync::cache::Cache::open(&config.daemon.data_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to open cache: {:#}", e);
+            return 1;
+        }
+    };
+
+    let events = match cache.get_recent(usize::MAX) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("❌ Failed to read events: {:#}", e);
+            return 1;
+        }
+    };
+
+    let count = events.len();
+    let json = match serde_json::to_string_pretty(&events) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("❌ Failed to serialize events: {:#}", e);
+            return 1;
+        }
+    };
+
+    match std::fs::write(output_file, &json) {
+        Ok(_) => {
+            println!("✅ Exported {} events to '{}'", count, output_file);
+            0
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to write '{}': {}", output_file, e);
+            1
+        }
+    }
+}
+
+/// Import events from a JSON file into the local cache. Returns exit code.
+fn run_import(config_path: &str, input_file: &str) -> i32 {
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    let content = match std::fs::read_to_string(input_file) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to read '{}': {}", input_file, e);
+            return 1;
+        }
+    };
+
+    let events: Vec<collector::RawEvent> = match serde_json::from_str(&content) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("❌ Failed to parse JSON: {:#}", e);
+            return 1;
+        }
+    };
+
+    let cache = match sync::cache::Cache::open(&config.daemon.data_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to open cache: {:#}", e);
+            return 1;
+        }
+    };
+
+    let mut imported = 0usize;
+    let mut skipped = 0usize;
+    for event in &events {
+        match cache.put(event) {
+            Ok(()) => imported += 1,
+            Err(e) => {
+                tracing::debug!("Skipped event {}: {:#}", event.id, e);
+                skipped += 1;
+            }
+        }
+    }
+
+    if let Err(e) = cache.flush() {
+        eprintln!("⚠️  Cache flush warning: {}", e);
+    }
+
+    println!(
+        "✅ Import complete: {} imported, {} skipped (duplicates) from '{}'",
+        imported, skipped, input_file
+    );
+    0
+}
+
+/// Show local event cache statistics. Returns exit code.
+fn run_cache_info(config_path: &str) -> i32 {
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    let cache = match sync::cache::Cache::open(&config.daemon.data_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to open cache: {:#}", e);
+            return 1;
+        }
+    };
+
+    let stats = cache.stats();
+
+    println!("╔══════════════════════════════════════════════╗");
+    println!("║          OpenSoma Cache Info                 ║");
+    println!("╚══════════════════════════════════════════════╝");
+    println!();
+    println!("  Data dir:      {}", config.daemon.data_dir);
+    println!("  Total events:  {}", stats.total);
+    println!("  Uploaded:      {}", stats.uploaded);
+    println!("  Pending:       {}", stats.pending);
+    println!(
+        "  Cache size:    {} ({:.2} MB)",
+        stats.cache_size_bytes,
+        stats.cache_size_bytes as f64 / (1024.0 * 1024.0)
+    );
+    println!();
+
+    if stats.total > 0 {
+        let upload_pct = stats.uploaded as f64 / stats.total as f64 * 100.0;
+        println!("  Upload progress: {:.1}%", upload_pct);
+    }
+
+    // Show recent event sources
+    match cache.get_recent(5) {
+        Ok(recent) if !recent.is_empty() => {
+            println!();
+            println!("  Recent events:");
+            for (i, event) in recent.iter().enumerate() {
+                let payload_preview: String = String::from_utf8_lossy(&event.payload)
+                    .chars()
+                    .take(60)
+                    .collect();
+                println!(
+                    "    {}. [{}] {} — \"{}…\"",
+                    i + 1,
+                    event.source,
+                    event.event_type,
+                    payload_preview
+                );
+            }
+        }
+        _ => {}
+    }
+
+    println!();
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
