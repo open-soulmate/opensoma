@@ -27,7 +27,7 @@ pub struct Entity {
 }
 
 /// Entity types that can be extracted.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum EntityType {
     Url,
     Email,
@@ -147,6 +147,72 @@ fn extract_entities(text: &str) -> Vec<Entity> {
             value: m.0.to_string(),
             offset: Some(m.1),
         });
+    }
+
+    // Ports (host:port pattern like localhost:8080 or 192.168.1.1:443)
+    for m in regex_find(
+        text,
+        r"(?:localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})\b",
+    ) {
+        if let Some(port_str) = m.0.rsplit(':').next() {
+            if let Ok(port) = port_str.parse::<u16>() {
+                if port > 0 {
+                    entities.push(Entity {
+                        entity_type: EntityType::Port,
+                        value: port_str.to_string(),
+                        offset: Some(m.1 + m.0.len() - port_str.len()),
+                    });
+                }
+            }
+        }
+    }
+
+    // Phone numbers (international and local formats)
+    for m in regex_find(
+        text,
+        r"\+?\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}",
+    ) {
+        let digits: String = m.0.chars().filter(|c| c.is_ascii_digit()).collect();
+        // Must have at least 7 digits to be a plausible phone number
+        if digits.len() >= 7 && digits.len() <= 15 {
+            // Avoid colliding with IP addresses (already extracted)
+            let is_ip = entities
+                .iter()
+                .any(|e| e.entity_type == EntityType::IpAddress && e.value == m.0.trim());
+            if !is_ip {
+                entities.push(Entity {
+                    entity_type: EntityType::PhoneNumber,
+                    value: m.0.to_string(),
+                    offset: Some(m.1),
+                });
+            }
+        }
+    }
+
+    // DateTime patterns (ISO 8601 and common formats)
+    for m in regex_find(
+        text,
+        r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?",
+    ) {
+        entities.push(Entity {
+            entity_type: EntityType::DateTime,
+            value: m.0.to_string(),
+            offset: Some(m.1),
+        });
+    }
+    // Also match date-only and time-only patterns
+    for m in regex_find(text, r"\b\d{4}/\d{2}/\d{2}\b|\b\d{2}:\d{2}:\d{2}\b") {
+        // Skip if already captured by ISO pattern
+        let already = entities
+            .iter()
+            .any(|e| e.entity_type == EntityType::DateTime && e.value.contains(m.0));
+        if !already {
+            entities.push(Entity {
+                entity_type: EntityType::DateTime,
+                value: m.0.to_string(),
+                offset: Some(m.1),
+            });
+        }
     }
 
     // Domains (simple pattern)
@@ -462,5 +528,131 @@ mod tests {
             detect_language("Это русский текст для тестирования"),
             Some("ru".to_string())
         );
+    }
+
+    #[test]
+    fn test_extract_entities_port_localhost() {
+        let entities = extract_entities("Server running on localhost:8080");
+        let ports: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Port)
+            .collect();
+        assert_eq!(ports.len(), 1);
+        assert_eq!(ports[0].value, "8080");
+    }
+
+    #[test]
+    fn test_extract_entities_port_ip() {
+        let entities = extract_entities("Connect to 192.168.1.1:443 for HTTPS");
+        let ports: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Port)
+            .collect();
+        assert_eq!(ports.len(), 1);
+        assert_eq!(ports[0].value, "443");
+    }
+
+    #[test]
+    fn test_extract_entities_port_multiple() {
+        let entities = extract_entities("Ports: localhost:3000, localhost:8090, localhost:5432");
+        let ports: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Port)
+            .collect();
+        assert_eq!(ports.len(), 3);
+    }
+
+    #[test]
+    fn test_extract_entities_phone_international() {
+        let entities = extract_entities("Call +1-202-555-0147 for support");
+        let phones: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::PhoneNumber)
+            .collect();
+        assert_eq!(phones.len(), 1);
+        assert!(phones[0].value.contains("202"));
+    }
+
+    #[test]
+    fn test_extract_entities_phone_local() {
+        let entities = extract_entities("Phone: 021-6543-2100 ext 123");
+        let phones: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::PhoneNumber)
+            .collect();
+        assert!(!phones.is_empty());
+    }
+
+    #[test]
+    fn test_extract_entities_phone_too_short() {
+        // Only 3 digits — should NOT be detected as a phone number
+        let entities = extract_entities("Call 123 for info");
+        let phones: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::PhoneNumber)
+            .collect();
+        assert!(phones.is_empty());
+    }
+
+    #[test]
+    fn test_extract_entities_datetime_iso() {
+        let entities = extract_entities("Created at 2024-01-15T10:30:00Z");
+        let dates: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::DateTime)
+            .collect();
+        assert_eq!(dates.len(), 1);
+        assert!(dates[0].value.contains("2024-01-15"));
+    }
+
+    #[test]
+    fn test_extract_entities_datetime_iso_with_offset() {
+        let entities = extract_entities("Meeting: 2024-03-20 14:00:00+08:00");
+        let dates: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::DateTime)
+            .collect();
+        assert_eq!(dates.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_entities_datetime_slash_format() {
+        let entities = extract_entities("Deadline: 2024/12/31");
+        let dates: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::DateTime)
+            .collect();
+        assert_eq!(dates.len(), 1);
+        assert!(dates[0].value.contains("2024/12/31"));
+    }
+
+    #[test]
+    fn test_extract_entities_time_only() {
+        let entities = extract_entities("Daily standup at 09:30:00");
+        let dates: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::DateTime)
+            .collect();
+        assert_eq!(dates.len(), 1);
+        assert_eq!(dates[0].value, "09:30:00");
+    }
+
+    #[test]
+    fn test_extract_all_entity_types() {
+        let text = "Contact user@example.com at https://example.com from 192.168.1.1:443. \
+                     Call +1-555-123-4567. Meeting 2024-06-15T09:00:00Z. \
+                     File /tmp/data.csv. Hash d41d8cd98f00b204e9800998ecf8427e.";
+        let entities = extract_entities(text);
+
+        let types: std::collections::HashSet<_> = entities.iter().map(|e| &e.entity_type).collect();
+        // Should have at least: Url, Email, IpAddress, Port, PhoneNumber, DateTime, FilePath, Hash
+        assert!(types.contains(&EntityType::Url));
+        assert!(types.contains(&EntityType::Email));
+        assert!(types.contains(&EntityType::IpAddress));
+        assert!(types.contains(&EntityType::Port));
+        assert!(types.contains(&EntityType::PhoneNumber));
+        assert!(types.contains(&EntityType::DateTime));
+        assert!(types.contains(&EntityType::FilePath));
+        assert!(types.contains(&EntityType::Hash));
     }
 }

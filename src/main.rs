@@ -1384,7 +1384,10 @@ fn run_recent_events(config_path: &str, count: usize) -> i32 {
     }
 
     println!("╔══════════════════════════════════════════════╗");
-    println!("║       Recent Events ({:>3} of requested)      ║", events.len());
+    println!(
+        "║       Recent Events ({:>3} of requested)      ║",
+        events.len()
+    );
     println!("╚══════════════════════════════════════════════╝");
     println!();
     println!(
@@ -1448,11 +1451,7 @@ fn run_search_events(config_path: &str, query: &str) -> i32 {
         return 0;
     }
 
-    println!(
-        "Found {} event(s) matching '{}':",
-        events.len(),
-        query
-    );
+    println!("Found {} event(s) matching '{}':", events.len(), query);
     println!();
     println!(
         "  {:<4} {:<12} {:<18} {:<20} {}",
@@ -1515,11 +1514,7 @@ fn run_source_filter(config_path: &str, prefix: &str) -> i32 {
         return 0;
     }
 
-    println!(
-        "Found {} event(s) from source '{}':",
-        events.len(),
-        prefix
-    );
+    println!("Found {} event(s) from source '{}':", events.len(), prefix);
     println!();
     println!(
         "  {:<4} {:<12} {:<18} {:<20} {}",
@@ -1582,11 +1577,7 @@ fn run_type_filter(config_path: &str, event_type: &str) -> i32 {
         return 0;
     }
 
-    println!(
-        "Found {} event(s) of type '{}':",
-        events.len(),
-        event_type
-    );
+    println!("Found {} event(s) of type '{}':", events.len(), event_type);
     println!();
     println!(
         "  {:<4} {:<12} {:<18} {:<20} {}",
@@ -1664,22 +1655,42 @@ fn run_top(port: u16) -> i32 {
                         let s = uptime % 60;
 
                         println!("  Node: {:<20} Host: {}", node_id, hostname);
-                        println!("  Component: {:<16} Uptime: {}d {}h {}m {}s", component, d, h, m, s);
+                        println!(
+                            "  Component: {:<16} Uptime: {}d {}h {}m {}s",
+                            component, d, h, m, s
+                        );
                         println!();
                         println!("  ┌─────────────────────────────────────────────────────────┐");
-                        println!("  │  Events Collected: {:<10} │ Synced: {:<10}      │", events_collected, events_synced);
-                        println!("  │  Pending:          {:<10} │                        │", events_collected.saturating_sub(events_synced));
+                        println!(
+                            "  │  Events Collected: {:<10} │ Synced: {:<10}      │",
+                            events_collected, events_synced
+                        );
+                        println!(
+                            "  │  Pending:          {:<10} │                        │",
+                            events_collected.saturating_sub(events_synced)
+                        );
                         println!("  └─────────────────────────────────────────────────────────┘");
                         println!();
                         println!("  CPU:  {:>5.1}%  {}", cpu, bar(cpu, 30));
-                        let mem_pct = if mem_total > 0 { mem_used as f64 / mem_total as f64 * 100.0 } else { 0.0 };
-                        println!("  MEM:  {:>5.1}%  {}  ({} / {} MB)", mem_pct, bar(mem_pct, 30), mem_used, mem_total);
+                        let mem_pct = if mem_total > 0 {
+                            mem_used as f64 / mem_total as f64 * 100.0
+                        } else {
+                            0.0
+                        };
+                        println!(
+                            "  MEM:  {:>5.1}%  {}  ({} / {} MB)",
+                            mem_pct,
+                            bar(mem_pct, 30),
+                            mem_used,
+                            mem_total
+                        );
                         println!();
 
                         // Show connectors
                         if let Some(connectors) = json["connectors_active"].as_array() {
                             if !connectors.is_empty() {
-                                let names: Vec<&str> = connectors.iter().filter_map(|c| c.as_str()).collect();
+                                let names: Vec<&str> =
+                                    connectors.iter().filter_map(|c| c.as_str()).collect();
                                 println!("  Active connectors: {}", names.join(", "));
                             } else {
                                 println!("  Active connectors: (none)");
@@ -1716,9 +1727,15 @@ fn run_top(port: u16) -> i32 {
                     if parts.len() >= 2 {
                         if let Ok(val) = parts[1].parse::<f64>() {
                             match parts[0] {
-                                "opensoma_pipeline_events_processed_total" => processed = val as u64,
-                                "opensoma_pipeline_events_normalized_total" => normalized = val as u64,
-                                "opensoma_pipeline_events_classified_total" => classified = val as u64,
+                                "opensoma_pipeline_events_processed_total" => {
+                                    processed = val as u64
+                                }
+                                "opensoma_pipeline_events_normalized_total" => {
+                                    normalized = val as u64
+                                }
+                                "opensoma_pipeline_events_classified_total" => {
+                                    classified = val as u64
+                                }
                                 "opensoma_pipeline_events_enriched_total" => enriched = val as u64,
                                 "opensoma_pipeline_events_deduped_total" => deduped = val as u64,
                                 _ => {}

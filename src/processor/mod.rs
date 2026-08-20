@@ -785,10 +785,9 @@ mod tests {
                 "file",
                 "video data",
             );
-            event.tags.insert(
-                "file_path".to_string(),
-                format!("/tmp/video.{}", ext),
-            );
+            event
+                .tags
+                .insert("file_path".to_string(), format!("/tmp/video.{}", ext));
             process_sense(&mut event, &config);
             assert_eq!(
                 event.tags.get("sense_media_type").unwrap(),
@@ -823,10 +822,9 @@ mod tests {
                 "file",
                 "image data",
             );
-            event.tags.insert(
-                "file_path".to_string(),
-                format!("/tmp/photo.{}", ext),
-            );
+            event
+                .tags
+                .insert("file_path".to_string(), format!("/tmp/photo.{}", ext));
             process_sense(&mut event, &config);
             assert_eq!(
                 event.tags.get("sense_media_type").unwrap(),
@@ -861,10 +859,9 @@ mod tests {
                 "file",
                 "audio data",
             );
-            event.tags.insert(
-                "file_path".to_string(),
-                format!("/tmp/recording.{}", ext),
-            );
+            event
+                .tags
+                .insert("file_path".to_string(), format!("/tmp/recording.{}", ext));
             process_sense(&mut event, &config);
             assert_eq!(
                 event.tags.get("sense_media_type").unwrap(),
