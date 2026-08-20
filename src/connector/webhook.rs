@@ -249,4 +249,107 @@ mod tests {
 
         assert!(!verify_hmac_signature("wrong-secret", b"body", &sig));
     }
+
+    #[test]
+    fn test_verify_hmac_signature_empty_body() {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        type HmacSha256 = Hmac<Sha256>;
+
+        let secret = "test-secret";
+        let body = b"";
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(body);
+        let sig = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+
+        assert!(verify_hmac_signature(secret, body, &sig));
+    }
+
+    #[test]
+    fn test_verify_hmac_signature_large_body() {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        type HmacSha256 = Hmac<Sha256>;
+
+        let secret = "test-secret";
+        let body = vec![0xABu8; 1024 * 1024]; // 1MB body
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(&body);
+        let sig = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+
+        assert!(verify_hmac_signature(secret, &body, &sig));
+    }
+
+    #[test]
+    fn test_verify_hmac_signature_empty_prefix() {
+        // Signature without "sha256=" prefix should fail
+        assert!(!verify_hmac_signature("secret", b"body", "abcdef123456"));
+    }
+
+    #[test]
+    fn test_verify_hmac_signature_github_format() {
+        // GitHub uses x-hub-signature-256 with sha256= prefix
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        type HmacSha256 = Hmac<Sha256>;
+
+        let secret = "webhook-secret";
+        let body = b"{\"action\":\"opened\"}";
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(body);
+        let sig = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+
+        assert!(verify_hmac_signature(secret, body, &sig));
+    }
+
+    #[test]
+    fn test_constant_time_eq_single_byte_diff() {
+        // Differ by only one byte
+        assert!(!constant_time_eq(b"aaa", b"aab"));
+    }
+
+    #[test]
+    fn test_constant_time_eq_long_strings() {
+        let a = vec![0x42u8; 10000];
+        let b = vec![0x42u8; 10000];
+        assert!(constant_time_eq(&a, &b));
+
+        let mut c = vec![0x42u8; 10000];
+        c[9999] = 0x43;
+        assert!(!constant_time_eq(&a, &c));
+    }
+
+    #[test]
+    fn test_webhook_state_clone() {
+        let state = WebhookState {
+            tx: tokio::sync::mpsc::channel(1).0,
+            secret: Some("test".to_string()),
+            allowed_origins: vec!["https://example.com".to_string()],
+        };
+        let cloned = state.clone();
+        assert_eq!(cloned.secret, Some("test".to_string()));
+        assert_eq!(cloned.allowed_origins.len(), 1);
+    }
+
+    #[test]
+    fn test_allowed_origins_matching() {
+        // Simulate the origin check logic from webhook_handler
+        let allowed_origins = vec![
+            "https://example.com".to_string(),
+            "https://trusted.org".to_string(),
+        ];
+
+        // Matching origin
+        let origin = "https://example.com";
+        assert!(allowed_origins.is_empty() || allowed_origins.iter().any(|o| origin.starts_with(o)));
+
+        // Non-matching origin
+        let origin = "https://evil.com";
+        assert!(!allowed_origins.iter().any(|o| origin.starts_with(o)));
+
+        // Empty allowed list = allow all
+        let empty_origins: Vec<String> = vec![];
+        let origin = "https://anything.com";
+        assert!(empty_origins.is_empty() || empty_origins.iter().any(|o| origin.starts_with(o)));
+    }
 }
