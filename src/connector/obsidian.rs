@@ -375,4 +375,136 @@ mod tests {
         let event = to_raw_event("notes/my-note.md", "Just content", "abc", &[]);
         assert_eq!(event.tags.get("title").unwrap(), "my-note");
     }
+
+    // ── extract_markdown_title edge cases ──
+
+    #[test]
+    fn test_extract_markdown_title_simple() {
+        assert_eq!(
+            extract_markdown_title("# Hello World"),
+            Some("Hello World".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_markdown_title_with_leading_whitespace() {
+        assert_eq!(
+            extract_markdown_title("   # Indented Title"),
+            Some("Indented Title".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_markdown_title_skips_blank_lines() {
+        let content = "\n\n\n# First Heading\n## Subtitle";
+        assert_eq!(
+            extract_markdown_title(content),
+            Some("First Heading".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_markdown_title_none_for_empty() {
+        assert_eq!(extract_markdown_title(""), None);
+    }
+
+    #[test]
+    fn test_extract_markdown_title_none_for_no_heading() {
+        assert_eq!(extract_markdown_title("Just plain text\nNo headings"), None);
+    }
+
+    #[test]
+    fn test_extract_markdown_title_ignores_h2() {
+        // Only H1 (# ) is treated as title, not ## or ###
+        let content = "## Subtitle\n### Sub-subtitle";
+        assert_eq!(extract_markdown_title(content), None);
+    }
+
+    #[test]
+    fn test_extract_markdown_title_with_frontmatter() {
+        let content = "---\ntitle: ignored\n---\n# Real Title";
+        assert_eq!(
+            extract_markdown_title(content),
+            Some("Real Title".to_string())
+        );
+    }
+
+    // ── extract_wikilinks edge cases ──
+
+    #[test]
+    fn test_extract_wikilinks_nested_brackets() {
+        // [[Outer [[Inner]]]] — regex should handle gracefully
+        let content = "See [[Outer]] and [[Inner]]";
+        let links = extract_wikilinks(content);
+        assert_eq!(links, vec!["Outer", "Inner"]);
+    }
+
+    #[test]
+    fn test_extract_wikilinks_with_special_chars() {
+        let content = "Link to [[C++ Notes]] and [[Rust & Cargo]]";
+        let links = extract_wikilinks(content);
+        assert_eq!(links, vec!["C++ Notes", "Rust & Cargo"]);
+    }
+
+    #[test]
+    fn test_extract_wikilinks_unicode() {
+        let content = "See [[笔记]] and [[メモ]]";
+        let links = extract_wikilinks(content);
+        assert_eq!(links, vec!["笔记", "メモ"]);
+    }
+
+    // ── compute_hash edge cases ──
+
+    #[test]
+    fn test_compute_hash_empty() {
+        let h = compute_hash("");
+        assert_eq!(h.len(), 64);
+        // SHA-256 of empty string
+        assert_eq!(
+            h,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn test_compute_hash_unicode() {
+        let h = compute_hash("你好世界");
+        assert_eq!(h.len(), 64);
+    }
+
+    #[test]
+    fn test_compute_hash_deterministic() {
+        let h1 = compute_hash("same content");
+        let h2 = compute_hash("same content");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_compute_hash_different_content() {
+        let h1 = compute_hash("content A");
+        let h2 = compute_hash("content B");
+        assert_ne!(h1, h2);
+    }
+
+    // ── to_raw_event edge cases ──
+
+    #[test]
+    fn test_to_raw_event_empty_content() {
+        let event = to_raw_event("empty.md", "", "hash123", &[]);
+        assert_eq!(event.source, "connector:obsidian:empty.md");
+        assert_eq!(event.event_type, "document");
+        assert!(event.payload.is_empty());
+    }
+
+    #[test]
+    fn test_to_raw_event_deeply_nested_path() {
+        let event = to_raw_event("a/b/c/deep.md", "content", "h", &[]);
+        assert_eq!(event.source, "connector:obsidian:a/b/c/deep.md");
+    }
+
+    #[test]
+    fn test_to_raw_event_tags_contain_content_hash() {
+        let event = to_raw_event("note.md", "body", "abc123", &[]);
+        assert_eq!(event.tags.get("content_hash").unwrap(), "abc123");
+    }
 }
