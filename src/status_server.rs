@@ -152,6 +152,7 @@ pub async fn start_status_server(
         .route("/api/system/info", get(api_system_info_handler))
         .route("/api/connectors/health", get(api_connectors_health_handler))
         .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
+        .route("/api/plugins", get(api_plugins_handler))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", port);
@@ -688,6 +689,7 @@ async fn api_page_handler(
         "sync" => build_sync_page(&state).await,
         "monitor" => build_monitor_page(&state).await,
         "config" => build_config_page().await,
+        "plugins" => build_plugins_page(&state).await,
         _ => format!(
             "<div class=\"text-center text-muted-foreground py-12\">页面未找到: {}</div>",
             page
@@ -1130,6 +1132,73 @@ async fn build_config_page() -> String {
     <p class="text-xs mt-2">格式: <code>OPENSOMA_&lt;SECTION&gt;_&lt;FIELD&gt;</code> (大写)</p>
   </div>
 </div>"#.to_string()
+}
+
+async fn build_plugins_page(state: &StatusServerState) -> String {
+    let (total, active, rows) = if let Some(ref registry) = state.plugin_registry {
+        let plugins = registry.list().await;
+        let health = registry.health_all().await;
+        let active_count = health
+            .iter()
+            .filter(|h| h.state == crate::plugins::PluginState::Active)
+            .count();
+
+        let mut table_rows = String::new();
+        for p in &plugins {
+            let h = health.iter().find(|h| h.plugin_id == p.id);
+            let state_str = h.map(|h| match &h.state {
+                crate::plugins::PluginState::Active => "active",
+                crate::plugins::PluginState::Error => "error",
+                _ => "inactive",
+            }).unwrap_or("unknown");
+            let state_class = match state_str {
+                "active" => "badge-ok",
+                "error" => "badge-error",
+                _ => "badge-disabled",
+            };
+            let requests = h.map(|h| h.requests_handled.to_string()).unwrap_or_else(|| "0".to_string());
+            let errors = h.map(|h| h.errors.to_string()).unwrap_or_else(|| "0".to_string());
+
+            use std::fmt::Write;
+            let _ = write!(
+                table_rows,
+                "<tr><td style=\"font-weight:500;\">{name}</td><td class=\"monospace\">{id}</td><td><span class=\"badge {sc}\">{state}</span></td><td class=\"monospace\">{ver}</td><td class=\"monospace\">{req}</td><td class=\"monospace\">{err}</td></tr>",
+                name = p.name,
+                id = p.id,
+                sc = state_class,
+                state = state_str,
+                ver = p.version,
+                req = requests,
+                err = errors,
+            );
+        }
+
+        (plugins.len(), active_count, table_rows)
+    } else {
+        (0, 0, String::new())
+    };
+
+    if total == 0 {
+        return String::from(
+            "<div style=\"text-align:center;padding:48px 20px;color:#71717a;\">\
+             <div style=\"font-size:40px;margin-bottom:12px;\">🧩</div>\
+             <p>暂无已注册插件</p></div>",
+        );
+    }
+
+    format!(
+        "<h2 style=\"font-size:14px;font-weight:600;margin:0 0 16px;\">插件管理</h2>\
+         <div class=\"stats-grid\">\
+           <div class=\"stat-card\"><div class=\"stat-value\">{total}</div><div class=\"stat-label\">已注册插件</div></div>\
+           <div class=\"stat-card\"><div class=\"stat-value\" style=\"color:#22c55e;\">{active}</div><div class=\"stat-label\">活跃插件</div></div>\
+         </div>\
+         <div class=\"card\"><table>\
+           <thead><tr><th>名称</th><th>ID</th><th>状态</th><th>版本</th><th>请求数</th><th>错误数</th></tr></thead>\
+           <tbody>{rows}</tbody></table></div>",
+        total = total,
+        active = active,
+        rows = rows,
+    )
 }
 
 fn format_bytes(bytes: u64) -> String {

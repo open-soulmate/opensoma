@@ -86,6 +86,10 @@
           <span class="shared-sidebar-icon">⚙</span>
           <span class="shared-sidebar-label">配置</span>
         </a>
+        <a href="#plugins" class="shared-sidebar-item" data-page="plugins">
+          <span class="shared-sidebar-icon">🧩</span>
+          <span class="shared-sidebar-label">插件</span>
+        </a>
       </div>
     </nav>
     <div class="shared-sidebar-footer">
@@ -377,6 +381,59 @@
       `;
     }
 
+    async function renderPlugins() {
+      const data = await apiFetch('/plugins');
+      if (!data) return '<div class="empty-state"><div class="icon">🧩</div><p>无法加载插件信息</p></div>';
+
+      const plugins = data.plugins || [];
+      const health = data.health || [];
+
+      if (plugins.length === 0) {
+        return `
+          <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">插件管理</h2>
+          <div class="empty-state"><div class="icon">🧩</div><p>暂无已注册插件</p></div>
+        `;
+      }
+
+      const healthMap = {};
+      health.forEach(h => { healthMap[h.plugin_id] = h; });
+
+      let rows = plugins.map(p => {
+        const h = healthMap[p.id] || {};
+        const stateClass = p.state === 'active' ? 'badge-ok' : p.state === 'error' ? 'badge-error' : 'badge-disabled';
+        return `
+          <tr>
+            <td style="font-weight:500;">${p.name || p.id}</td>
+            <td class="monospace">${p.id}</td>
+            <td><span class="badge ${stateClass}">${p.state || 'unknown'}</span></td>
+            <td class="monospace">${p.version || '-'}</td>
+            <td class="monospace">${h.requests_handled || 0}</td>
+            <td class="monospace">${h.errors || 0}</td>
+          </tr>
+        `;
+      }).join('');
+
+      return `
+        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">插件管理</h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">${data.total}</div>
+            <div class="stat-label">已注册插件</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color:#22c55e;">${data.active}</div>
+            <div class="stat-label">活跃插件</div>
+          </div>
+        </div>
+        <div class="card">
+          <table>
+            <thead><tr><th>名称</th><th>ID</th><th>状态</th><th>版本</th><th>请求数</th><th>错误数</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
     // ─── Actions ────────────────────────────────────────────
     async function toggleConnector(name, el) {
       const isEnabled = el.classList.contains('on');
@@ -414,6 +471,7 @@
       'sync': { title: '同步', render: renderSync },
       'monitor': { title: '监控', render: renderMonitor },
       'config': { title: '配置', render: renderConfig },
+      'plugins': { title: '插件', render: renderPlugins },
     };
 
     async function navigateToPage(page) {
