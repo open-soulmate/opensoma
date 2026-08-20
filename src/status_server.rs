@@ -33,6 +33,8 @@ pub struct StatusServerState {
     pub health_checker: Option<crate::health::HealthChecker>,
     /// Plugin registry for dynamic plugin management.
     pub plugin_registry: Option<std::sync::Arc<crate::plugins::PluginRegistry>>,
+    /// Sanitized config snapshot for the /api/config endpoint (secrets redacted).
+    pub config_snapshot: Option<ConfigSnapshot>,
 }
 
 /// Snapshot of cache statistics for the status API.
@@ -80,6 +82,95 @@ struct ConnectorInfo {
 #[derive(Deserialize)]
 struct ToggleRequest {
     enabled: bool,
+}
+
+/// Sanitized config snapshot for the /api/config endpoint.
+/// All secrets and tokens are redacted for safety.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ConfigSnapshot {
+    pub node_id: String,
+    pub log_level: String,
+    pub data_dir: String,
+    pub status_port: u16,
+    pub soul_endpoint: String,
+    pub heartbeat_interval: u64,
+    pub connect_timeout: u64,
+    pub watch_dirs: Vec<String>,
+    pub include_patterns: Vec<String>,
+    pub exclude_patterns: Vec<String>,
+    pub debounce_ms: u64,
+    pub process_interval_ms: u64,
+    pub network_interval_ms: u64,
+    pub clipboard_interval_ms: u64,
+    pub sync_batch_size: usize,
+    pub sync_upload_interval: u64,
+    pub sync_max_retries: u32,
+    pub sync_retry_backoff_ms: u64,
+    pub sync_cache_size_mb: u64,
+    pub connectors: Vec<ConnectorConfigSummary>,
+}
+
+/// Per-connector config summary (secrets redacted).
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ConnectorConfigSummary {
+    pub name: String,
+    pub enabled: bool,
+    #[serde(default)]
+    pub extra: HashMap<String, String>,
+}
+
+impl ConfigSnapshot {
+    /// Build a sanitized snapshot from the app config.
+    pub fn from_config(config: &crate::config::AppConfig) -> Self {
+        let mut connectors = Vec::new();
+
+        macro_rules! summarize_connector {
+            ($name:expr, $cfg:expr) => {
+                if let Some(ref c) = $cfg {
+                    connectors.push(ConnectorConfigSummary {
+                        name: $name.to_string(),
+                        enabled: c.enabled,
+                        extra: HashMap::new(),
+                    });
+                }
+            };
+        }
+
+        summarize_connector!("feishu", config.connector.feishu);
+        summarize_connector!("dingtalk", config.connector.dingtalk);
+        summarize_connector!("wecom", config.connector.wecom);
+        summarize_connector!("rss", config.connector.rss);
+        summarize_connector!("email", config.connector.email);
+        summarize_connector!("notion", config.connector.notion);
+        summarize_connector!("git", config.connector.git);
+        summarize_connector!("obsidian", config.connector.obsidian);
+        summarize_connector!("webhook", config.connector.webhook);
+        summarize_connector!("github", config.connector.github);
+        summarize_connector!("slack", config.connector.slack);
+
+        Self {
+            node_id: config.daemon.node_id.clone(),
+            log_level: config.daemon.log_level.clone(),
+            data_dir: config.daemon.data_dir.clone(),
+            status_port: config.daemon.status_port,
+            soul_endpoint: config.soul.endpoint.clone(),
+            heartbeat_interval: config.soul.heartbeat_interval,
+            connect_timeout: config.soul.connect_timeout,
+            watch_dirs: config.collector.watch_dirs.clone(),
+            include_patterns: config.collector.include.clone(),
+            exclude_patterns: config.collector.exclude.clone(),
+            debounce_ms: config.collector.debounce_ms,
+            process_interval_ms: config.collector.process_interval_ms,
+            network_interval_ms: config.collector.network_interval_ms,
+            clipboard_interval_ms: config.collector.clipboard_interval_ms,
+            sync_batch_size: config.sync.batch_size,
+            sync_upload_interval: config.sync.upload_interval,
+            sync_max_retries: config.sync.max_retries,
+            sync_retry_backoff_ms: config.sync.retry_backoff_ms,
+            sync_cache_size_mb: config.sync.cache_size_mb,
+            connectors,
+        }
+    }
 }
 
 /// Embed the index.html and CSS at compile time.
@@ -153,6 +244,7 @@ pub async fn start_status_server(
         .route("/api/connectors/health", get(api_connectors_health_handler))
         .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
         .route("/api/plugins", get(api_plugins_handler))
+        .route("/api/config", get(api_config_handler))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", port);
@@ -564,6 +656,22 @@ async fn api_plugins_handler(
             "plugins": [],
             "health": [],
             "message": "Plugin registry not initialized",
+        }))
+    }
+}
+
+/// /api/config — returns the sanitized running configuration (secrets redacted).
+async fn api_config_handler(
+    State(state): State<StatusServerState>,
+) -> Json<serde_json::Value> {
+    if let Some(ref config) = state.config_snapshot {
+        Json(serde_json::to_value(config).unwrap_or_else(|_| {
+            serde_json::json!({"error": "Failed to serialize config"})
+        }))
+    } else {
+        Json(serde_json::json!({
+            "error": "Config snapshot not available",
+            "message": "Run with --config to enable config API"
         }))
     }
 }
@@ -1344,6 +1452,7 @@ mod tests {
             pipeline_metrics: None,
             health_checker: None,
             plugin_registry: None,
+            config_snapshot: None,
         };
 
         Router::new()
@@ -1739,6 +1848,7 @@ mod tests {
             pipeline_metrics: None,
             health_checker: None,
             plugin_registry: None,
+            config_snapshot: None,
         };
 
         // Verify github is active before toggle
@@ -1783,6 +1893,7 @@ mod tests {
             pipeline_metrics: None,
             health_checker: None,
             plugin_registry: None,
+            config_snapshot: None,
         };
 
         let app = build_test_app_with_state(state);

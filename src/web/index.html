@@ -120,7 +120,7 @@
 
   <script src="/sidebar.js"></script>
   <script>
-    const API = 'http://localhost:8091/api';
+    const API = window.location.origin + '/api';
 
     // ─── Fetch helper ───────────────────────────────────────
     async function apiFetch(path) {
@@ -327,57 +327,58 @@
     }
 
     async function renderConfig() {
+      const cfg = await apiFetch('/config');
+      if (!cfg || cfg.error) {
+        return `<div class="empty-state"><div class="icon">⚙</div><p>${cfg ? cfg.message || cfg.error : '无法加载配置'}</p></div>`;
+      }
+
+      const connectorRows = (cfg.connectors || []).map(c =>
+        `<tr><td style="font-weight:500;">${c.name}</td><td><span class="badge ${c.enabled ? 'badge-ok' : 'badge-disabled'}">${c.enabled ? '已启用' : '已禁用'}</span></td></tr>`
+      ).join('');
+
       return `
         <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">运行配置</h2>
         <div class="card">
           <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">守护进程</h3>
-          <div style="display:flex;flex-direction:column;gap:12px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:13px;">节点 ID</span>
-              <input type="text" value="soma-node-1" style="padding:6px 10px;border-radius:6px;border:1px solid #27272a;background:#0a0a0f;color:#e4e4e7;font-size:13px;width:220px;font-family:monospace;" />
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:13px;">状态端口</span>
-              <input type="text" value="8091" style="padding:6px 10px;border-radius:6px;border:1px solid #27272a;background:#0a0a0f;color:#e4e4e7;font-size:13px;width:220px;font-family:monospace;" />
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:13px;">数据目录</span>
-              <input type="text" value="/var/lib/opensoma" style="padding:6px 10px;border-radius:6px;border:1px solid #27272a;background:#0a0a0f;color:#e4e4e7;font-size:13px;width:220px;font-family:monospace;" />
-            </div>
-          </div>
+          <table><tbody>
+            <tr><td style="color:#71717a;width:120px;">节点 ID</td><td class="monospace">${cfg.node_id}</td></tr>
+            <tr><td style="color:#71717a;">日志级别</td><td class="monospace">${cfg.log_level}</td></tr>
+            <tr><td style="color:#71717a;">数据目录</td><td class="monospace">${cfg.data_dir}</td></tr>
+            <tr><td style="color:#71717a;">状态端口</td><td class="monospace">${cfg.status_port}</td></tr>
+          </tbody></table>
         </div>
         <div class="card">
           <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">Soul 连接</h3>
-          <div style="display:flex;flex-direction:column;gap:12px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:13px;">Soul 端点</span>
-              <input type="text" value="http://localhost:8090" style="padding:6px 10px;border-radius:6px;border:1px solid #27272a;background:#0a0a0f;color:#e4e4e7;font-size:13px;width:220px;font-family:monospace;" />
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:13px;">心跳间隔</span>
-              <input type="text" value="30s" style="padding:6px 10px;border-radius:6px;border:1px solid #27272a;background:#0a0a0f;color:#e4e4e7;font-size:13px;width:220px;font-family:monospace;" />
-            </div>
-          </div>
+          <table><tbody>
+            <tr><td style="color:#71717a;width:120px;">端点</td><td class="monospace">${cfg.soul_endpoint}</td></tr>
+            <tr><td style="color:#71717a;">心跳间隔</td><td class="monospace">${cfg.heartbeat_interval}s</td></tr>
+            <tr><td style="color:#71717a;">连接超时</td><td class="monospace">${cfg.connect_timeout}s</td></tr>
+          </tbody></table>
+        </div>
+        <div class="card">
+          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">采集器</h3>
+          <table><tbody>
+            <tr><td style="color:#71717a;width:120px;">监控目录</td><td class="monospace">${(cfg.watch_dirs || []).join(', ') || '(无)'}</td></tr>
+            <tr><td style="color:#71717a;">包含模式</td><td class="monospace">${(cfg.include_patterns || []).join(', ')}</td></tr>
+            <tr><td style="color:#71717a;">排除模式</td><td class="monospace">${(cfg.exclude_patterns || []).join(', ') || '(无)'}</td></tr>
+            <tr><td style="color:#71717a;">防抖</td><td class="monospace">${cfg.debounce_ms}ms</td></tr>
+            <tr><td style="color:#71717a;">进程轮询</td><td class="monospace">${cfg.process_interval_ms}ms</td></tr>
+            <tr><td style="color:#71717a;">网络轮询</td><td class="monospace">${cfg.network_interval_ms}ms</td></tr>
+            <tr><td style="color:#71717a;">剪贴板轮询</td><td class="monospace">${cfg.clipboard_interval_ms}ms</td></tr>
+          </tbody></table>
         </div>
         <div class="card">
           <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">同步设置</h3>
-          <div style="display:flex;flex-direction:column;gap:12px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:13px;">批次大小</span>
-              <input type="number" value="50" style="padding:6px 10px;border-radius:6px;border:1px solid #27272a;background:#0a0a0f;color:#e4e4e7;font-size:13px;width:220px;font-family:monospace;" />
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:13px;">上传间隔</span>
-              <input type="text" value="10s" style="padding:6px 10px;border-radius:6px;border:1px solid #27272a;background:#0a0a0f;color:#e4e4e7;font-size:13px;width:220px;font-family:monospace;" />
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:13px;">缓存上限</span>
-              <input type="text" value="512 MB" style="padding:6px 10px;border-radius:6px;border:1px solid #27272a;background:#0a0a0f;color:#e4e4e7;font-size:13px;width:220px;font-family:monospace;" />
-            </div>
-          </div>
+          <table><tbody>
+            <tr><td style="color:#71717a;width:120px;">批次大小</td><td class="monospace">${cfg.sync_batch_size}</td></tr>
+            <tr><td style="color:#71717a;">上传间隔</td><td class="monospace">${cfg.sync_upload_interval}s</td></tr>
+            <tr><td style="color:#71717a;">最大重试</td><td class="monospace">${cfg.sync_max_retries}</td></tr>
+            <tr><td style="color:#71717a;">退避间隔</td><td class="monospace">${cfg.sync_retry_backoff_ms}ms</td></tr>
+            <tr><td style="color:#71717a;">缓存上限</td><td class="monospace">${cfg.sync_cache_size_mb} MB</td></tr>
+          </tbody></table>
         </div>
-        <button class="btn btn-primary" style="margin-top:8px;">保存配置</button>
-        <button class="btn" style="margin-top:8px;margin-left:8px;">重新加载</button>
+        ${connectorRows ? '<div class="card"><h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">连接器配置</h3><table><thead><tr><th>名称</th><th>状态</th></tr></thead><tbody>' + connectorRows + '</tbody></table></div>' : ''}
+        <p style="font-size:12px;color:#71717a;margin-top:12px;">配置通过 <code class="monospace">config.toml</code> 管理，支持热重载。密钥和令牌已脱敏。</p>
       `;
     }
 

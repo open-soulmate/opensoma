@@ -151,6 +151,7 @@ async fn main() -> Result<()> {
         pipeline_metrics: Some(pipeline_metrics),
         health_checker: Some(health::HealthChecker::new()),
         plugin_registry: Some(plugin_registry),
+        config_snapshot: Some(status_server::ConfigSnapshot::from_config(&config)),
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;
