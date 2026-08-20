@@ -71,13 +71,28 @@ async fn run_pipeline(
             m.inc_events_normalized();
         }
 
-        // Step 2: Size check
+        // Step 2: Size check — truncate if moderately over limit, drop if extremely large
         if event.payload.len() > config.max_event_size {
-            debug!("Dropping oversized event: {} bytes", event.payload.len());
-            if let Some(ref m) = metrics {
-                m.inc_events_dropped_oversized();
+            let overage = event.payload.len() as f64 / config.max_event_size as f64;
+            if overage <= 2.0 {
+                // Truncate and tag — keep the event but trim payload
+                event.payload.truncate(config.max_event_size);
+                event.tags.insert("_truncated".to_string(), "payload".to_string());
+                if let Some(ref m) = metrics {
+                    m.inc_events_normalized(); // count as normalized (adjusted)
+                }
+                debug!(
+                    "Truncated oversized event payload to {} bytes (was {:.0}% over limit)",
+                    config.max_event_size,
+                    (overage - 1.0) * 100.0
+                );
+            } else {
+                debug!("Dropping oversized event: {} bytes ({:.0}% over limit)", event.payload.len(), (overage - 1.0) * 100.0);
+                if let Some(ref m) = metrics {
+                    m.inc_events_dropped_oversized();
+                }
+                continue;
             }
-            continue;
         }
 
         // Step 3: Sense parsing for media files (if enabled)
@@ -288,7 +303,7 @@ mod tests {
 
         let handle = start_pipeline(input_rx, output_tx, &config, None);
 
-        // Send an oversized event
+        // Send an oversized event (50 bytes on a 10-byte limit = 5x, >2x → dropped)
         let event = make_test_event(
             "evt-big",
             "test",
@@ -301,6 +316,44 @@ mod tests {
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(500), output_rx.recv()).await;
         assert!(result.is_err()); // timeout = dropped
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_pipeline_moderately_oversized_event_truncated() {
+        let (input_tx, input_rx) = tokio::sync::mpsc::channel(64);
+        let (output_tx, mut output_rx) = tokio::sync::mpsc::channel(64);
+
+        let config = ProcessorConfig {
+            normalize_timestamps: true,
+            max_event_size: 20, // 20 bytes max
+            dedup_window_secs: 60,
+            enable_classify: false,
+            enable_enrich: false,
+        };
+
+        let handle = start_pipeline(input_rx, output_tx, &config, None);
+
+        // Send a moderately oversized event (~30 bytes on 20-byte limit = 1.5x, <2x → truncated)
+        let event = make_test_event(
+            "evt-med",
+            "test",
+            "test",
+            "this payload is thirty bytes!!",
+        );
+        input_tx.send(event).await.unwrap();
+
+        // Should receive the event (truncated, not dropped)
+        let received =
+            tokio::time::timeout(std::time::Duration::from_secs(2), output_rx.recv())
+                .await
+                .expect("timeout — event should have been truncated, not dropped")
+                .expect("channel closed");
+
+        assert_eq!(received.id, "evt-med");
+        assert!(received.payload.len() <= 20);
+        assert_eq!(received.tags.get("_truncated").unwrap(), "payload");
 
         handle.abort();
     }

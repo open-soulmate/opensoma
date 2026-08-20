@@ -161,6 +161,11 @@ fn read_network_connections() -> Result<Vec<ConnectionInfo>> {
         parse_proc_net(&content, "udp", &mut connections);
     }
 
+    // Read IPv6 UDP connections
+    if let Ok(content) = std::fs::read_to_string("/proc/net/udp6") {
+        parse_proc_net(&content, "udp6", &mut connections);
+    }
+
     Ok(connections)
 }
 
