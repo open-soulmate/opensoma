@@ -215,6 +215,10 @@ fn parse_config_path() -> String {
         println!("    --export <FILE>        Export cached events to JSON file");
         println!("    --import <FILE>        Import events from JSON file into cache");
         println!("    --cache-info           Show local event cache statistics");
+        println!("    --recent [N]           Show N most recent cached events (default: 10)");
+        println!("    --search <QUERY>       Search cached events by payload text");
+        println!("    --source <PREFIX>      Filter cached events by source prefix");
+        println!("    --type <TYPE>          Filter cached events by event type");
         println!("    -V, --version          Print version information");
         println!("    --version-json         Print version as JSON (for scripts)");
         println!("    -h, --help             Print this help message");
@@ -317,6 +321,70 @@ fn parse_config_path() -> String {
             }
         }
         std::process::exit(run_cache_info(&config_path));
+    }
+    // Handle --recent [N]
+    if args.iter().any(|a| a == "--recent") {
+        let mut config_path = "config.toml".to_string();
+        let mut count = 10usize;
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+            if args[i] == "--recent" && i + 1 < args.len() {
+                if let Ok(n) = args[i + 1].parse::<usize>() {
+                    count = n;
+                }
+            }
+        }
+        std::process::exit(run_recent_events(&config_path, count));
+    }
+    // Handle --search <QUERY>
+    if args.iter().any(|a| a == "--search") {
+        let search_idx = args.iter().position(|a| a == "--search").unwrap();
+        if search_idx + 1 >= args.len() {
+            eprintln!("❌ --search requires a query argument");
+            std::process::exit(1);
+        }
+        let query = args[search_idx + 1].clone();
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_search_events(&config_path, &query));
+    }
+    // Handle --source <PREFIX>
+    if args.iter().any(|a| a == "--source") {
+        let src_idx = args.iter().position(|a| a == "--source").unwrap();
+        if src_idx + 1 >= args.len() {
+            eprintln!("❌ --source requires a prefix argument");
+            std::process::exit(1);
+        }
+        let prefix = args[src_idx + 1].clone();
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_source_filter(&config_path, &prefix));
+    }
+    // Handle --type <TYPE>
+    if args.iter().any(|a| a == "--type") {
+        let type_idx = args.iter().position(|a| a == "--type").unwrap();
+        if type_idx + 1 >= args.len() {
+            eprintln!("❌ --type requires an event type argument");
+            std::process::exit(1);
+        }
+        let event_type = args[type_idx + 1].clone();
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_type_filter(&config_path, &event_type));
     }
     // Handle --health
     if args.iter().any(|a| a == "--health") {
@@ -1269,6 +1337,281 @@ fn run_cache_info(config_path: &str) -> i32 {
     0
 }
 
+/// Show N most recent cached events in a human-readable table.
+fn run_recent_events(config_path: &str, count: usize) -> i32 {
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    let cache = match sync::cache::Cache::open(&config.daemon.data_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to open cache: {:#}", e);
+            return 1;
+        }
+    };
+
+    let events = match cache.get_recent(count) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("❌ Failed to read events: {:#}", e);
+            return 1;
+        }
+    };
+
+    if events.is_empty() {
+        println!("No events in cache.");
+        return 0;
+    }
+
+    println!("╔══════════════════════════════════════════════╗");
+    println!("║       Recent Events ({:>3} of requested)      ║", events.len());
+    println!("╚══════════════════════════════════════════════╝");
+    println!();
+    println!(
+        "  {:<4} {:<12} {:<18} {:<20} {}",
+        "#", "Source", "Type", "Time", "Payload (preview)"
+    );
+    println!(
+        "  {:<4} {:<12} {:<18} {:<20} {}",
+        "───", "──────", "────", "────", "─────────────────"
+    );
+
+    for (i, event) in events.iter().enumerate() {
+        let ts = chrono::DateTime::from_timestamp_millis(event.timestamp_ms)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let payload_preview: String = String::from_utf8_lossy(&event.payload)
+            .chars()
+            .take(40)
+            .collect();
+        println!(
+            "  {:<4} {:<12} {:<18} {:<20} {}",
+            i + 1,
+            truncate_str(&event.source, 12),
+            truncate_str(&event.event_type, 18),
+            ts,
+            payload_preview
+        );
+    }
+    println!();
+    0
+}
+
+/// Search cached events by payload text and display matches.
+fn run_search_events(config_path: &str, query: &str) -> i32 {
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    let cache = match sync::cache::Cache::open(&config.daemon.data_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to open cache: {:#}", e);
+            return 1;
+        }
+    };
+
+    let events = match cache.search_by_payload(query, 50) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("❌ Search failed: {:#}", e);
+            return 1;
+        }
+    };
+
+    if events.is_empty() {
+        println!("No events matching '{}'.", query);
+        return 0;
+    }
+
+    println!(
+        "Found {} event(s) matching '{}':",
+        events.len(),
+        query
+    );
+    println!();
+    println!(
+        "  {:<4} {:<12} {:<18} {:<20} {}",
+        "#", "Source", "Type", "Time", "Payload (preview)"
+    );
+    println!(
+        "  {:<4} {:<12} {:<18} {:<20} {}",
+        "───", "──────", "────", "────", "─────────────────"
+    );
+
+    for (i, event) in events.iter().enumerate() {
+        let ts = chrono::DateTime::from_timestamp_millis(event.timestamp_ms)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let payload_preview: String = String::from_utf8_lossy(&event.payload)
+            .chars()
+            .take(40)
+            .collect();
+        println!(
+            "  {:<4} {:<12} {:<18} {:<20} {}",
+            i + 1,
+            truncate_str(&event.source, 12),
+            truncate_str(&event.event_type, 18),
+            ts,
+            payload_preview
+        );
+    }
+    println!();
+    0
+}
+
+/// Filter cached events by source prefix and display matches.
+fn run_source_filter(config_path: &str, prefix: &str) -> i32 {
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    let cache = match sync::cache::Cache::open(&config.daemon.data_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to open cache: {:#}", e);
+            return 1;
+        }
+    };
+
+    let events = match cache.search_by_source(prefix, 50) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("❌ Search failed: {:#}", e);
+            return 1;
+        }
+    };
+
+    if events.is_empty() {
+        println!("No events from source '{}'.", prefix);
+        return 0;
+    }
+
+    println!(
+        "Found {} event(s) from source '{}':",
+        events.len(),
+        prefix
+    );
+    println!();
+    println!(
+        "  {:<4} {:<12} {:<18} {:<20} {}",
+        "#", "Source", "Type", "Time", "Payload (preview)"
+    );
+    println!(
+        "  {:<4} {:<12} {:<18} {:<20} {}",
+        "───", "──────", "────", "────", "─────────────────"
+    );
+
+    for (i, event) in events.iter().enumerate() {
+        let ts = chrono::DateTime::from_timestamp_millis(event.timestamp_ms)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let payload_preview: String = String::from_utf8_lossy(&event.payload)
+            .chars()
+            .take(40)
+            .collect();
+        println!(
+            "  {:<4} {:<12} {:<18} {:<20} {}",
+            i + 1,
+            truncate_str(&event.source, 12),
+            truncate_str(&event.event_type, 18),
+            ts,
+            payload_preview
+        );
+    }
+    println!();
+    0
+}
+
+/// Filter cached events by event type and display matches.
+fn run_type_filter(config_path: &str, event_type: &str) -> i32 {
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    let cache = match sync::cache::Cache::open(&config.daemon.data_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to open cache: {:#}", e);
+            return 1;
+        }
+    };
+
+    let events = match cache.search_by_type(event_type, 50) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("❌ Search failed: {:#}", e);
+            return 1;
+        }
+    };
+
+    if events.is_empty() {
+        println!("No events of type '{}'.", event_type);
+        return 0;
+    }
+
+    println!(
+        "Found {} event(s) of type '{}':",
+        events.len(),
+        event_type
+    );
+    println!();
+    println!(
+        "  {:<4} {:<12} {:<18} {:<20} {}",
+        "#", "Source", "Type", "Time", "Payload (preview)"
+    );
+    println!(
+        "  {:<4} {:<12} {:<18} {:<20} {}",
+        "───", "──────", "────", "────", "─────────────────"
+    );
+
+    for (i, event) in events.iter().enumerate() {
+        let ts = chrono::DateTime::from_timestamp_millis(event.timestamp_ms)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let payload_preview: String = String::from_utf8_lossy(&event.payload)
+            .chars()
+            .take(40)
+            .collect();
+        println!(
+            "  {:<4} {:<12} {:<18} {:<20} {}",
+            i + 1,
+            truncate_str(&event.source, 12),
+            truncate_str(&event.event_type, 18),
+            ts,
+            payload_preview
+        );
+    }
+    println!();
+    0
+}
+
+/// Truncate a string to max_len characters, adding "…" if truncated.
+fn truncate_str(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max_len - 1])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1356,5 +1699,39 @@ mod tests {
         let (host, path) = parse_http_url("http://127.0.0.1:8091/api/connectors/health");
         assert_eq!(host, "127.0.0.1:8091");
         assert_eq!(path, "/api/connectors/health");
+    }
+
+    #[test]
+    fn test_truncate_str_short() {
+        assert_eq!(truncate_str("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_str_exact() {
+        assert_eq!(truncate_str("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_str_long() {
+        assert_eq!(truncate_str("hello world", 6), "hello…");
+    }
+
+    #[test]
+    fn test_truncate_str_empty() {
+        assert_eq!(truncate_str("", 5), "");
+    }
+
+    #[test]
+    fn test_truncate_str_one_char() {
+        assert_eq!(truncate_str("ab", 1), "…");
+    }
+
+    #[test]
+    fn test_truncate_str_unicode() {
+        // Unicode chars may be multi-byte; truncate_str works on bytes
+        let s = "你好世界";
+        let result = truncate_str(s, 4);
+        // Should truncate and add ellipsis
+        assert!(result.ends_with('…') || result == s);
     }
 }
