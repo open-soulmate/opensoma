@@ -1266,4 +1266,152 @@ vault_path = ""
         );
         std::env::remove_var("OPENSOMA_CONNECTOR_OBSIDIAN_VAULT_PATH");
     }
+
+    #[test]
+    fn test_sense_config_deserialize_full() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+
+[processor]
+[sync]
+
+[sense]
+enabled = true
+
+[sense.asr]
+engine = "whisper"
+whisper_model = "small"
+
+[sense.ocr]
+engine = "tesseract"
+tesseract_lang = "eng"
+
+[sense.image]
+model = "gpt-4o"
+api_url = "https://api.openai.com/v1/chat/completions"
+
+[sense.video]
+frame_interval_sec = 10
+max_frames = 30
+frame_analyzer = "ocr"
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        assert!(config.sense.enabled);
+        assert!(config.sense.asr.is_some());
+        assert!(config.sense.ocr.is_some());
+        assert!(config.sense.image.is_some());
+        assert!(config.sense.video.is_some());
+
+        let asr = config.sense.asr.as_ref().unwrap();
+        assert_eq!(asr.engine, "whisper");
+        assert_eq!(asr.whisper_model, "small");
+
+        let ocr = config.sense.ocr.as_ref().unwrap();
+        assert_eq!(ocr.engine, "tesseract");
+        assert_eq!(ocr.tesseract_lang, "eng");
+
+        let image = config.sense.image.as_ref().unwrap();
+        assert_eq!(image.model, "gpt-4o");
+
+        let video = config.sense.video.as_ref().unwrap();
+        assert_eq!(video.frame_interval_sec, 10);
+        assert_eq!(video.max_frames, 30);
+        assert_eq!(video.frame_analyzer, "ocr");
+    }
+
+    #[test]
+    fn test_sense_config_defaults() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+
+[processor]
+[sync]
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        assert!(!config.sense.enabled);
+        assert!(config.sense.asr.is_none());
+        assert!(config.sense.ocr.is_none());
+        assert!(config.sense.image.is_none());
+        assert!(config.sense.video.is_none());
+    }
+
+    #[test]
+    fn test_slack_connector_config() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.slack]
+enabled = true
+bot_token = "xoxb-test"
+channels = ["C01ABC", "C02DEF"]
+poll_interval_secs = 30
+include_threads = true
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let slack = config.connector.slack.unwrap();
+        assert!(slack.enabled);
+        assert_eq!(slack.bot_token, "xoxb-test");
+        assert_eq!(slack.channels.len(), 2);
+        assert_eq!(slack.poll_interval_secs, 30);
+        assert!(slack.include_threads);
+    }
+
+    #[test]
+    fn test_sync_config_all_fields() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector]
+
+[processor]
+
+[sync]
+batch_size = 100
+upload_interval = 30
+max_retries = 10
+retry_backoff_ms = 2000
+cache_size_mb = 1024
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.sync.batch_size, 100);
+        assert_eq!(config.sync.upload_interval, 30);
+        assert_eq!(config.sync.max_retries, 10);
+        assert_eq!(config.sync.retry_backoff_ms, 2000);
+        assert_eq!(config.sync.cache_size_mb, 1024);
+    }
 }
