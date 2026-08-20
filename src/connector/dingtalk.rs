@@ -829,4 +829,203 @@ mod tests {
         let event = to_raw_event_from_callback(payload);
         assert_eq!(event.event_type, "user_add_org");
     }
+
+    // ── Edge-case tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_attendance_record_all_optional_fields() {
+        let record = AttendanceRecord {
+            user_id: "u1".to_string(),
+            user_name: Some("Alice".to_string()),
+            work_date: Some("2026-08-20".to_string()),
+            check_type: Some("OnDuty".to_string()),
+            plan_check_time: Some("09:00".to_string()),
+            clock_result: Some("Normal".to_string()),
+            proc_inst_id: Some("proc-001".to_string()),
+            location_result: Some("Office".to_string()),
+            source_type: Some("Beacon".to_string()),
+        };
+        let event = to_attendance_event(&record);
+        assert_eq!(event.event_type, "attendance");
+        assert_eq!(event.source, "connector:dingtalk:attendance:u1");
+        assert_eq!(event.tags.get("check_type").unwrap(), "OnDuty");
+        assert_eq!(event.tags.get("clock_result").unwrap(), "Normal");
+
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["user_name"], "Alice");
+        assert_eq!(payload["work_date"], "2026-08-20");
+        assert_eq!(payload["location_result"], "Office");
+        assert_eq!(payload["source_type"], "Beacon");
+    }
+
+    #[test]
+    fn test_attendance_record_no_optional_fields() {
+        let record = AttendanceRecord {
+            user_id: "u2".to_string(),
+            user_name: None,
+            work_date: None,
+            check_type: None,
+            plan_check_time: None,
+            clock_result: None,
+            proc_inst_id: None,
+            location_result: None,
+            source_type: None,
+        };
+        let event = to_attendance_event(&record);
+        assert_eq!(event.source, "connector:dingtalk:attendance:u2");
+        assert!(!event.tags.contains_key("check_type"));
+        assert!(!event.tags.contains_key("clock_result"));
+    }
+
+    #[test]
+    fn test_approval_instance_empty_fields() {
+        let inst = ApprovalInstance {
+            process_instance_id: String::new(),
+            title: String::new(),
+            status: String::new(),
+            originator_userid: String::new(),
+            create_time: 0,
+            finish_time: 0,
+            business_id: String::new(),
+        };
+        let event = to_raw_event(&inst);
+        assert_eq!(event.event_type, "approval");
+        assert_eq!(event.source, "connector:dingtalk:approval:");
+        assert_eq!(event.tags.get("status").unwrap(), "");
+        assert_eq!(event.tags.get("title").unwrap(), "");
+    }
+
+    #[test]
+    fn test_callback_empty_payload() {
+        let payload = serde_json::json!({});
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "callback"); // default
+        assert_eq!(event.source, "connector:dingtalk:callback");
+    }
+
+    #[test]
+    fn test_callback_with_nested_data() {
+        let payload = serde_json::json!({
+            "EventType": "bpms_instance_change",
+            "data": {
+                "processInstanceId": "inst-100",
+                "title": "Travel Request",
+                "status": "COMPLETED"
+            }
+        });
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "bpms_instance_change");
+        // Payload should contain the full nested structure
+        let parsed: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(parsed["data"]["processInstanceId"], "inst-100");
+    }
+
+    #[test]
+    fn test_work_report_zero_timestamps() {
+        let report = WorkReport {
+            report_id: "rpt-zero".to_string(),
+            title: "Empty".to_string(),
+            creator_name: None,
+            creator_id: None,
+            create_time: 0,
+            modified_time: 0,
+            report_type: None,
+        };
+        let event = to_work_report_event(&report);
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["create_time"], 0);
+        assert_eq!(payload["modified_time"], 0);
+    }
+
+    #[test]
+    fn test_robot_message_body_format() {
+        let body = serde_json::json!({
+            "msgtype": "text",
+            "text": { "content": "Hello from OpenSoma" }
+        });
+        assert_eq!(body["msgtype"], "text");
+        assert_eq!(body["text"]["content"], "Hello from OpenSoma");
+    }
+
+    #[test]
+    fn test_approval_list_response_empty() {
+        let json = serde_json::json!({
+            "result": { "list": [], "next_cursor": 0, "has_more": false },
+            "errcode": null,
+            "errmsg": null
+        });
+        let resp: ApprovalListResponse = serde_json::from_value(json).unwrap();
+        assert!(resp.result.list.is_empty());
+        assert!(!resp.result.has_more);
+    }
+
+    #[test]
+    fn test_approval_list_response_with_items() {
+        let json = serde_json::json!({
+            "result": {
+                "list": [
+                    {
+                        "process_instance_id": "inst-1",
+                        "title": "Request 1",
+                        "status": "NEW",
+                        "originator_userid": "user-1",
+                        "create_time": 1700000000000_i64,
+                        "finish_time": 0,
+                        "business_id": "biz-1"
+                    }
+                ],
+                "next_cursor": 100,
+                "has_more": true
+            }
+        });
+        let resp: ApprovalListResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(resp.result.list.len(), 1);
+        assert!(resp.result.has_more);
+        assert_eq!(resp.result.list[0].process_instance_id, "inst-1");
+    }
+
+    #[test]
+    fn test_work_report_list_response_empty() {
+        let json = serde_json::json!({
+            "result": { "data_list": [], "has_more": false, "next_cursor": 0 }
+        });
+        let resp: WorkReportListResponse = serde_json::from_value(json).unwrap();
+        assert!(resp.result.data_list.is_empty());
+    }
+
+    #[test]
+    fn test_attendance_list_response_empty() {
+        let json = serde_json::json!({
+            "result": { "check_record_list": [], "has_more": false }
+        });
+        let resp: AttendanceListResponse = serde_json::from_value(json).unwrap();
+        assert!(resp.result.check_record_list.is_empty());
+    }
+
+    #[test]
+    fn test_callback_unicode_event_type() {
+        let payload = serde_json::json!({
+            "EventType": "审批实例",
+            "data": {}
+        });
+        let event = to_raw_event_from_callback(payload);
+        assert_eq!(event.event_type, "审批实例");
+    }
+
+    #[test]
+    fn test_raw_event_payload_is_valid_json() {
+        let inst = ApprovalInstance {
+            process_instance_id: "inst-json".to_string(),
+            title: "JSON Test".to_string(),
+            status: "RUNNING".to_string(),
+            originator_userid: "user-json".to_string(),
+            create_time: 1700000000000,
+            finish_time: 0,
+            business_id: "biz-json".to_string(),
+        };
+        let event = to_raw_event(&inst);
+        let parsed: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert!(parsed.is_object());
+        assert_eq!(parsed["process_instance_id"], "inst-json");
+    }
 }

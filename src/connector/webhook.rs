@@ -1,9 +1,5 @@
 use anyhow::{Context, Result};
-use axum::{
-    http::StatusCode,
-    routing::get,
-    Router,
-};
+use axum::{http::StatusCode, routing::get, Router};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
@@ -341,7 +337,9 @@ mod tests {
 
         // Matching origin
         let origin = "https://example.com";
-        assert!(allowed_origins.is_empty() || allowed_origins.iter().any(|o| origin.starts_with(o)));
+        assert!(
+            allowed_origins.is_empty() || allowed_origins.iter().any(|o| origin.starts_with(o))
+        );
 
         // Non-matching origin
         let origin = "https://evil.com";

@@ -38,7 +38,10 @@ fn parse_conflict_strategy(s: &str) -> ConflictStrategy {
         "merge" => ConflictStrategy::Merge,
         "keep_both" => ConflictStrategy::KeepBoth,
         _ => {
-            tracing::warn!("Unknown conflict strategy '{}', defaulting to NewestWins", s);
+            tracing::warn!(
+                "Unknown conflict strategy '{}', defaulting to NewestWins",
+                s
+            );
             ConflictStrategy::NewestWins
         }
     }
@@ -469,8 +472,7 @@ mod tests {
         cache.put(&event).unwrap();
 
         // Same event, same content — no conflict
-        let result =
-            detect_and_resolve_local_conflicts(vec![event], &cache, &mut resolver, &None);
+        let result = detect_and_resolve_local_conflicts(vec![event], &cache, &mut resolver, &None);
         assert_eq!(result.len(), 1);
         assert_eq!(resolver.conflict_count(), 0);
     }

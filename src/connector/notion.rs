@@ -463,9 +463,7 @@ mod tests {
             id: "test".to_string(),
             block_type: "paragraph".to_string(),
             rich_text: None,
-            paragraph: Some(BlockWithText {
-                rich_text: vec![],
-            }),
+            paragraph: Some(BlockWithText { rich_text: vec![] }),
             heading_1: None,
             heading_2: None,
             heading_3: None,
@@ -488,8 +486,12 @@ mod tests {
             rich_text: None,
             paragraph: Some(BlockWithText {
                 rich_text: vec![
-                    RichText { plain_text: "Hello ".to_string() },
-                    RichText { plain_text: "world".to_string() },
+                    RichText {
+                        plain_text: "Hello ".to_string(),
+                    },
+                    RichText {
+                        plain_text: "world".to_string(),
+                    },
                 ],
             }),
             heading_1: None,

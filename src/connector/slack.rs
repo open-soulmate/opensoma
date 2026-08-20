@@ -684,4 +684,155 @@ mod tests {
         assert_eq!(config.poll_interval_secs, 60);
         assert!(config.include_threads);
     }
+
+    // ── Edge-case tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_slack_message_empty_text() {
+        let json = r#"{
+            "ts": "123.456",
+            "type": "message",
+            "user": "U001",
+            "text": ""
+        }"#;
+        let msg: SlackMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg.text, "");
+        assert_eq!(msg.ts, "123.456");
+    }
+
+    #[test]
+    fn test_slack_message_unicode() {
+        let json = r#"{
+            "ts": "100.200",
+            "type": "message",
+            "user": "U002",
+            "text": "你好世界 🌍 مرحبا"
+        }"#;
+        let msg: SlackMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg.text, "你好世界 🌍 مرحبا");
+    }
+
+    #[test]
+    fn test_slack_message_all_optional_fields() {
+        let json = r#"{
+            "ts": "200.300",
+            "type": "message",
+            "user": "U003",
+            "text": "Thread reply",
+            "thread_ts": "100.100",
+            "reply_count": 5,
+            "subtype": "thread_broadcast",
+            "bot_id": "B789"
+        }"#;
+        let msg: SlackMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg.thread_ts, Some("100.100".to_string()));
+        assert_eq!(msg.reply_count, Some(5));
+        assert_eq!(msg.subtype, Some("thread_broadcast".to_string()));
+        assert_eq!(msg.bot_id, Some("B789".to_string()));
+    }
+
+    #[test]
+    fn test_slack_message_minimal() {
+        let json = r#"{"ts": "1.1"}"#;
+        let msg: SlackMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg.ts, "1.1");
+        assert_eq!(msg.user, ""); // default
+        assert_eq!(msg.text, ""); // default
+    }
+
+    #[test]
+    fn test_history_response_multiple_messages() {
+        let json = r#"{
+            "ok": true,
+            "messages": [
+                {"ts": "1.1", "type": "message", "user": "U1", "text": "First"},
+                {"ts": "2.2", "type": "message", "user": "U2", "text": "Second"},
+                {"ts": "3.3", "type": "message", "user": "U3", "text": "Third"}
+            ],
+            "has_more": true
+        }"#;
+        let resp: HistoryResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.ok);
+        assert_eq!(resp.messages.len(), 3);
+        assert!(resp.has_more);
+        assert_eq!(resp.messages[0].text, "First");
+        assert_eq!(resp.messages[2].text, "Third");
+    }
+
+    #[test]
+    fn test_history_response_with_cursor() {
+        let json = r#"{
+            "ok": true,
+            "messages": [],
+            "has_more": true,
+            "response_metadata": { "next_cursor": "dXNlcjpVMDYxTkZUUDI=" }
+        }"#;
+        let resp: HistoryResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.has_more);
+        let cursor = resp.response_metadata.unwrap().next_cursor.unwrap();
+        assert_eq!(cursor, "dXNlcjpVMDYxTkZUUDI=");
+    }
+
+    #[test]
+    fn test_history_response_empty_messages() {
+        let json = r#"{"ok": true, "messages": [], "has_more": false}"#;
+        let resp: HistoryResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.ok);
+        assert!(resp.messages.is_empty());
+        assert!(!resp.has_more);
+    }
+
+    #[test]
+    fn test_conversations_response_empty() {
+        let json = r#"{"ok": true, "channels": []}"#;
+        let resp: ConversationsResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.ok);
+        assert!(resp.channels.is_empty());
+    }
+
+    #[test]
+    fn test_user_info_response_missing_real_name() {
+        let json = r#"{
+            "ok": true,
+            "user": { "id": "U999", "name": "anon" }
+        }"#;
+        let resp: UserInfoResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.ok);
+        let user = resp.user.unwrap();
+        assert_eq!(user.id, "U999");
+        assert!(user.real_name.is_none());
+    }
+
+    #[test]
+    fn test_user_info_response_error() {
+        let json = r#"{"ok": false, "error": "user_not_found"}"#;
+        let resp: UserInfoResponse = serde_json::from_str(json).unwrap();
+        assert!(!resp.ok);
+    }
+
+    #[test]
+    fn test_slack_message_long_text() {
+        let long_text = "A".repeat(10000);
+        let json = serde_json::json!({
+            "ts": "999.999",
+            "type": "message",
+            "user": "U010",
+            "text": long_text
+        });
+        let msg: SlackMessage = serde_json::from_value(json).unwrap();
+        assert_eq!(msg.text.len(), 10000);
+    }
+
+    #[test]
+    fn test_slack_message_special_characters() {
+        let json = r#"{
+            "ts": "50.50",
+            "type": "message",
+            "user": "U020",
+            "text": "Line1\nLine2\tTabbed\r\nCRLF"
+        }"#;
+        let msg: SlackMessage = serde_json::from_str(json).unwrap();
+        assert!(msg.text.contains('\n'));
+        assert!(msg.text.contains('\t'));
+    }
 }

@@ -154,8 +154,7 @@ impl SoulClient {
                     let event = event.clone();
                     async move {
                         let url = format!("{}/api/nerve/publish", base_url);
-                        let payload_str =
-                            String::from_utf8_lossy(&event.payload).to_string();
+                        let payload_str = String::from_utf8_lossy(&event.payload).to_string();
                         let body = serde_json::json!({
                             "topic": format!("soma.{}", event.event_type),
                             "data": {
@@ -172,18 +171,11 @@ impl SoulClient {
                             Ok(resp) if resp.status().is_success() => (true, None),
                             Ok(resp) => (
                                 false,
-                                Some(format!(
-                                    "HTTP {} for event {}",
-                                    resp.status(),
-                                    event.id
-                                )),
+                                Some(format!("HTTP {} for event {}", resp.status(), event.id)),
                             ),
                             Err(e) => (
                                 false,
-                                Some(format!(
-                                    "Network error for event {}: {}",
-                                    event.id, e
-                                )),
+                                Some(format!("Network error for event {}: {}", event.id, e)),
                             ),
                         }
                     }

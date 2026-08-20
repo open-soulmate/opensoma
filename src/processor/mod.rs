@@ -77,7 +77,9 @@ async fn run_pipeline(
             if overage <= 2.0 {
                 // Truncate and tag — keep the event but trim payload
                 event.payload.truncate(config.max_event_size);
-                event.tags.insert("_truncated".to_string(), "payload".to_string());
+                event
+                    .tags
+                    .insert("_truncated".to_string(), "payload".to_string());
                 if let Some(ref m) = metrics {
                     m.inc_events_normalized(); // count as normalized (adjusted)
                 }
@@ -87,7 +89,11 @@ async fn run_pipeline(
                     (overage - 1.0) * 100.0
                 );
             } else {
-                debug!("Dropping oversized event: {} bytes ({:.0}% over limit)", event.payload.len(), (overage - 1.0) * 100.0);
+                debug!(
+                    "Dropping oversized event: {} bytes ({:.0}% over limit)",
+                    event.payload.len(),
+                    (overage - 1.0) * 100.0
+                );
                 if let Some(ref m) = metrics {
                     m.inc_events_dropped_oversized();
                 }
@@ -336,20 +342,14 @@ mod tests {
         let handle = start_pipeline(input_rx, output_tx, &config, None);
 
         // Send a moderately oversized event (~30 bytes on 20-byte limit = 1.5x, <2x → truncated)
-        let event = make_test_event(
-            "evt-med",
-            "test",
-            "test",
-            "this payload is thirty bytes!!",
-        );
+        let event = make_test_event("evt-med", "test", "test", "this payload is thirty bytes!!");
         input_tx.send(event).await.unwrap();
 
         // Should receive the event (truncated, not dropped)
-        let received =
-            tokio::time::timeout(std::time::Duration::from_secs(2), output_rx.recv())
-                .await
-                .expect("timeout — event should have been truncated, not dropped")
-                .expect("channel closed");
+        let received = tokio::time::timeout(std::time::Duration::from_secs(2), output_rx.recv())
+            .await
+            .expect("timeout — event should have been truncated, not dropped")
+            .expect("channel closed");
 
         assert_eq!(received.id, "evt-med");
         assert!(received.payload.len() <= 20);

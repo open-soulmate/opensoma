@@ -57,7 +57,8 @@ async fn main() -> Result<()> {
 
     // Initialize plugin registry and register built-in sense plugins
     let plugin_registry = std::sync::Arc::new(opensoma::plugins::PluginRegistry::new());
-    if let Err(e) = opensoma::plugins::register_sense_plugins(&plugin_registry, &config.sense).await {
+    if let Err(e) = opensoma::plugins::register_sense_plugins(&plugin_registry, &config.sense).await
+    {
         tracing::warn!("Sense plugin registration failed (non-fatal): {:#}", e);
     }
     let plugin_count = plugin_registry.count().await;
@@ -272,7 +273,6 @@ fn parse_config_path() -> String {
         }
         std::process::exit(run_doctor(&config_path));
     }
-
 
     // Handle --export
     if args.iter().any(|a| a == "--export") {
@@ -922,7 +922,6 @@ fn parse_http_response(response: &str) -> std::io::Result<&str> {
         ))
     }
 }
-
 
 /// Diagnose runtime environment — checks config, dependencies, connectivity, and permissions.
 fn run_doctor(config_path: &str) -> i32 {

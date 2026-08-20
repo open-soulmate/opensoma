@@ -133,7 +133,11 @@ pub struct SensePluginAdapter {
 }
 
 impl SensePluginAdapter {
-    pub fn new(inner: Box<dyn sense::SensePlugin>, category_suffix: &str, mime_types: Vec<String>) -> Self {
+    pub fn new(
+        inner: Box<dyn sense::SensePlugin>,
+        category_suffix: &str,
+        mime_types: Vec<String>,
+    ) -> Self {
         let id = format!("sense.{}", category_suffix);
         let name = inner.name().to_string();
         Self {
@@ -593,14 +597,8 @@ mod tests {
     #[tokio::test]
     async fn test_plugin_registry_register_and_list() {
         let registry = PluginRegistry::new();
-        registry
-            .register(MockPlugin::new("test.1"))
-            .await
-            .unwrap();
-        registry
-            .register(MockPlugin::new("test.2"))
-            .await
-            .unwrap();
+        registry.register(MockPlugin::new("test.1")).await.unwrap();
+        registry.register(MockPlugin::new("test.2")).await.unwrap();
 
         let list = registry.list().await;
         assert_eq!(list.len(), 2);
@@ -637,7 +635,10 @@ mod tests {
     #[tokio::test]
     async fn test_plugin_registry_health() {
         let registry = PluginRegistry::new();
-        registry.register(MockPlugin::new("health.test")).await.unwrap();
+        registry
+            .register(MockPlugin::new("health.test"))
+            .await
+            .unwrap();
         registry.activate("health.test").await.unwrap();
 
         let health = registry.health("health.test").await.unwrap();
@@ -648,7 +649,10 @@ mod tests {
     #[tokio::test]
     async fn test_plugin_registry_find_by_type() {
         let registry = PluginRegistry::new();
-        registry.register(MockPlugin::new("finder.test")).await.unwrap();
+        registry
+            .register(MockPlugin::new("finder.test"))
+            .await
+            .unwrap();
         registry.activate("finder.test").await.unwrap();
 
         let found = registry.find_by_type("text/plain").await;
@@ -684,7 +688,10 @@ mod tests {
     async fn test_plugin_registry_dispatch() {
         let registry = PluginRegistry::new();
         // MockPlugin doesn't implement handle_request, so dispatch returns error
-        registry.register(MockPlugin::new("dispatch.test")).await.unwrap();
+        registry
+            .register(MockPlugin::new("dispatch.test"))
+            .await
+            .unwrap();
         registry.activate("dispatch.test").await.unwrap();
 
         // handle_request returns an error by default
@@ -700,7 +707,10 @@ mod tests {
     #[tokio::test]
     async fn test_plugin_registry_dispatch_inactive() {
         let registry = PluginRegistry::new();
-        registry.register(MockPlugin::new("inactive.test")).await.unwrap();
+        registry
+            .register(MockPlugin::new("inactive.test"))
+            .await
+            .unwrap();
 
         // Not activated yet — should fail
         let result = registry.dispatch("inactive.test", "test", b"{}").await;

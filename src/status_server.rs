@@ -637,9 +637,7 @@ async fn api_pipeline_metrics_handler(
 }
 
 /// Returns plugin registry status — registered plugins, their state, and health.
-async fn api_plugins_handler(
-    State(state): State<StatusServerState>,
-) -> Json<serde_json::Value> {
+async fn api_plugins_handler(State(state): State<StatusServerState>) -> Json<serde_json::Value> {
     if let Some(ref registry) = state.plugin_registry {
         let plugins = registry.list().await;
         let health = registry.health_all().await;
@@ -661,13 +659,12 @@ async fn api_plugins_handler(
 }
 
 /// /api/config — returns the sanitized running configuration (secrets redacted).
-async fn api_config_handler(
-    State(state): State<StatusServerState>,
-) -> Json<serde_json::Value> {
+async fn api_config_handler(State(state): State<StatusServerState>) -> Json<serde_json::Value> {
     if let Some(ref config) = state.config_snapshot {
-        Json(serde_json::to_value(config).unwrap_or_else(|_| {
-            serde_json::json!({"error": "Failed to serialize config"})
-        }))
+        Json(
+            serde_json::to_value(config)
+                .unwrap_or_else(|_| serde_json::json!({"error": "Failed to serialize config"})),
+        )
     } else {
         Json(serde_json::json!({
             "error": "Config snapshot not available",
@@ -1254,18 +1251,24 @@ async fn build_plugins_page(state: &StatusServerState) -> String {
         let mut table_rows = String::new();
         for p in &plugins {
             let h = health.iter().find(|h| h.plugin_id == p.id);
-            let state_str = h.map(|h| match &h.state {
-                crate::plugins::PluginState::Active => "active",
-                crate::plugins::PluginState::Error => "error",
-                _ => "inactive",
-            }).unwrap_or("unknown");
+            let state_str = h
+                .map(|h| match &h.state {
+                    crate::plugins::PluginState::Active => "active",
+                    crate::plugins::PluginState::Error => "error",
+                    _ => "inactive",
+                })
+                .unwrap_or("unknown");
             let state_class = match state_str {
                 "active" => "badge-ok",
                 "error" => "badge-error",
                 _ => "badge-disabled",
             };
-            let requests = h.map(|h| h.requests_handled.to_string()).unwrap_or_else(|| "0".to_string());
-            let errors = h.map(|h| h.errors.to_string()).unwrap_or_else(|| "0".to_string());
+            let requests = h
+                .map(|h| h.requests_handled.to_string())
+                .unwrap_or_else(|| "0".to_string());
+            let errors = h
+                .map(|h| h.errors.to_string())
+                .unwrap_or_else(|| "0".to_string());
 
             use std::fmt::Write;
             let _ = write!(
