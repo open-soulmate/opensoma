@@ -636,4 +636,242 @@ mod tests {
 
         handle.abort();
     }
+
+    #[test]
+    fn test_process_sense_video_tagging() {
+        use crate::config::{SenseConfig, VideoSenseConfig};
+
+        let config = SenseConfig {
+            enabled: true,
+            asr: None,
+            ocr: None,
+            image: None,
+            video: Some(VideoSenseConfig {
+                frame_interval_sec: 5,
+                max_frames: 60,
+                frame_analyzer: "ocr".to_string(),
+            }),
+        };
+
+        let mut event = make_test_event("evt-vid", "file_change", "file", "video data");
+        event
+            .tags
+            .insert("file_path".to_string(), "/tmp/lecture.mp4".to_string());
+
+        process_sense(&mut event, &config);
+
+        assert_eq!(event.tags.get("sense_media_type").unwrap(), "video");
+        assert_eq!(event.tags.get("sense_eligible").unwrap(), "true");
+    }
+
+    #[test]
+    fn test_process_sense_pdf_tagging() {
+        use crate::config::{OcrSenseConfig, SenseConfig};
+
+        let config = SenseConfig {
+            enabled: true,
+            asr: None,
+            ocr: Some(OcrSenseConfig {
+                engine: "tesseract".to_string(),
+                api_url: None,
+                api_key: None,
+                tesseract_lang: "eng".to_string(),
+            }),
+            image: None,
+            video: None,
+        };
+
+        let mut event = make_test_event("evt-pdf", "file_change", "file", "pdf data");
+        event
+            .tags
+            .insert("file_path".to_string(), "/tmp/report.pdf".to_string());
+
+        process_sense(&mut event, &config);
+
+        assert_eq!(event.tags.get("sense_media_type").unwrap(), "pdf");
+        assert_eq!(event.tags.get("sense_eligible").unwrap(), "true");
+    }
+
+    #[test]
+    fn test_process_sense_unknown_extension_not_tagged() {
+        use crate::config::SenseConfig;
+
+        let config = SenseConfig {
+            enabled: true,
+            asr: None,
+            ocr: None,
+            image: None,
+            video: None,
+        };
+
+        let mut event = make_test_event("evt-unknown", "file_change", "file", "data");
+        event
+            .tags
+            .insert("file_path".to_string(), "/tmp/readme.md".to_string());
+
+        process_sense(&mut event, &config);
+
+        assert!(!event.tags.contains_key("sense_media_type"));
+        assert!(!event.tags.contains_key("sense_eligible"));
+    }
+
+    #[test]
+    fn test_process_sense_path_from_tags_fallback() {
+        use crate::config::{OcrSenseConfig, SenseConfig};
+
+        let config = SenseConfig {
+            enabled: true,
+            asr: None,
+            ocr: Some(OcrSenseConfig {
+                engine: "tesseract".to_string(),
+                api_url: None,
+                api_key: None,
+                tesseract_lang: "eng".to_string(),
+            }),
+            image: None,
+            video: None,
+        };
+
+        // Use "path" tag instead of "file_path"
+        let mut event = make_test_event("evt-path", "file_change", "file", "data");
+        event
+            .tags
+            .insert("path".to_string(), "/tmp/photo.jpeg".to_string());
+
+        process_sense(&mut event, &config);
+
+        assert_eq!(event.tags.get("sense_media_type").unwrap(), "image");
+    }
+
+    #[test]
+    fn test_process_sense_no_path_tag() {
+        use crate::config::SenseConfig;
+
+        let config = SenseConfig {
+            enabled: true,
+            asr: None,
+            ocr: None,
+            image: None,
+            video: None,
+        };
+
+        // No file_path or path tag
+        let mut event = make_test_event("evt-nopath", "file_change", "file", "data");
+        process_sense(&mut event, &config);
+
+        assert!(!event.tags.contains_key("sense_media_type"));
+    }
+
+    #[test]
+    fn test_process_sense_video_formats() {
+        use crate::config::{SenseConfig, VideoSenseConfig};
+
+        let config = SenseConfig {
+            enabled: true,
+            asr: None,
+            ocr: None,
+            image: None,
+            video: Some(VideoSenseConfig {
+                frame_interval_sec: 10,
+                max_frames: 30,
+                frame_analyzer: "ocr".to_string(),
+            }),
+        };
+
+        for ext in &["mp4", "avi", "mkv", "mov", "webm", "flv"] {
+            let mut event = make_test_event(
+                &format!("evt-vid-{}", ext),
+                "file_change",
+                "file",
+                "video data",
+            );
+            event.tags.insert(
+                "file_path".to_string(),
+                format!("/tmp/video.{}", ext),
+            );
+            process_sense(&mut event, &config);
+            assert_eq!(
+                event.tags.get("sense_media_type").unwrap(),
+                "video",
+                "Extension '{}' should be tagged as video",
+                ext
+            );
+        }
+    }
+
+    #[test]
+    fn test_process_sense_image_formats() {
+        use crate::config::{OcrSenseConfig, SenseConfig};
+
+        let config = SenseConfig {
+            enabled: true,
+            asr: None,
+            ocr: Some(OcrSenseConfig {
+                engine: "tesseract".to_string(),
+                api_url: None,
+                api_key: None,
+                tesseract_lang: "eng".to_string(),
+            }),
+            image: None,
+            video: None,
+        };
+
+        for ext in &["png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff"] {
+            let mut event = make_test_event(
+                &format!("evt-img-{}", ext),
+                "file_change",
+                "file",
+                "image data",
+            );
+            event.tags.insert(
+                "file_path".to_string(),
+                format!("/tmp/photo.{}", ext),
+            );
+            process_sense(&mut event, &config);
+            assert_eq!(
+                event.tags.get("sense_media_type").unwrap(),
+                "image",
+                "Extension '{}' should be tagged as image",
+                ext
+            );
+        }
+    }
+
+    #[test]
+    fn test_process_sense_audio_formats() {
+        use crate::config::{AsrSenseConfig, SenseConfig};
+
+        let config = SenseConfig {
+            enabled: true,
+            asr: Some(AsrSenseConfig {
+                engine: "whisper".to_string(),
+                api_url: None,
+                api_key: None,
+                whisper_model: "base".to_string(),
+            }),
+            ocr: None,
+            image: None,
+            video: None,
+        };
+
+        for ext in &["wav", "mp3", "ogg", "flac", "m4a", "aac", "wma"] {
+            let mut event = make_test_event(
+                &format!("evt-aud-{}", ext),
+                "file_change",
+                "file",
+                "audio data",
+            );
+            event.tags.insert(
+                "file_path".to_string(),
+                format!("/tmp/recording.{}", ext),
+            );
+            process_sense(&mut event, &config);
+            assert_eq!(
+                event.tags.get("sense_media_type").unwrap(),
+                "audio",
+                "Extension '{}' should be tagged as audio",
+                ext
+            );
+        }
+    }
 }

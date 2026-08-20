@@ -528,6 +528,51 @@ pub async fn register_sense_plugins(
         registry.activate("sense.asr").await?;
     }
 
+    // Register Image (multimodal LLM) plugin
+    if let Some(ref image_cfg) = sense_config.image {
+        let image_config = sense::image::ImageConfig {
+            model: image_cfg.model.clone(),
+            api_url: image_cfg.api_url.clone(),
+            api_key: image_cfg.api_key.clone(),
+        };
+        let plugin = sense::image::ImagePlugin::new(image_config);
+        let adapter = SensePluginAdapter::new(
+            Box::new(plugin),
+            "image",
+            vec![
+                "image/png".into(),
+                "image/jpeg".into(),
+                "image/webp".into(),
+                "image/gif".into(),
+            ],
+        );
+        registry.register(adapter).await?;
+        registry.activate("sense.image").await?;
+    }
+
+    // Register Video (frame extraction + analysis) plugin
+    if let Some(ref video_cfg) = sense_config.video {
+        let video_config = sense::video::VideoConfig {
+            frame_interval_sec: video_cfg.frame_interval_sec,
+            max_frames: video_cfg.max_frames,
+            frame_analyzer: video_cfg.frame_analyzer.clone(),
+        };
+        let plugin = sense::video::VideoPlugin::new(video_config);
+        let adapter = SensePluginAdapter::new(
+            Box::new(plugin),
+            "video",
+            vec![
+                "video/mp4".into(),
+                "video/webm".into(),
+                "video/avi".into(),
+                "video/mkv".into(),
+                "video/quicktime".into(),
+            ],
+        );
+        registry.register(adapter).await?;
+        registry.activate("sense.video").await?;
+    }
+
     info!(
         "Sense plugins registered: {} active",
         registry.active_count().await
@@ -759,5 +804,130 @@ mod tests {
         let registry = build_default_registry();
         // Registry starts empty; sense plugins added via register_sense_plugins
         assert_eq!(registry.entries.blocking_read().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_plugin_registry_deactivate_nonexistent() {
+        let registry = PluginRegistry::new();
+        let result = registry.deactivate("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_plugin_registry_deactivate_already_stopped() {
+        let registry = PluginRegistry::new();
+        registry
+            .register(MockPlugin::new("stop-twice"))
+            .await
+            .unwrap();
+        registry.activate("stop-twice").await.unwrap();
+        registry.deactivate("stop-twice").await.unwrap();
+        // Deactivating again should be a no-op
+        registry.deactivate("stop-twice").await.unwrap();
+        assert_eq!(registry.active_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_plugin_registry_activate_already_active() {
+        let registry = PluginRegistry::new();
+        registry
+            .register(MockPlugin::new("idempotent"))
+            .await
+            .unwrap();
+        registry.activate("idempotent").await.unwrap();
+        // Activating again should be a no-op
+        registry.activate("idempotent").await.unwrap();
+        assert_eq!(registry.active_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_plugin_registry_health_all_empty() {
+        let registry = PluginRegistry::new();
+        let healths = registry.health_all().await;
+        assert!(healths.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_plugin_registry_find_by_type_inactive_excluded() {
+        let registry = PluginRegistry::new();
+        registry
+            .register(MockPlugin::new("inactive-finder"))
+            .await
+            .unwrap();
+        // Not activated — should not be found
+        let found = registry.find_by_type("text/plain").await;
+        assert!(found.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_plugin_registry_overwrite_existing() {
+        let registry = PluginRegistry::new();
+        registry.register(MockPlugin::new("dup")).await.unwrap();
+        registry.activate("dup").await.unwrap();
+        // Register again — should overwrite
+        registry.register(MockPlugin::new("dup")).await.unwrap();
+        // After overwrite, the new entry is in Registered state (not Active)
+        assert_eq!(registry.active_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_plugin_registry_count() {
+        let registry = PluginRegistry::new();
+        assert_eq!(registry.count().await, 0);
+        registry.register(MockPlugin::new("c1")).await.unwrap();
+        assert_eq!(registry.count().await, 1);
+        registry.register(MockPlugin::new("c2")).await.unwrap();
+        assert_eq!(registry.count().await, 2);
+    }
+
+    #[test]
+    fn test_plugin_health_serialization() {
+        let health = PluginHealth {
+            plugin_id: "test.health".into(),
+            state: PluginState::Active,
+            uptime_secs: 3600,
+            requests_handled: 42,
+            errors: 1,
+            last_error: Some("timeout".into()),
+            last_active_secs_ago: 10,
+        };
+        let json = serde_json::to_string(&health).unwrap();
+        assert!(json.contains("\"plugin_id\":\"test.health\""));
+        assert!(json.contains("\"uptime_secs\":3600"));
+        assert!(json.contains("\"requests_handled\":42"));
+        assert!(json.contains("\"errors\":1"));
+    }
+
+    #[test]
+    fn test_all_plugin_states_serializable() {
+        let states = vec![
+            PluginState::Registered,
+            PluginState::Initializing,
+            PluginState::Active,
+            PluginState::Paused,
+            PluginState::Degraded,
+            PluginState::Error,
+            PluginState::Stopped,
+        ];
+        for state in states {
+            let json = serde_json::to_string(&state).unwrap();
+            let _: PluginState = serde_json::from_str(&json).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_all_plugin_categories_serializable() {
+        let cats = vec![
+            PluginCategory::Sense,
+            PluginCategory::Enrich,
+            PluginCategory::Transform,
+            PluginCategory::Connector,
+            PluginCategory::Storage,
+            PluginCategory::Custom,
+        ];
+        for cat in cats {
+            let json = serde_json::to_string(&cat).unwrap();
+            let _: PluginCategory = serde_json::from_str(&json).unwrap();
+        }
     }
 }

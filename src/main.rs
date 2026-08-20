@@ -593,6 +593,14 @@ watch_dirs = []
 # [sense.ocr]
 # engine = "tesseract"
 # tesseract_lang = "chi_sim+eng"
+# [sense.image]
+# model = "gpt-4o"
+# api_url = "https://api.openai.com/v1/chat/completions"
+# api_key = "sk-..."
+# [sense.video]
+# frame_interval_sec = 5
+# max_frames = 60
+# frame_analyzer = "ocr"
 "#;
 
     match std::fs::write(config_path, default_config) {
