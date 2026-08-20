@@ -219,6 +219,7 @@ fn parse_config_path() -> String {
         println!("    --search <QUERY>       Search cached events by payload text");
         println!("    --source <PREFIX>      Filter cached events by source prefix");
         println!("    --type <TYPE>          Filter cached events by event type");
+        println!("    --top                  Live monitoring dashboard (refreshes every 2s)");
         println!("    -V, --version          Print version information");
         println!("    --version-json         Print version as JSON (for scripts)");
         println!("    -h, --help             Print this help message");
@@ -385,6 +386,20 @@ fn parse_config_path() -> String {
             }
         }
         std::process::exit(run_type_filter(&config_path, &event_type));
+    }
+    // Handle --top
+    if args.iter().any(|a| a == "--top") {
+        let mut port: u16 = 8091;
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        if let Ok(config) = config::AppConfig::load(&config_path) {
+            port = config.daemon.status_port;
+        }
+        std::process::exit(run_top(port));
     }
     // Handle --health
     if args.iter().any(|a| a == "--health") {
@@ -1603,6 +1618,138 @@ fn run_type_filter(config_path: &str, event_type: &str) -> i32 {
     0
 }
 
+/// Live monitoring dashboard — polls the daemon status every 2 seconds.
+/// Displays a compact, refreshing view similar to `top`.
+fn run_top(port: u16) -> i32 {
+    let url = format!("http://127.0.0.1:{}/api/status", port);
+    let metrics_url = format!("http://127.0.0.1:{}/metrics", port);
+
+    // Check if daemon is reachable first
+    match blocking_http_get(&url) {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("❌ Cannot reach OpenSoma daemon at port {}", port);
+            eprintln!("   Error: {}", e);
+            return 1;
+        }
+    }
+
+    let mut iteration = 0u64;
+    loop {
+        // Clear screen (ANSI escape)
+        print!("\x1B[2J\x1B[H");
+        println!("╔══════════════════════════════════════════════════════════════╗");
+        println!("║            OpenSoma — Live Monitor (refresh: 2s)            ║");
+        println!("║            Press Ctrl+C to exit                             ║");
+        println!("╚══════════════════════════════════════════════════════════════╝");
+        println!();
+
+        match blocking_http_get(&url) {
+            Ok(body) => {
+                match serde_json::from_str::<serde_json::Value>(&body) {
+                    Ok(json) => {
+                        let node_id = json["node_id"].as_str().unwrap_or("?");
+                        let component = json["component"].as_str().unwrap_or("?");
+                        let uptime = json["uptime_seconds"].as_u64().unwrap_or(0);
+                        let events_collected = json["events_collected"].as_u64().unwrap_or(0);
+                        let events_synced = json["events_synced"].as_u64().unwrap_or(0);
+                        let hostname = json["hostname"].as_str().unwrap_or("?");
+                        let cpu = json["cpu_percent"].as_f64().unwrap_or(0.0);
+                        let mem_used = json["memory_used_mb"].as_u64().unwrap_or(0);
+                        let mem_total = json["memory_total_mb"].as_u64().unwrap_or(0);
+
+                        let d = uptime / 86400;
+                        let h = (uptime % 86400) / 3600;
+                        let m = (uptime % 3600) / 60;
+                        let s = uptime % 60;
+
+                        println!("  Node: {:<20} Host: {}", node_id, hostname);
+                        println!("  Component: {:<16} Uptime: {}d {}h {}m {}s", component, d, h, m, s);
+                        println!();
+                        println!("  ┌─────────────────────────────────────────────────────────┐");
+                        println!("  │  Events Collected: {:<10} │ Synced: {:<10}      │", events_collected, events_synced);
+                        println!("  │  Pending:          {:<10} │                        │", events_collected.saturating_sub(events_synced));
+                        println!("  └─────────────────────────────────────────────────────────┘");
+                        println!();
+                        println!("  CPU:  {:>5.1}%  {}", cpu, bar(cpu, 30));
+                        let mem_pct = if mem_total > 0 { mem_used as f64 / mem_total as f64 * 100.0 } else { 0.0 };
+                        println!("  MEM:  {:>5.1}%  {}  ({} / {} MB)", mem_pct, bar(mem_pct, 30), mem_used, mem_total);
+                        println!();
+
+                        // Show connectors
+                        if let Some(connectors) = json["connectors_active"].as_array() {
+                            if !connectors.is_empty() {
+                                let names: Vec<&str> = connectors.iter().filter_map(|c| c.as_str()).collect();
+                                println!("  Active connectors: {}", names.join(", "));
+                            } else {
+                                println!("  Active connectors: (none)");
+                            }
+                        }
+
+                        // Show last error
+                        if let Some(err) = json["last_error"].as_str() {
+                            if !err.is_empty() {
+                                println!("  ⚠ Last error: {}", err);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("  Failed to parse status: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                println!("  ❌ Connection lost: {}", e);
+            }
+        }
+
+        // Show pipeline metrics if available
+        match blocking_http_get(&metrics_url) {
+            Ok(body) => {
+                let mut processed = 0u64;
+                let mut normalized = 0u64;
+                let mut classified = 0u64;
+                let mut enriched = 0u64;
+                let mut deduped = 0u64;
+                for line in body.lines() {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        if let Ok(val) = parts[1].parse::<f64>() {
+                            match parts[0] {
+                                "opensoma_pipeline_events_processed_total" => processed = val as u64,
+                                "opensoma_pipeline_events_normalized_total" => normalized = val as u64,
+                                "opensoma_pipeline_events_classified_total" => classified = val as u64,
+                                "opensoma_pipeline_events_enriched_total" => enriched = val as u64,
+                                "opensoma_pipeline_events_deduped_total" => deduped = val as u64,
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                if processed > 0 {
+                    println!();
+                    println!("  Pipeline: processed={} normalized={} classified={} enriched={} deduped={}",
+                        processed, normalized, classified, enriched, deduped);
+                }
+            }
+            Err(_) => {}
+        }
+
+        println!();
+        println!("  ── Iteration {} ── Press Ctrl+C to exit ──", iteration);
+        iteration += 1;
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+}
+
+/// Render a simple ASCII progress bar.
+fn bar(pct: f64, width: usize) -> String {
+    let filled = ((pct / 100.0) * width as f64).round() as usize;
+    let filled = filled.min(width);
+    let empty = width - filled;
+    format!("[{}{}]", "█".repeat(filled), "░".repeat(empty))
+}
+
 /// Truncate a string to max_len characters, adding "…" if truncated.
 fn truncate_str(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
@@ -1733,5 +1880,35 @@ mod tests {
         let result = truncate_str(s, 4);
         // Should truncate and add ellipsis
         assert!(result.ends_with('…') || result == s);
+    }
+
+    #[test]
+    fn test_bar_zero() {
+        let b = bar(0.0, 10);
+        assert_eq!(b, "[░░░░░░░░░░]");
+    }
+
+    #[test]
+    fn test_bar_half() {
+        let b = bar(50.0, 10);
+        assert_eq!(b, "[█████░░░░░]");
+    }
+
+    #[test]
+    fn test_bar_full() {
+        let b = bar(100.0, 10);
+        assert_eq!(b, "[██████████]");
+    }
+
+    #[test]
+    fn test_bar_over_100() {
+        let b = bar(150.0, 10);
+        assert_eq!(b, "[██████████]");
+    }
+
+    #[test]
+    fn test_bar_small_width() {
+        let b = bar(50.0, 4);
+        assert_eq!(b, "[██░░]");
     }
 }
