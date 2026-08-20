@@ -456,4 +456,91 @@ mod tests {
         assert_eq!(event.tags.get("page_id").unwrap(), "page-123");
         assert_eq!(event.tags.get("title").unwrap(), "Test Page");
     }
+
+    #[test]
+    fn test_extract_block_text_empty_rich_text() {
+        let block = NotionBlock {
+            id: "test".to_string(),
+            block_type: "paragraph".to_string(),
+            rich_text: None,
+            paragraph: Some(BlockWithText {
+                rich_text: vec![],
+            }),
+            heading_1: None,
+            heading_2: None,
+            heading_3: None,
+            bulleted_list_item: None,
+            numbered_list_item: None,
+            to_do: None,
+            code: None,
+            quote: None,
+            callout: None,
+            toggle: None,
+        };
+        assert_eq!(extract_block_text(&block), Some("".to_string()));
+    }
+
+    #[test]
+    fn test_extract_block_text_multiple_rich_texts() {
+        let block = NotionBlock {
+            id: "test".to_string(),
+            block_type: "paragraph".to_string(),
+            rich_text: None,
+            paragraph: Some(BlockWithText {
+                rich_text: vec![
+                    RichText { plain_text: "Hello ".to_string() },
+                    RichText { plain_text: "world".to_string() },
+                ],
+            }),
+            heading_1: None,
+            heading_2: None,
+            heading_3: None,
+            bulleted_list_item: None,
+            numbered_list_item: None,
+            to_do: None,
+            code: None,
+            quote: None,
+            callout: None,
+            toggle: None,
+        };
+        assert_eq!(extract_block_text(&block), Some("Hello world".to_string()));
+    }
+
+    #[test]
+    fn test_extract_title_from_properties_empty_title_array() {
+        let props = serde_json::json!({
+            "title": {
+                "title": []
+            }
+        });
+        assert_eq!(extract_title_from_properties(&props), None);
+    }
+
+    #[test]
+    fn test_to_raw_event_no_title() {
+        let props = serde_json::json!({});
+        let event = to_raw_event("page-no-title", &props, "Body text");
+        assert_eq!(event.source, "connector:notion:page-no-title");
+        assert!(!event.tags.contains_key("title"));
+        assert_eq!(event.payload, b"Body text");
+    }
+
+    #[test]
+    fn test_to_raw_event_payload_encoding() {
+        let props = serde_json::json!({});
+        let content = "中文内容 🎉";
+        let event = to_raw_event("page-unicode", &props, content);
+        let decoded = String::from_utf8(event.payload).unwrap();
+        assert_eq!(decoded, "中文内容 🎉");
+    }
+
+    #[test]
+    fn test_notion_api_version_constant() {
+        assert_eq!(NOTION_API_VERSION, "2022-06-28");
+    }
+
+    #[test]
+    fn test_notion_base_url_constant() {
+        assert_eq!(NOTION_BASE_URL, "https://api.notion.com/v1");
+    }
 }
