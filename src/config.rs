@@ -198,7 +198,7 @@ pub struct WebhookConfig {
     /// Shared secret for HMAC signature verification
     #[serde(default)]
     pub secret: Option<String>,
-    /// Allowed origin prefixes for validation (e.g. "https://open.feishu.cn")
+    /// Allowed origin prefixes for validation (e.g. `<https://open.feishu.cn>`)
     #[serde(default)]
     pub allowed_origins: Vec<String>,
 }

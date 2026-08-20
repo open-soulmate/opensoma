@@ -8,7 +8,7 @@ use tracing::debug;
 pub struct ImageConfig {
     /// Model identifier (e.g. "gpt-4o", "claude-sonnet-4-20250514").
     pub model: String,
-    /// API endpoint (e.g. "https://api.openai.com/v1/chat/completions").
+    /// API endpoint (e.g. `<https://api.openai.com/v1/chat/completions>`).
     pub api_url: String,
     #[serde(default)]
     pub api_key: Option<String>,
