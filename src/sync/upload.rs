@@ -126,6 +126,17 @@ mod tests {
         }
     }
 
+    fn make_event_with_tags(id: &str, payload: &[u8], tags: HashMap<String, String>) -> RawEvent {
+        RawEvent {
+            id: id.to_string(),
+            source: "test".to_string(),
+            event_type: "test_event".to_string(),
+            timestamp_ms: 1000,
+            payload: payload.to_vec(),
+            tags,
+        }
+    }
+
     #[test]
     fn test_to_proto_event() {
         let event = make_event("evt-1", 10);
@@ -166,5 +177,101 @@ mod tests {
         assert_eq!(chunks[0].len(), MAX_CHUNK_SIZE);
         assert_eq!(chunks[1].len(), MAX_CHUNK_SIZE);
         assert_eq!(chunks[2].len(), 50);
+    }
+
+    #[test]
+    fn test_to_proto_event_preserves_tags() {
+        let mut tags = HashMap::new();
+        tags.insert("key1".to_string(), "value1".to_string());
+        tags.insert("key2".to_string(), "value2".to_string());
+        let event = make_event_with_tags("evt-tags", b"payload", tags);
+        let proto = to_proto_event_shared(&event);
+        assert_eq!(proto.id, "evt-tags");
+        assert_eq!(proto.tags.len(), 2);
+        assert_eq!(proto.tags.get("key1").unwrap(), "value1");
+        assert_eq!(proto.tags.get("key2").unwrap(), "value2");
+    }
+
+    #[test]
+    fn test_to_proto_event_empty_payload() {
+        let event = make_event("evt-empty", 0);
+        let proto = to_proto_event_shared(&event);
+        assert_eq!(proto.id, "evt-empty");
+        assert!(proto.payload.is_empty());
+    }
+
+    #[test]
+    fn test_to_proto_event_large_payload() {
+        let event = make_event("evt-big", 1024 * 1024);
+        let proto = to_proto_event_shared(&event);
+        assert_eq!(proto.payload.len(), 1024 * 1024);
+    }
+
+    #[test]
+    fn test_to_proto_event_preserves_timestamp() {
+        let mut event = make_event("evt-ts", 10);
+        event.timestamp_ms = 1700000000000;
+        let proto = to_proto_event_shared(&event);
+        assert_eq!(proto.timestamp_ms, 1700000000000);
+    }
+
+    #[test]
+    fn test_to_proto_event_preserves_source() {
+        let mut event = make_event("evt-src", 10);
+        event.source = "connector:github:push".to_string();
+        let proto = to_proto_event_shared(&event);
+        assert_eq!(proto.source, "connector:github:push");
+    }
+
+    #[test]
+    fn test_to_proto_event_preserves_event_type() {
+        let mut event = make_event("evt-type", 10);
+        event.event_type = "webhook_received".to_string();
+        let proto = to_proto_event_shared(&event);
+        assert_eq!(proto.event_type, "webhook_received");
+    }
+
+    #[test]
+    fn test_upload_stats_default() {
+        let stats = UploadStats::default();
+        assert_eq!(stats.total_sent, 0);
+        assert_eq!(stats.total_accepted, 0);
+        assert_eq!(stats.total_rejected, 0);
+        assert_eq!(stats.total_bytes, 0);
+        assert_eq!(stats.upload_count, 0);
+    }
+
+    #[test]
+    fn test_upload_response_fields() {
+        let resp = UploadResponse {
+            accepted: 10,
+            rejected: 2,
+            new_cursor: "cursor-123".to_string(),
+            reject_reasons: vec!["error1".to_string()],
+        };
+        assert_eq!(resp.accepted, 10);
+        assert_eq!(resp.rejected, 2);
+        assert_eq!(resp.new_cursor, "cursor-123");
+        assert_eq!(resp.reject_reasons.len(), 1);
+    }
+
+    #[test]
+    fn test_max_chunk_size_is_100() {
+        assert_eq!(MAX_CHUNK_SIZE, 100);
+    }
+
+    #[test]
+    fn test_to_proto_event_unicode_payload() {
+        let event = RawEvent {
+            id: "evt-unicode".to_string(),
+            source: "test".to_string(),
+            event_type: "test_event".to_string(),
+            timestamp_ms: 1000,
+            payload: "你好世界 🌍".as_bytes().to_vec(),
+            tags: HashMap::new(),
+        };
+        let proto = to_proto_event_shared(&event);
+        let decoded = String::from_utf8(proto.payload).unwrap();
+        assert_eq!(decoded, "你好世界 🌍");
     }
 }
