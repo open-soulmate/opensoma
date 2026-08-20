@@ -9,6 +9,7 @@ use crate::collector::{EventRx, RawEvent};
 use crate::config::SyncConfig;
 use crate::grpc::client::SoulClient;
 use crate::status_server::CacheStatsSnapshot;
+use conflict::{ConflictResolver, ConflictStrategy};
 
 /// Start the sync engine with an explicit event receiver.
 pub fn start_engine_with_rx(
@@ -20,10 +21,27 @@ pub fn start_engine_with_rx(
     metrics: Option<crate::metrics::PipelineMetrics>,
 ) -> JoinHandle<()> {
     let config = config.clone();
+    let strategy = parse_conflict_strategy(&config.conflict_strategy);
+    let resolver = ConflictResolver::new(strategy);
 
     tokio::spawn(async move {
-        run_sync_engine(config, cache, client, rx, cache_stats, metrics).await;
+        run_sync_engine(config, cache, client, rx, cache_stats, metrics, resolver).await;
     })
+}
+
+/// Parse a conflict strategy string from config into the enum.
+fn parse_conflict_strategy(s: &str) -> ConflictStrategy {
+    match s.to_lowercase().as_str() {
+        "server_wins" => ConflictStrategy::ServerWins,
+        "local_wins" => ConflictStrategy::LocalWins,
+        "newest_wins" => ConflictStrategy::NewestWins,
+        "merge" => ConflictStrategy::Merge,
+        "keep_both" => ConflictStrategy::KeepBoth,
+        _ => {
+            tracing::warn!("Unknown conflict strategy '{}', defaulting to NewestWins", s);
+            ConflictStrategy::NewestWins
+        }
+    }
 }
 
 /// Main sync loop: receive events → cache → batch upload.
@@ -34,6 +52,7 @@ async fn run_sync_engine(
     mut rx: EventRx,
     cache_stats: std::sync::Arc<tokio::sync::RwLock<CacheStatsSnapshot>>,
     metrics: Option<crate::metrics::PipelineMetrics>,
+    resolver: ConflictResolver,
 ) {
     info!(
         "Sync engine started — batch_size={}, interval={}s, max_retries={}, streaming={}",
@@ -45,6 +64,7 @@ async fn run_sync_engine(
     upload_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let mut pending: Vec<RawEvent> = Vec::with_capacity(config.batch_size);
+    let mut resolver = resolver;
 
     loop {
         tokio::select! {
@@ -66,13 +86,13 @@ async fn run_sync_engine(
 
                 // Upload immediately if batch is full
                 if pending.len() >= config.batch_size {
-                    upload_batch(&config, &cache, &client, &mut pending, &metrics).await;
+                    upload_batch(&config, &cache, &client, &mut pending, &metrics, &mut resolver).await;
                 }
             }
             // Periodic upload for partial batches
             _ = upload_interval.tick() => {
                 if !pending.is_empty() {
-                    upload_batch(&config, &cache, &client, &mut pending, &metrics).await;
+                    upload_batch(&config, &cache, &client, &mut pending, &metrics, &mut resolver).await;
                 }
                 // Update cache stats for status server
                 let stats = cache.stats();
@@ -93,7 +113,9 @@ async fn upload_batch(
     client: &SoulClient,
     pending: &mut Vec<RawEvent>,
     metrics: &Option<crate::metrics::PipelineMetrics>,
+    resolver: &mut ConflictResolver,
 ) {
+    let _ = resolver; // Available for conflict detection when server returns event snapshots
     let batch = std::mem::take(pending);
     let mut backoff = config.retry_backoff_ms;
     let batch_bytes: u64 = batch.iter().map(|e| e.payload.len() as u64).sum();
@@ -168,6 +190,7 @@ mod tests {
             max_retries: 5,
             retry_backoff_ms: 1000,
             cache_size_mb: 512,
+            conflict_strategy: "newest_wins".to_string(),
             enable_streaming: false,
         };
         assert_eq!(config.batch_size, 50);
@@ -186,6 +209,7 @@ mod tests {
             max_retries: 5,
             retry_backoff_ms: 1000,
             cache_size_mb: 512,
+            conflict_strategy: "newest_wins".to_string(),
             enable_streaming: true,
         };
         assert!(config.enable_streaming);
@@ -229,5 +253,53 @@ mod tests {
 
         pending.push(3);
         assert!(pending.len() >= batch_size); // Should trigger upload
+    }
+
+    #[test]
+    fn test_parse_conflict_strategy_valid() {
+        assert!(matches!(
+            parse_conflict_strategy("newest_wins"),
+            ConflictStrategy::NewestWins
+        ));
+        assert!(matches!(
+            parse_conflict_strategy("server_wins"),
+            ConflictStrategy::ServerWins
+        ));
+        assert!(matches!(
+            parse_conflict_strategy("local_wins"),
+            ConflictStrategy::LocalWins
+        ));
+        assert!(matches!(
+            parse_conflict_strategy("merge"),
+            ConflictStrategy::Merge
+        ));
+        assert!(matches!(
+            parse_conflict_strategy("keep_both"),
+            ConflictStrategy::KeepBoth
+        ));
+    }
+
+    #[test]
+    fn test_parse_conflict_strategy_case_insensitive() {
+        assert!(matches!(
+            parse_conflict_strategy("NEWEST_WINS"),
+            ConflictStrategy::NewestWins
+        ));
+        assert!(matches!(
+            parse_conflict_strategy("Server_Wins"),
+            ConflictStrategy::ServerWins
+        ));
+    }
+
+    #[test]
+    fn test_parse_conflict_strategy_unknown_defaults() {
+        assert!(matches!(
+            parse_conflict_strategy("unknown_strategy"),
+            ConflictStrategy::NewestWins
+        ));
+        assert!(matches!(
+            parse_conflict_strategy(""),
+            ConflictStrategy::NewestWins
+        ));
     }
 }

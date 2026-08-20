@@ -361,10 +361,17 @@ pub struct SyncConfig {
     pub retry_backoff_ms: u64,
     #[serde(default = "default_cache_size")]
     pub cache_size_mb: u64,
+    /// Conflict resolution strategy when local and server events diverge.
+    #[serde(default = "default_conflict_strategy")]
+    pub conflict_strategy: String,
     /// Enable real-time event streaming alongside batch upload.
     /// When true, each event is also sent immediately via the stream endpoint.
     #[serde(default)]
     pub enable_streaming: bool,
+}
+
+fn default_conflict_strategy() -> String {
+    "newest_wins".to_string()
 }
 #[allow(dead_code)]
 fn default_streaming() -> bool {

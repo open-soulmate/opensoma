@@ -192,6 +192,9 @@ max_retries = 5
 retry_backoff_ms = 1000
 # Local sled cache size limit in megabytes (default: 512)
 cache_size_mb = 512
+# Conflict resolution strategy when local and server events diverge.
+# Options: newest_wins (default), server_wins, local_wins, merge, keep_both
+conflict_strategy = "newest_wins"
 # Enable real-time event streaming alongside batch upload (default: false)
 # When true, each event is also sent immediately via the /api/nerve/stream/upload endpoint.
 enable_streaming = false
