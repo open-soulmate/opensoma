@@ -463,7 +463,7 @@ mod tests {
 
     #[test]
     fn test_urgency_payload_critical_keyword() {
-        let mut tags = HashMap::new();
+        let tags = HashMap::new();
         let event = RawEvent {
             id: "test".into(),
             source: "test".into(),

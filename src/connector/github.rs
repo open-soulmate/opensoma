@@ -100,6 +100,22 @@ struct GitHubCommitAuthor {
     date: String,
 }
 
+/// A review comment on a pull request (inline code comment).
+#[derive(Debug, Deserialize)]
+struct GitHubReviewComment {
+    id: u64,
+    body: String,
+    path: String,
+    #[serde(default)]
+    line: Option<u64>,
+    html_url: String,
+    user: Option<GitHubUser>,
+    created_at: String,
+    updated_at: String,
+    #[serde(default)]
+    pull_request_url: Option<String>,
+}
+
 /// Start the GitHub connector. Polls the GitHub API for issues, PRs, and releases.
 pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> {
     let handle = tokio::spawn(async move {
@@ -115,6 +131,7 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
         let mut seen_issues: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut seen_releases: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut seen_commits: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut seen_review_comments: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         // Initial fetch
         for repo in &config.repos {
@@ -128,6 +145,11 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
             }
             if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
                 warn!("Initial GitHub commits fetch failed for {}: {}", repo, e);
+            }
+            if config.include_review_comments {
+                if let Err(e) = fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await {
+                    warn!("Initial GitHub review comments fetch failed for {}: {}", repo, e);
+                }
             }
         }
 
@@ -146,9 +168,14 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                 if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
                     warn!("GitHub commits fetch failed for {}: {}", repo, e);
                 }
+                if config.include_review_comments {
+                    if let Err(e) = fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await {
+                        warn!("GitHub review comments fetch failed for {}: {}", repo, e);
+                    }
+                }
 
                 // Evict old seen records to prevent unbounded growth
-                for seen in [&mut seen_issues, &mut seen_releases, &mut seen_commits] {
+                for seen in [&mut seen_issues, &mut seen_releases, &mut seen_commits, &mut seen_review_comments] {
                     if seen.len() > 5000 {
                         let excess = seen.len() - 2500;
                         let to_remove: Vec<String> = seen.iter().take(excess).cloned().collect();
@@ -461,6 +488,101 @@ async fn fetch_commits(
     Ok(())
 }
 
+/// Fetch recent review comments from a GitHub repository.
+/// Polls the /repos/{owner}/{repo}/pulls/comments endpoint (PR review comments).
+async fn fetch_review_comments(
+    client: &reqwest::Client,
+    repo: &str,
+    tx: &EventTx,
+    seen: &mut std::collections::HashSet<String>,
+) -> Result<()> {
+    let url = format!(
+        "https://api.github.com/repos/{}/pulls/comments?per_page=30&sort=created&direction=desc",
+        repo
+    );
+
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .context("Failed to fetch GitHub review comments")?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("GitHub review comments API error {}: {}", status, body);
+    }
+
+    let comments: Vec<GitHubReviewComment> = resp
+        .json()
+        .await
+        .context("Failed to parse GitHub review comments")?;
+    let mut new_count = 0u32;
+
+    for comment in &comments {
+        let item_id = format!("{}:review_comment:{}", repo, comment.id);
+
+        if seen.contains(&item_id) {
+            continue;
+        }
+
+        let author = comment
+            .user
+            .as_ref()
+            .map(|u| u.login.clone())
+            .unwrap_or_default();
+        let line_info = comment
+            .line
+            .map(|l| format!(":{}", l))
+            .unwrap_or_default();
+
+        let content = format!(
+            "# PR Review Comment on {}{}\n\nRepository: {}\nAuthor: {}\nURL: {}\nCreated: {}\nUpdated: {}\n\n{}",
+            comment.path, line_info, repo, author, comment.html_url,
+            comment.created_at, comment.updated_at, comment.body,
+        );
+
+        let mut tags = std::collections::HashMap::new();
+        tags.insert("repo".to_string(), repo.to_string());
+        tags.insert("type".to_string(), "review_comment".to_string());
+        tags.insert("author".to_string(), author);
+        tags.insert("file".to_string(), comment.path.clone());
+        tags.insert("url".to_string(), comment.html_url.clone());
+        if let Some(ref pr_url) = comment.pull_request_url {
+            tags.insert("pr_url".to_string(), pr_url.clone());
+        }
+
+        let event = RawEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            source: format!("github:{}", repo),
+            event_type: "github.review_comment".to_string(),
+            timestamp_ms: chrono::Utc::now().timestamp_millis(),
+            payload: content.into_bytes(),
+            tags,
+        };
+
+        if tx.send(event).await.is_err() {
+            error!("Failed to forward GitHub review comment — channel closed");
+            break;
+        }
+
+        seen.insert(item_id);
+        new_count += 1;
+        debug!("Forwarded GitHub review comment {} on {}", comment.id, comment.path);
+    }
+
+    if new_count > 0 {
+        info!(
+            "GitHub review comments sync: {} total from {} ({} new)",
+            comments.len(),
+            repo,
+            new_count,
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -476,6 +598,7 @@ mod tests {
             include_prs: true,
             include_releases: true,
             include_closed: false,
+            include_review_comments: false,
             max_items_per_fetch: 30,
         }
     }
@@ -710,5 +833,133 @@ mod tests {
         assert_eq!(commit.sha, "deadbeef1234");
         assert!(commit.author.is_none());
         assert_eq!(commit.commit.author.name, "Anonymous");
+    }
+
+    #[test]
+    fn test_github_review_comment_deserialization() {
+        let json = serde_json::json!({
+            "id": 101,
+            "body": "This looks good, but consider adding error handling here.",
+            "path": "src/main.rs",
+            "line": 42,
+            "html_url": "https://github.com/owner/repo/pull/5#discussion_r101",
+            "user": {"login": "reviewer1"},
+            "created_at": "2026-08-20T10:00:00Z",
+            "updated_at": "2026-08-20T11:00:00Z",
+            "pull_request_url": "https://api.github.com/repos/owner/repo/pulls/5"
+        });
+
+        let comment: GitHubReviewComment = serde_json::from_value(json).unwrap();
+        assert_eq!(comment.id, 101);
+        assert_eq!(comment.path, "src/main.rs");
+        assert_eq!(comment.line, Some(42));
+        assert_eq!(comment.user.unwrap().login, "reviewer1");
+        assert!(comment.body.contains("error handling"));
+        assert_eq!(
+            comment.pull_request_url.unwrap(),
+            "https://api.github.com/repos/owner/repo/pulls/5"
+        );
+    }
+
+    #[test]
+    fn test_github_review_comment_minimal() {
+        let json = serde_json::json!({
+            "id": 202,
+            "body": "LGTM",
+            "path": "lib.rs",
+            "html_url": "https://github.com/o/r/pull/1#discussion_r202",
+            "created_at": "2026-08-21T00:00:00Z",
+            "updated_at": "2026-08-21T00:00:00Z"
+        });
+
+        let comment: GitHubReviewComment = serde_json::from_value(json).unwrap();
+        assert_eq!(comment.id, 202);
+        assert!(comment.line.is_none());
+        assert!(comment.user.is_none());
+        assert!(comment.pull_request_url.is_none());
+    }
+
+    #[test]
+    fn test_review_comment_event_tags_format() {
+        let json = serde_json::json!({
+            "id": 303,
+            "body": "Nice refactor!",
+            "path": "src/connector/github.rs",
+            "line": 100,
+            "html_url": "https://github.com/o/r/pull/3#discussion_r303",
+            "user": {"login": "alice"},
+            "created_at": "2026-08-21T12:00:00Z",
+            "updated_at": "2026-08-21T12:30:00Z",
+            "pull_request_url": "https://api.github.com/repos/o/r/pulls/3"
+        });
+
+        let comment: GitHubReviewComment = serde_json::from_value(json).unwrap();
+        let mut tags = std::collections::HashMap::new();
+        tags.insert("repo".to_string(), "o/r".to_string());
+        tags.insert("type".to_string(), "review_comment".to_string());
+        tags.insert("author".to_string(), comment.user.as_ref().unwrap().login.clone());
+        tags.insert("file".to_string(), comment.path.clone());
+        tags.insert("url".to_string(), comment.html_url.clone());
+
+        assert_eq!(tags["type"], "review_comment");
+        assert_eq!(tags["author"], "alice");
+        assert_eq!(tags["file"], "src/connector/github.rs");
+    }
+
+    #[test]
+    fn test_review_comment_content_format() {
+        let json = serde_json::json!({
+            "id": 404,
+            "body": "Consider using a match here",
+            "path": "src/lib.rs",
+            "line": 55,
+            "html_url": "https://github.com/o/r/pull/7#discussion_r404",
+            "user": {"login": "bob"},
+            "created_at": "2026-08-21T15:00:00Z",
+            "updated_at": "2026-08-21T15:00:00Z",
+            "pull_request_url": "https://api.github.com/repos/o/r/pulls/7"
+        });
+
+        let comment: GitHubReviewComment = serde_json::from_value(json).unwrap();
+        let line_info = comment.line.map(|l| format!(":{}", l)).unwrap_or_default();
+        let content = format!(
+            "# PR Review Comment on {}{}\n\nRepository: {}\nAuthor: {}\nURL: {}\nCreated: {}\nUpdated: {}\n\n{}",
+            comment.path, line_info, "o/r",
+            comment.user.as_ref().map(|u| u.login.clone()).unwrap_or_default(),
+            comment.html_url, comment.created_at, comment.updated_at, comment.body,
+        );
+
+        assert!(content.contains("PR Review Comment on src/lib.rs:55"));
+        assert!(content.contains("Author: bob"));
+        assert!(content.contains("Consider using a match"));
+    }
+
+    #[test]
+    fn test_review_comment_dedup_id_format() {
+        let repo = "owner/repo";
+        let comment_id = 12345u64;
+        let item_id = format!("{}:review_comment:{}", repo, comment_id);
+        assert_eq!(item_id, "owner/repo:review_comment:12345");
+    }
+
+    #[test]
+    fn test_github_config_review_comments_default_false() {
+        let toml = r#"
+            enabled = true
+            repos = ["test/repo"]
+        "#;
+        let config: GitHubConfig = toml::from_str(toml).unwrap();
+        assert!(!config.include_review_comments);
+    }
+
+    #[test]
+    fn test_github_config_review_comments_enabled() {
+        let toml = r#"
+            enabled = true
+            repos = ["test/repo"]
+            include_review_comments = true
+        "#;
+        let config: GitHubConfig = toml::from_str(toml).unwrap();
+        assert!(config.include_review_comments);
     }
 }

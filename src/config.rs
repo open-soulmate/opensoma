@@ -226,6 +226,9 @@ pub struct GitHubConfig {
     /// Include closed items (default false)
     #[serde(default)]
     pub include_closed: bool,
+    /// Include PR review comments (default false)
+    #[serde(default)]
+    pub include_review_comments: bool,
     /// Max items per API fetch (default 30)
     #[serde(default = "default_github_max_items")]
     pub max_items_per_fetch: usize,
