@@ -179,7 +179,7 @@ To add a new plugin, create a module under `src/plugins/sense/` and register it 
 | Module       | Responsibility                                          |
 |-------------|--------------------------------------------------------|
 | `collector`  | File system watcher + process/network/clipboard monitors |
-| `connector`  | IM platform integrations — Feishu, DingTalk, WeCom, RSS, Email, Notion, Git, Obsidian, Webhook, GitHub |
+| `connector`  | IM platform integrations — Feishu, DingTalk, WeCom, RSS, Email, Notion, Git, Obsidian, Webhook, GitHub, Slack, Telegram |
 | `processor`  | Normalize → Classify → Enrich → Dedup pipeline         |
 | `sync`       | Incremental upload with local sled cache + offline retry |
 | `grpc`       | Tonic client for Soul Agent API                         |
@@ -263,8 +263,10 @@ opensoma/
     │   ├── git.rs
     │   ├── obsidian.rs
     │   ├── webhook.rs    # HMAC-verified HTTP receiver
-    │   └── github.rs     # Issues, PRs, releases
-    │   └── slack.rs      # Slack channel messages + threads
+    │   ├── github.rs     # Issues, PRs, releases
+    │   ├── slack.rs      # Slack channel messages + threads
+    │   ├── telegram.rs   # Telegram Bot API (long-polling)
+    │   └── circuit_breaker.rs  # Per-connector circuit breaker
     ├── grpc/             # HTTP client for Soul API
     ├── plugins/
     │   └── sense/
