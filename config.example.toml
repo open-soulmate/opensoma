@@ -127,6 +127,13 @@ channels = []
 poll_interval_secs = 60
 include_threads = true
 
+[connector.telegram]
+enabled = false
+bot_token = ""
+# allowed_chats = [123456789]  # Optional: restrict to specific chat IDs
+include_edited = true
+poll_interval_secs = 30
+
 # ---------------------------------------------------------------------------
 # Processor — normalization and deduplication
 # ---------------------------------------------------------------------------

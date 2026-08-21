@@ -59,6 +59,7 @@ OpenSoma is a headless daemon that acts as your digital twin's sensory layer. It
 | **Webhook**  | HTTP POST                | Listen       | Generic webhook receiver with HMAC verification  |
 | **GitHub**   | GitHub REST API          | Poll         | Syncs issues, PRs, and releases from repositories |
 | **Slack**    | Slack API                | Poll         | Collects messages and thread replies from channels |
+| **Telegram** | Telegram Bot API         | Long-poll    | Receives messages via getUpdates with HMAC verify  |
 
 ## Quick Start
 
