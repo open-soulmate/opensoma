@@ -805,7 +805,7 @@ async fn api_system_info_handler(
         "disks": disks,
         "networks": networks,
         "collectors": ["file", "process", "network", "clipboard"],
-        "connectors_count": 11,
+        "connectors_count": 12,
         "start_time": chrono::Utc::now().checked_sub_signed(chrono::Duration::seconds(uptime as i64)).map(|t| t.to_rfc3339()),
     }))
 }
@@ -2016,7 +2016,7 @@ mod tests {
         assert!(json["networks"].is_array());
         assert!(json["collectors"].is_array());
         assert_eq!(json["node_id"], "test-node");
-        assert_eq!(json["connectors_count"], 11);
+        assert_eq!(json["connectors_count"], 12);
     }
 
     #[tokio::test]
