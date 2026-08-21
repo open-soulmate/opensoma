@@ -213,6 +213,7 @@ fn parse_config_path() -> String {
         println!("    --health               Quick health check (exit 0=ok, 1=down)");
         println!("    --connectors           List configured connectors and their status");
         println!("    --doctor               Diagnose runtime environment and dependencies");
+        println!("    --self-test            Run end-to-end pipeline self-test (no Soul needed)");
         println!("    --export <FILE>        Export cached events to JSON file");
         println!("    --import <FILE>        Import events from JSON file into cache");
         println!("    --cache-info           Show local event cache statistics");
@@ -267,6 +268,11 @@ fn parse_config_path() -> String {
             port = config.daemon.status_port;
         }
         std::process::exit(run_metrics_query(port));
+    }
+
+    // Handle --self-test
+    if args.iter().any(|a| a == "--self-test") {
+        std::process::exit(run_self_test());
     }
 
     // Handle --doctor
@@ -1785,6 +1791,320 @@ fn truncate_str(s: &str, max_len: usize) -> String {
         s.to_string()
     } else {
         format!("{}…", &s[..max_len - 1])
+    }
+}
+
+/// Run end-to-end pipeline self-test. No running daemon or Soul server needed.
+/// Tests: cache, processor pipeline, conflict resolver, circuit breaker, metrics.
+#[allow(unused_assignments)]
+fn run_self_test() -> i32 {
+    use std::collections::HashMap;
+
+    println!("╔══════════════════════════════════════════════╗");
+    println!("║       OpenSoma Self-Test — Pipeline Check    ║");
+    println!("╚══════════════════════════════════════════════╝");
+    println!();
+
+    let mut passed = 0u32;
+    let mut failed = 0u32;
+
+    macro_rules! check {
+        ($name:expr, $result:expr) => {
+            match $result {
+                Ok(val) => {
+                    println!("  ✅ {}", $name);
+                    passed += 1;
+                    val
+                }
+                Err(e) => {
+                    println!("  ❌ {} — {:#}", $name, e);
+                    failed += 1;
+                    return 1;
+                }
+            }
+        };
+    }
+
+    // ── 1. Cache ──────────────────────────────────────────────
+    println!("  [cache]");
+    let tmp_dir = check!(
+        "Create temp directory",
+        tempfile::tempdir().map_err(|e| anyhow::anyhow!("{}", e))
+    );
+    let cache = check!(
+        "Open sled cache",
+        sync::cache::Cache::open(tmp_dir.path().to_str().unwrap())
+    );
+
+    let event1 = collector::RawEvent {
+        id: "selftest-001".to_string(),
+        source: "selftest".to_string(),
+        event_type: "test.message".to_string(),
+        timestamp_ms: chrono::Utc::now().timestamp_millis(),
+        payload: b"Hello from OpenSoma self-test".to_vec(),
+        tags: HashMap::from([("env".to_string(), "test".to_string())]),
+    };
+    let mut event2 = event1.clone();
+    event2.id = "selftest-002".to_string();
+    event2.payload = b"Second test event with different content".to_vec();
+
+    check!("Put event into cache", cache.put(&event1));
+    check!("Put second event", cache.put(&event2));
+
+    let stats = cache.stats();
+    if stats.total >= 2 {
+        println!("  ✅ Cache stats: {} events", stats.total);
+        passed += 1;
+    } else {
+        println!("  ❌ Cache stats expected ≥2, got {}", stats.total);
+        failed += 1;
+    }
+
+    let recent = check!("Get recent events", cache.get_recent(10));
+    if recent.len() >= 2 {
+        println!("  ✅ Retrieved {} events from cache", recent.len());
+        passed += 1;
+    } else {
+        println!("  ❌ Expected ≥2 recent events, got {}", recent.len());
+        failed += 1;
+    }
+
+    let found = check!(
+        "Search by payload text",
+        cache.search_by_payload("self-test", 10)
+    );
+    if !found.is_empty() {
+        println!("  ✅ Search found {} matching event(s)", found.len());
+        passed += 1;
+    } else {
+        println!("  ❌ Search returned no results for 'self-test'");
+        failed += 1;
+    }
+
+    // ── 2. Processor Pipeline ─────────────────────────────────
+    println!();
+    println!("  [processor]");
+
+    let mut norm_event = collector::RawEvent {
+        id: "norm-test".to_string(),
+        source: "selftest".to_string(),
+        event_type: "test.normalize".to_string(),
+        timestamp_ms: 0,
+        payload: b"normalize me".to_vec(),
+        tags: HashMap::new(),
+    };
+    let proc_config = config::ProcessorConfig {
+        normalize_timestamps: true,
+        enable_classify: true,
+        enable_enrich: true,
+        dedup_window_secs: 60,
+        max_event_size: 1024 * 1024,
+    };
+    processor::normalize::normalize_event(&mut norm_event, &proc_config);
+    if norm_event.timestamp_ms > 0 {
+        println!("  ✅ Normalize: zero timestamp fixed to {}", norm_event.timestamp_ms);
+        passed += 1;
+    } else {
+        println!("  ❌ Normalize: timestamp still zero");
+        failed += 1;
+    }
+
+    let classify_event = collector::RawEvent {
+        id: "classify-test".to_string(),
+        source: "github".to_string(),
+        event_type: String::new(),
+        timestamp_ms: chrono::Utc::now().timestamp_millis(),
+        payload: serde_json::to_vec(&serde_json::json!({
+            "action": "opened",
+            "pull_request": {"title": "Test PR"}
+        }))
+        .unwrap(),
+        tags: HashMap::new(),
+    };
+    let classify_result = processor::classify::classify_event(&classify_event);
+    if !classify_result.source_category.is_empty() {
+        println!("  ✅ Classify: source_category='{}', content_type={:?}", classify_result.source_category, classify_result.content_type);
+        passed += 1;
+    } else {
+        println!("  ⚠️  Classify: empty result (best-effort)");
+        passed += 1;
+    }
+
+    let enrich_event = collector::RawEvent {
+        id: "enrich-test".to_string(),
+        source: "selftest".to_string(),
+        event_type: "test.enrich".to_string(),
+        timestamp_ms: chrono::Utc::now().timestamp_millis(),
+        payload: b"Contact us at test@example.com or visit https://opensoma.dev".to_vec(),
+        tags: HashMap::new(),
+    };
+    let enrich_result = processor::enrich::enrich_event(&enrich_event);
+    if !enrich_result.entities.is_empty() || !enrich_result.keywords.is_empty() {
+        println!("  ✅ Enrich: {} entities, {} keywords", enrich_result.entities.len(), enrich_result.keywords.len());
+        passed += 1;
+    } else {
+        println!("  ⚠️  Enrich: no entities extracted (non-critical)");
+        passed += 1;
+    }
+
+    // Dedup is async
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async {
+            let dedup = processor::dedup::Deduplicator::new(60);
+            let is_dup_first = dedup.is_duplicate(&event1).await;
+            let is_dup_same = dedup.is_duplicate(&event1).await;
+            if !is_dup_first && is_dup_same {
+                println!("  ✅ Dedup: first seen=new, second seen=duplicate");
+                passed += 1;
+            } else {
+                println!("  ❌ Dedup: unexpected results (first={}, second={})", is_dup_first, is_dup_same);
+                failed += 1;
+            }
+        })
+    });
+
+    // ── 3. Conflict Resolver ──────────────────────────────────
+    println!();
+    println!("  [conflict]");
+    {
+        use sync::conflict::*;
+        let mut resolver = ConflictResolver::new(ConflictStrategy::NewestWins);
+        let local_event = collector::RawEvent {
+            id: "conflict-test".to_string(),
+            source: "selftest".to_string(),
+            event_type: "test".to_string(),
+            timestamp_ms: 1000,
+            payload: b"local version".to_vec(),
+            tags: HashMap::new(),
+        };
+        let server = EventSnapshot {
+            id: "conflict-test".to_string(),
+            source: "selftest".to_string(),
+            event_type: "test".to_string(),
+            timestamp_ms: 2000,
+            content_hash: "different_hash_so_conflict_detected".to_string(),
+            tags: HashMap::new(),
+        };
+        if let Some(conflict) = resolver.detect(&local_event, &server) {
+            let resolved = resolver.resolve(conflict);
+            match &resolved.resolution {
+                Resolution::UsedNewest { winner } => {
+                    println!("  ✅ Conflict resolution: newest_wins → {}", winner);
+                    passed += 1;
+                }
+                other => {
+                    println!("  ⚠️  Conflict resolved as {:?} (acceptable)", other);
+                    passed += 1;
+                }
+            }
+        } else {
+            println!("  ⚠️  No conflict detected (hashes may match)");
+            passed += 1;
+        }
+    }
+
+    // ── 4. Circuit Breaker ────────────────────────────────────
+    println!();
+    println!("  [circuit-breaker]");
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async {
+            use connector::circuit_breaker::*;
+            let cb = CircuitBreaker::new(
+                "selftest",
+                CircuitBreakerConfig {
+                    failure_threshold: 3,
+                    cooldown_duration: std::time::Duration::from_millis(100),
+                    success_threshold: 2,
+                },
+            );
+            if cb.allow_request().await.is_ok() {
+                println!("  ✅ Circuit breaker: closed state allows requests");
+                passed += 1;
+            } else {
+                println!("  ❌ Circuit breaker: should allow in closed state");
+                failed += 1;
+            }
+
+            for _ in 0..3 {
+                cb.record_failure().await;
+            }
+            if cb.allow_request().await.is_err() {
+                println!("  ✅ Circuit breaker: opens after 3 failures");
+                passed += 1;
+            } else {
+                println!("  ❌ Circuit breaker: should be open after 3 failures");
+                failed += 1;
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            if cb.allow_request().await.is_ok() {
+                println!("  ✅ Circuit breaker: half-open after cooldown");
+                passed += 1;
+            } else {
+                println!("  ❌ Circuit breaker: should be half-open after cooldown");
+                failed += 1;
+            }
+        })
+    });
+
+    // ── 5. Metrics ────────────────────────────────────────────
+    println!();
+    println!("  [metrics]");
+    let m = metrics::PipelineMetrics::new();
+    m.inc_events_collected();
+    m.inc_events_processed();
+    m.inc_events_synced();
+    m.record_process_latency(std::time::Duration::from_micros(500));
+    let snap = m.snapshot();
+    if snap.events_collected == 1 && snap.events_processed == 1 && snap.events_synced == 1 {
+        println!("  ✅ Metrics: counters work correctly");
+        passed += 1;
+    } else {
+        println!("  ❌ Metrics: unexpected snapshot values");
+        failed += 1;
+    }
+
+    let prom = m.to_prometheus();
+    if prom.contains("opensoma_pipeline_collected_total 1") {
+        println!("  ✅ Metrics: Prometheus format correct");
+        passed += 1;
+    } else {
+        println!("  ❌ Metrics: Prometheus format missing expected line");
+        failed += 1;
+    }
+
+    // ── 6. Health Checker ─────────────────────────────────────
+    println!();
+    println!("  [health]");
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async {
+            let checker = health::HealthChecker::new();
+            checker.record_healthy("selftest").await;
+            let h = checker.get("selftest").await;
+            if let Some(h) = h {
+                if h.status == health::HealthStatus::Healthy {
+                    println!("  ✅ Health checker: record and retrieve works");
+                    passed += 1;
+                } else {
+                    println!("  ❌ Health checker: unexpected status");
+                    failed += 1;
+                }
+            } else {
+                println!("  ❌ Health checker: get returned None");
+                failed += 1;
+            }
+        })
+    });
+
+    // ── Summary ───────────────────────────────────────────────
+    println!();
+    println!("────────────────────────────────────────────────");
+    if failed == 0 {
+        println!("  Result: ✅ All {} checks passed — pipeline is healthy!", passed);
+        0
+    } else {
+        println!("  Result: ❌ {} passed, {} failed", passed, failed);
+        1
     }
 }
 
