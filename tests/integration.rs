@@ -436,6 +436,7 @@ async fn test_status_server_health_endpoint() {
         health_checker: None,
         plugin_registry: None,
         config_snapshot: None,
+        circuit_breakers: None,
     };
 
     let app = opensoma::status_server::build_router(state);
@@ -523,7 +524,7 @@ fn test_raw_event_with_tags_roundtrip() {
 
 #[test]
 fn test_classify_file_event() {
-    use opensoma::processor::classify::{classify_event, ContentType, Urgency};
+    use opensoma::processor::classify::{classify_event, ContentType};
 
     let mut event = make_event("cls-001", "file", "file_change", "some file content");
     event

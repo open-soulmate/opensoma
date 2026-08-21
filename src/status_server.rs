@@ -69,6 +69,8 @@ pub struct StatusServerState {
     pub plugin_registry: Option<std::sync::Arc<crate::plugins::PluginRegistry>>,
     /// Sanitized config snapshot for the /api/config endpoint (secrets redacted).
     pub config_snapshot: Option<ConfigSnapshot>,
+    /// Circuit breaker registry for connector resilience monitoring.
+    pub circuit_breakers: Option<crate::connector::circuit_breaker::CircuitBreakerRegistry>,
 }
 
 /// Snapshot of cache statistics for the status API.
@@ -243,6 +245,7 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/api/connectors/health", get(api_connectors_health_handler))
         .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
         .route("/api/plugins", get(api_plugins_handler))
+        .route("/api/circuit-breakers", get(api_circuit_breakers_handler))
         .route("/api/config", get(api_config_handler))
         .layer(middleware::from_fn(cors_layer))
         .with_state(state)
@@ -280,6 +283,7 @@ pub async fn start_status_server(
         .route("/api/connectors/health", get(api_connectors_health_handler))
         .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
         .route("/api/plugins", get(api_plugins_handler))
+        .route("/api/circuit-breakers", get(api_circuit_breakers_handler))
         .route("/api/config", get(api_config_handler))
         .layer(middleware::from_fn(cors_layer))
         .with_state(state.clone());
@@ -692,6 +696,22 @@ async fn api_plugins_handler(State(state): State<StatusServerState>) -> Json<ser
             "health": [],
             "message": "Plugin registry not initialized",
         }))
+    }
+}
+
+/// Circuit breaker status API endpoint.
+async fn api_circuit_breakers_handler(
+    State(state): State<StatusServerState>,
+) -> Json<serde_json::Value> {
+    if let Some(ref registry) = state.circuit_breakers {
+        let snapshots = registry.snapshot_all().await;
+        Json(serde_json::json!({
+            "breakers": snapshots,
+            "total": snapshots.len(),
+            "tripped": snapshots.iter().filter(|s| s.state == crate::connector::circuit_breaker::CircuitState::Open).count(),
+        }))
+    } else {
+        Json(serde_json::json!({ "breakers": [], "total": 0, "tripped": 0 }))
     }
 }
 
@@ -1493,6 +1513,7 @@ mod tests {
             health_checker: None,
             plugin_registry: None,
             config_snapshot: None,
+            circuit_breakers: None,
         };
 
         Router::new()
@@ -1889,6 +1910,7 @@ mod tests {
             health_checker: None,
             plugin_registry: None,
             config_snapshot: None,
+            circuit_breakers: None,
         };
 
         // Verify github is active before toggle
@@ -1934,6 +1956,7 @@ mod tests {
             health_checker: None,
             plugin_registry: None,
             config_snapshot: None,
+            circuit_breakers: None,
         };
 
         let app = build_test_app_with_state(state);
@@ -2053,6 +2076,7 @@ mod tests {
             health_checker: None,
             plugin_registry: None,
             config_snapshot: None,
+            circuit_breakers: None,
         };
         let app = build_router(state);
 
@@ -2091,6 +2115,7 @@ mod tests {
             health_checker: None,
             plugin_registry: None,
             config_snapshot: None,
+            circuit_breakers: None,
         };
         let app = build_router(state);
 

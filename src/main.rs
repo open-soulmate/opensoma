@@ -153,6 +153,7 @@ async fn main() -> Result<()> {
         health_checker: Some(health::HealthChecker::new()),
         plugin_registry: Some(plugin_registry),
         config_snapshot: Some(status_server::ConfigSnapshot::from_config(&config)),
+        circuit_breakers: Some(opensoma::connector::circuit_breaker::CircuitBreakerRegistry::new()),
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;

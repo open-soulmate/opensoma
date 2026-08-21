@@ -1,3 +1,4 @@
+pub mod circuit_breaker;
 pub mod dingtalk;
 pub mod email;
 pub mod feishu;
