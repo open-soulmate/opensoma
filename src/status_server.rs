@@ -1,6 +1,8 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderValue, Method, StatusCode},
+    middleware::{self, Next},
+    response::Response,
     routing::{get, post},
     Json, Router,
 };
@@ -9,6 +11,38 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
+
+/// CORS middleware — allows cross-origin requests from OpenMate and other clients.
+async fn cors_layer(req: axum::extract::Request, next: Next) -> Response {
+    let is_options = req.method() == Method::OPTIONS;
+    let mut resp = if is_options {
+        // Respond to preflight immediately
+        Response::new(axum::body::Body::empty())
+    } else {
+        next.run(req).await
+    };
+    let headers = resp.headers_mut();
+    headers.insert(
+        "access-control-allow-origin",
+        HeaderValue::from_static("*"),
+    );
+    headers.insert(
+        "access-control-allow-methods",
+        HeaderValue::from_static("GET, POST, PUT, DELETE, OPTIONS"),
+    );
+    headers.insert(
+        "access-control-allow-headers",
+        HeaderValue::from_static("content-type, authorization"),
+    );
+    headers.insert(
+        "access-control-max-age",
+        HeaderValue::from_static("86400"),
+    );
+    if is_options {
+        *resp.status_mut() = StatusCode::NO_CONTENT;
+    }
+    resp
+}
 
 /// Shared state for the status server.
 #[derive(Clone)]
@@ -210,6 +244,7 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
         .route("/api/plugins", get(api_plugins_handler))
         .route("/api/config", get(api_config_handler))
+        .layer(middleware::from_fn(cors_layer))
         .with_state(state)
 }
 
@@ -246,6 +281,7 @@ pub async fn start_status_server(
         .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
         .route("/api/plugins", get(api_plugins_handler))
         .route("/api/config", get(api_config_handler))
+        .layer(middleware::from_fn(cors_layer))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", port);
@@ -1997,5 +2033,86 @@ mod tests {
             assert!(conn["status"].is_string());
             assert!(conn["events_collected"].is_number());
         }
+    }
+
+    #[tokio::test]
+    async fn test_cors_headers_on_get_request() {
+        use tower::ServiceExt;
+        let state = StatusServerState {
+            node_id: "test-cors".to_string(),
+            start_time: std::time::Instant::now(),
+            events_collected: Arc::new(RwLock::new(0)),
+            events_synced: Arc::new(RwLock::new(0)),
+            connectors_active: Arc::new(RwLock::new(vec![])),
+            last_error: Arc::new(RwLock::new(None)),
+            connector_enabled: Arc::new(RwLock::new(HashMap::new())),
+            connector_event_counts: Arc::new(RwLock::new(HashMap::new())),
+            cache_stats: Arc::new(RwLock::new(CacheStatsSnapshot::default())),
+            cache: None,
+            pipeline_metrics: None,
+            health_checker: None,
+            plugin_registry: None,
+            config_snapshot: None,
+        };
+        let app = build_router(state);
+
+        let req = axum::http::Request::builder()
+            .uri("/health")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let headers = resp.headers();
+        assert_eq!(
+            headers.get("access-control-allow-origin").unwrap(),
+            "*"
+        );
+        assert!(headers.get("access-control-allow-methods").is_some());
+        assert!(headers.get("access-control-allow-headers").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_cors_preflight_options_returns_204() {
+        use tower::ServiceExt;
+        let state = StatusServerState {
+            node_id: "test-cors".to_string(),
+            start_time: std::time::Instant::now(),
+            events_collected: Arc::new(RwLock::new(0)),
+            events_synced: Arc::new(RwLock::new(0)),
+            connectors_active: Arc::new(RwLock::new(vec![])),
+            last_error: Arc::new(RwLock::new(None)),
+            connector_enabled: Arc::new(RwLock::new(HashMap::new())),
+            connector_event_counts: Arc::new(RwLock::new(HashMap::new())),
+            cache_stats: Arc::new(RwLock::new(CacheStatsSnapshot::default())),
+            cache: None,
+            pipeline_metrics: None,
+            health_checker: None,
+            plugin_registry: None,
+            config_snapshot: None,
+        };
+        let app = build_router(state);
+
+        let req = axum::http::Request::builder()
+            .method(axum::http::Method::OPTIONS)
+            .uri("/api/status")
+            .header("origin", "http://localhost:3002")
+            .header("access-control-request-method", "GET")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::NO_CONTENT);
+
+        let headers = resp.headers();
+        assert_eq!(
+            headers.get("access-control-allow-origin").unwrap(),
+            "*"
+        );
+        assert_eq!(
+            headers.get("access-control-max-age").unwrap(),
+            "86400"
+        );
     }
 }
