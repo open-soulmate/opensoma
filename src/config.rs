@@ -537,6 +537,16 @@ impl AppConfig {
             }
         }
 
+        // Telegram connector checks
+        if let Some(ref tc) = self.connector.telegram {
+            if tc.enabled && tc.bot_token.is_empty() {
+                anyhow::bail!("telegram connector is enabled but bot_token is empty");
+            }
+            if tc.enabled && !tc.bot_token.contains(':') {
+                warnings.push("telegram bot_token does not contain ':' separator — may be invalid".into());
+            }
+        }
+
         // Streaming check
         if self.sync.enable_streaming && self.sync.batch_size == 0 {
             warnings
@@ -715,6 +725,25 @@ impl AppConfig {
             if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_SLACK_POLL_INTERVAL") {
                 if let Ok(n) = v.parse() {
                     sc.poll_interval_secs = n;
+                }
+            }
+        }
+
+        // Telegram overrides
+        if let Some(ref mut tc) = self.connector.telegram {
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_TELEGRAM_BOT_TOKEN") {
+                tc.bot_token = v;
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_TELEGRAM_ALLOWED_CHATS") {
+                tc.allowed_chats = Some(
+                    v.split(',')
+                        .filter_map(|s| s.trim().parse::<i64>().ok())
+                        .collect(),
+                );
+            }
+            if let Ok(v) = std::env::var("OPENSOMA_CONNECTOR_TELEGRAM_POLL_INTERVAL") {
+                if let Ok(n) = v.parse() {
+                    tc.poll_interval_secs = n;
                 }
             }
         }
@@ -1406,6 +1435,88 @@ include_threads = true
         assert_eq!(slack.channels.len(), 2);
         assert_eq!(slack.poll_interval_secs, 30);
         assert!(slack.include_threads);
+    }
+
+    #[test]
+    fn test_telegram_connector_config() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.telegram]
+enabled = true
+bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+allowed_chats = [123456789, -100987654]
+poll_interval_secs = 15
+include_edited = false
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let telegram = config.connector.telegram.unwrap();
+        assert!(telegram.enabled);
+        assert_eq!(telegram.bot_token, "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11");
+        assert_eq!(telegram.allowed_chats.unwrap(), vec![123456789, -100987654]);
+        assert_eq!(telegram.poll_interval_secs, 15);
+        assert!(!telegram.include_edited);
+    }
+
+    #[test]
+    fn test_telegram_connector_validation_empty_token() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.telegram]
+enabled = true
+bot_token = ""
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("bot_token is empty"));
+    }
+
+    #[test]
+    fn test_telegram_connector_defaults() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.telegram]
+enabled = true
+bot_token = "123456:ABC"
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let telegram = config.connector.telegram.unwrap();
+        assert!(telegram.include_edited); // default true
+        assert_eq!(telegram.poll_interval_secs, 30); // default
+        assert!(telegram.allowed_chats.is_none()); // default None
     }
 
     #[test]

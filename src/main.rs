@@ -655,6 +655,13 @@ watch_dirs = []
 # poll_interval_secs = 60
 # include_threads = true
 
+# [connector.telegram]
+# enabled = true
+# bot_token = "123456:ABC-DEF..."
+# allowed_chats = [123456789]
+# poll_interval_secs = 30
+# include_edited = true
+
 [processor]
 # normalize_timestamps = true
 # max_event_size = 1048576
