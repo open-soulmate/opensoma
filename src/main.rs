@@ -1399,12 +1399,12 @@ fn run_recent_events(config_path: &str, count: usize) -> i32 {
     println!("╚══════════════════════════════════════════════╝");
     println!();
     println!(
-        "  {:<4} {:<12} {:<18} {:<20} {}",
-        "#", "Source", "Type", "Time", "Payload (preview)"
+        "  {:<4} {:<12} {:<18} {:<20} Payload (preview)",
+        "#", "Source", "Type", "Time"
     );
     println!(
-        "  {:<4} {:<12} {:<18} {:<20} {}",
-        "───", "──────", "────", "────", "─────────────────"
+        "  {:<4} {:<12} {:<18} {:<20} ─────────────────",
+        "───", "──────", "────", "────"
     );
 
     for (i, event) in events.iter().enumerate() {
@@ -1462,12 +1462,12 @@ fn run_search_events(config_path: &str, query: &str) -> i32 {
     println!("Found {} event(s) matching '{}':", events.len(), query);
     println!();
     println!(
-        "  {:<4} {:<12} {:<18} {:<20} {}",
-        "#", "Source", "Type", "Time", "Payload (preview)"
+        "  {:<4} {:<12} {:<18} {:<20} Payload (preview)",
+        "#", "Source", "Type", "Time"
     );
     println!(
-        "  {:<4} {:<12} {:<18} {:<20} {}",
-        "───", "──────", "────", "────", "─────────────────"
+        "  {:<4} {:<12} {:<18} {:<20} ─────────────────",
+        "───", "──────", "────", "────"
     );
 
     for (i, event) in events.iter().enumerate() {
@@ -1525,12 +1525,12 @@ fn run_source_filter(config_path: &str, prefix: &str) -> i32 {
     println!("Found {} event(s) from source '{}':", events.len(), prefix);
     println!();
     println!(
-        "  {:<4} {:<12} {:<18} {:<20} {}",
-        "#", "Source", "Type", "Time", "Payload (preview)"
+        "  {:<4} {:<12} {:<18} {:<20} Payload (preview)",
+        "#", "Source", "Type", "Time"
     );
     println!(
-        "  {:<4} {:<12} {:<18} {:<20} {}",
-        "───", "──────", "────", "────", "─────────────────"
+        "  {:<4} {:<12} {:<18} {:<20} ─────────────────",
+        "───", "──────", "────", "────"
     );
 
     for (i, event) in events.iter().enumerate() {
@@ -1588,12 +1588,12 @@ fn run_type_filter(config_path: &str, event_type: &str) -> i32 {
     println!("Found {} event(s) of type '{}':", events.len(), event_type);
     println!();
     println!(
-        "  {:<4} {:<12} {:<18} {:<20} {}",
-        "#", "Source", "Type", "Time", "Payload (preview)"
+        "  {:<4} {:<12} {:<18} {:<20} Payload (preview)",
+        "#", "Source", "Type", "Time"
     );
     println!(
-        "  {:<4} {:<12} {:<18} {:<20} {}",
-        "───", "──────", "────", "────", "─────────────────"
+        "  {:<4} {:<12} {:<18} {:<20} ─────────────────",
+        "───", "──────", "────", "────"
     );
 
     for (i, event) in events.iter().enumerate() {
@@ -1723,41 +1723,38 @@ fn run_top(port: u16) -> i32 {
         }
 
         // Show pipeline metrics if available
-        match blocking_http_get(&metrics_url) {
-            Ok(body) => {
-                let mut processed = 0u64;
-                let mut normalized = 0u64;
-                let mut classified = 0u64;
-                let mut enriched = 0u64;
-                let mut deduped = 0u64;
-                for line in body.lines() {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 2 {
-                        if let Ok(val) = parts[1].parse::<f64>() {
-                            match parts[0] {
-                                "opensoma_pipeline_events_processed_total" => {
-                                    processed = val as u64
-                                }
-                                "opensoma_pipeline_events_normalized_total" => {
-                                    normalized = val as u64
-                                }
-                                "opensoma_pipeline_events_classified_total" => {
-                                    classified = val as u64
-                                }
-                                "opensoma_pipeline_events_enriched_total" => enriched = val as u64,
-                                "opensoma_pipeline_events_deduped_total" => deduped = val as u64,
-                                _ => {}
+        if let Ok(body) = blocking_http_get(&metrics_url) {
+            let mut processed = 0u64;
+            let mut normalized = 0u64;
+            let mut classified = 0u64;
+            let mut enriched = 0u64;
+            let mut deduped = 0u64;
+            for line in body.lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    if let Ok(val) = parts[1].parse::<f64>() {
+                        match parts[0] {
+                            "opensoma_pipeline_events_processed_total" => {
+                                processed = val as u64
                             }
+                            "opensoma_pipeline_events_normalized_total" => {
+                                normalized = val as u64
+                            }
+                            "opensoma_pipeline_events_classified_total" => {
+                                classified = val as u64
+                            }
+                            "opensoma_pipeline_events_enriched_total" => enriched = val as u64,
+                            "opensoma_pipeline_events_deduped_total" => deduped = val as u64,
+                            _ => {}
                         }
                     }
                 }
-                if processed > 0 {
-                    println!();
-                    println!("  Pipeline: processed={} normalized={} classified={} enriched={} deduped={}",
-                        processed, normalized, classified, enriched, deduped);
-                }
             }
-            Err(_) => {}
+            if processed > 0 {
+                println!();
+                println!("  Pipeline: processed={} normalized={} classified={} enriched={} deduped={}",
+                    processed, normalized, classified, enriched, deduped);
+            }
         }
 
         println!();
