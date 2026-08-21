@@ -27,6 +27,7 @@ pub async fn start_network_monitor(interval_ms: u64, tx: EventTx) -> Result<()> 
     let mut prev_conns: HashMap<String, ConnectionInfo> = HashMap::new();
     let mut ticker = tokio::time::interval(Duration::from_millis(interval_ms));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut first_snapshot = true;
 
     loop {
         ticker.tick().await;
@@ -51,6 +52,18 @@ pub async fn start_network_monitor(interval_ms: u64, tx: EventTx) -> Result<()> 
                 (key, c)
             })
             .collect();
+
+        // On the first snapshot, just record baseline — don't emit events
+        // for all pre-existing connections (avoids startup flood).
+        if first_snapshot {
+            info!(
+                "Network baseline: {} connections recorded",
+                current_map.len()
+            );
+            prev_conns = current_map;
+            first_snapshot = false;
+            continue;
+        }
 
         // Detect new connections
         for (key, conn) in &current_map {
