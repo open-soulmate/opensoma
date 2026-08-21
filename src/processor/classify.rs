@@ -28,6 +28,10 @@ pub enum ContentType {
     Metric,
     /// User notification or message
     Notification,
+    /// Chat / instant message (IM platforms: DingTalk, Feishu, Slack, WeCom)
+    Message,
+    /// Approval / workflow event requiring action
+    Approval,
     /// Error or warning
     Error,
     /// Process/system event
@@ -36,6 +40,8 @@ pub enum ContentType {
     Network,
     /// Clipboard content
     Clipboard,
+    /// Code / VCS event (commit, PR, release)
+    Code,
     /// Generic / unclassified
     Generic,
 }
@@ -78,11 +84,14 @@ fn extract_source_category(source: &str) -> String {
 fn detect_content_type(event: &RawEvent) -> ContentType {
     // Use event_type first
     match event.event_type.as_str() {
+        // ── File events ──
         "file_change" => {
             // Check file extension from tags
             if let Some(ext) = event.tags.get("extension") {
                 match ext.as_str() {
-                    "json" | "csv" | "xml" | "yaml" | "yml" | "toml" => return ContentType::Data,
+                    "json" | "csv" | "xml" | "yaml" | "yml" | "toml" | "parquet" | "avro" => {
+                        return ContentType::Data
+                    }
                     "log" | "out" => return ContentType::Log,
                     "conf" | "cfg" | "ini" | "env" => return ContentType::Config,
                     "err" => return ContentType::Error,
@@ -91,21 +100,52 @@ fn detect_content_type(event: &RawEvent) -> ContentType {
             }
             ContentType::Generic
         }
+
+        // ── Process / system events ──
         "process_started" | "process_exited" | "process_resource_change" => ContentType::System,
+
+        // ── Network events ──
         "network_new_connection" | "network_closed_connection" | "network_state_change" => {
             ContentType::Network
         }
+
+        // ── Clipboard events ──
         "clipboard_change" => ContentType::Clipboard,
-        "webhook" => ContentType::Notification,
-        "rss_item" => ContentType::Notification,
-        "email_message" => ContentType::Notification,
-        "git_push" | "git_tag" | "git_release" => ContentType::Notification,
+
+        // ── Code / VCS events ──
+        "git_push"
+        | "git_tag"
+        | "git_release"
+        | "github.commit"
+        | "github.release"
+        | "github.review_comment" => ContentType::Code,
+
+        // ── Notification events (email, RSS, webhook) ──
+        "email_message" | "rss_item" | "rss_entry" | "webhook" | "webhook_received" => {
+            ContentType::Notification
+        }
+
+        // ── IM / chat messages ──
+        "message" | "text" | "slack_message" | "slack_thread_reply" => ContentType::Message,
+
+        // ── Approval / workflow events ──
+        "approval" | "approval_change" | "bpms_instance_change" => ContentType::Approval,
+
+        // ── DingTalk-specific events ──
+        "attendance" | "check_in" | "work_report" | "document" | "subscribe" | "user_add_org"
+        | "callback" => ContentType::Notification,
+
         _ => ContentType::Generic,
     }
 }
 
 /// Detect urgency level from event content.
 fn detect_urgency(event: &RawEvent, content_type: &ContentType) -> Urgency {
+    // Approval events are high urgency — require human action
+    if *content_type == ContentType::Approval {
+        return Urgency::High;
+    }
+
     // Error-type events are high urgency
     if *content_type == ContentType::Error {
         return Urgency::High;
@@ -182,6 +222,26 @@ fn extract_labels(event: &RawEvent) -> Vec<String> {
     // Add protocol label
     if let Some(proto) = event.tags.get("protocol") {
         labels.push(format!("proto:{}", proto));
+    }
+
+    // Add connector platform label (extract from source: "connector:dingtalk:xxx")
+    if event.source.starts_with("connector:") {
+        if let Some(platform) = event.source.split(':').nth(1) {
+            labels.push(format!("platform:{}", platform));
+        }
+    }
+
+    // Add IM-specific labels
+    if let Some(channel) = event.tags.get("channel") {
+        labels.push(format!("channel:{}", channel));
+    }
+    if let Some(sender) = event.tags.get("sender") {
+        labels.push(format!("sender:{}", sender));
+    }
+
+    // Add approval-specific labels
+    if let Some(status) = event.tags.get("approval_status") {
+        labels.push(format!("approval:{}", status));
     }
 
     labels
@@ -364,16 +424,63 @@ mod tests {
     fn test_classify_notification_types() {
         for etype in &[
             "webhook",
+            "webhook_received",
             "rss_item",
+            "rss_entry",
             "email_message",
-            "git_push",
-            "git_tag",
-            "git_release",
+            "attendance",
+            "check_in",
+            "work_report",
+            "document",
+            "subscribe",
+            "user_add_org",
+            "callback",
         ] {
             let event = make_event(etype, "test", HashMap::new());
             let c = classify_event(&event);
             assert_eq!(c.content_type, ContentType::Notification, "type={}", etype);
         }
+    }
+
+    #[test]
+    fn test_classify_code_events() {
+        for etype in &[
+            "git_push",
+            "git_tag",
+            "git_release",
+            "github.commit",
+            "github.release",
+            "github.review_comment",
+        ] {
+            let event = make_event(etype, "test", HashMap::new());
+            let c = classify_event(&event);
+            assert_eq!(c.content_type, ContentType::Code, "type={}", etype);
+        }
+    }
+
+    #[test]
+    fn test_classify_message_events() {
+        for etype in &["message", "text", "slack_message", "slack_thread_reply"] {
+            let event = make_event(etype, "test", HashMap::new());
+            let c = classify_event(&event);
+            assert_eq!(c.content_type, ContentType::Message, "type={}", etype);
+        }
+    }
+
+    #[test]
+    fn test_classify_approval_events() {
+        for etype in &["approval", "approval_change", "bpms_instance_change"] {
+            let event = make_event(etype, "test", HashMap::new());
+            let c = classify_event(&event);
+            assert_eq!(c.content_type, ContentType::Approval, "type={}", etype);
+        }
+    }
+
+    #[test]
+    fn test_approval_urgency_is_high() {
+        let event = make_event("approval", "connector:dingtalk", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.urgency, Urgency::High);
     }
 
     #[test]
@@ -683,5 +790,102 @@ mod tests {
         let event = make_event("process_resource_change", "process:1", tags);
         let c = classify_event(&event);
         assert_eq!(c.urgency, Urgency::Critical);
+    }
+
+    // ── Connector platform labels ──────────────────────────────────
+
+    #[test]
+    fn test_labels_connector_platform() {
+        let event = make_event("message", "connector:dingtalk:group:abc", HashMap::new());
+        let c = classify_event(&event);
+        assert!(c.labels.contains(&"platform:dingtalk".to_string()));
+    }
+
+    #[test]
+    fn test_labels_connector_slack_platform() {
+        let event = make_event("slack_message", "connector:slack", HashMap::new());
+        let c = classify_event(&event);
+        assert!(c.labels.contains(&"platform:slack".to_string()));
+    }
+
+    #[test]
+    fn test_labels_no_platform_for_non_connector() {
+        let event = make_event("file_change", "file:/tmp/test", HashMap::new());
+        let c = classify_event(&event);
+        assert!(!c.labels.iter().any(|l| l.starts_with("platform:")));
+    }
+
+    #[test]
+    fn test_labels_im_channel_and_sender() {
+        let mut tags = HashMap::new();
+        tags.insert("channel".into(), "general".into());
+        tags.insert("sender".into(), "user123".into());
+        let event = make_event("slack_message", "connector:slack", tags);
+        let c = classify_event(&event);
+        assert!(c.labels.contains(&"channel:general".to_string()));
+        assert!(c.labels.contains(&"sender:user123".to_string()));
+        assert!(c.labels.contains(&"platform:slack".to_string()));
+    }
+
+    #[test]
+    fn test_labels_approval_status() {
+        let mut tags = HashMap::new();
+        tags.insert("approval_status".into(), "pending".into());
+        let event = make_event("approval", "connector:dingtalk", tags);
+        let c = classify_event(&event);
+        assert!(c.labels.contains(&"approval:pending".to_string()));
+        assert!(c.labels.contains(&"platform:dingtalk".to_string()));
+    }
+
+    // ── New data extensions ────────────────────────────────────────
+
+    #[test]
+    fn test_classify_file_data_parquet_avro() {
+        for ext in &["parquet", "avro"] {
+            let mut tags = HashMap::new();
+            tags.insert("extension".into(), ext.to_string());
+            let event = make_event("file_change", "file:/data/file", tags);
+            let c = classify_event(&event);
+            assert_eq!(c.content_type, ContentType::Data, "ext={}", ext);
+        }
+    }
+
+    // ── Full pipeline integration ──────────────────────────────────
+
+    #[test]
+    fn test_full_dingtalk_approval_classification() {
+        let mut tags = HashMap::new();
+        tags.insert("approval_status".into(), "pending".into());
+        tags.insert("sender".into(), "manager_zhang".into());
+        let event = make_event("approval", "connector:dingtalk:approval:inst-001", tags);
+        let c = classify_event(&event);
+        assert_eq!(c.source_category, "connector");
+        assert_eq!(c.content_type, ContentType::Approval);
+        assert_eq!(c.urgency, Urgency::High);
+        assert!(c.labels.contains(&"platform:dingtalk".to_string()));
+        assert!(c.labels.contains(&"approval:pending".to_string()));
+        assert!(c.labels.contains(&"sender:manager_zhang".to_string()));
+    }
+
+    #[test]
+    fn test_full_slack_message_classification() {
+        let mut tags = HashMap::new();
+        tags.insert("channel".into(), "engineering".into());
+        tags.insert("sender".into(), "alice".into());
+        let event = make_event("slack_message", "connector:slack:channel:C123", tags);
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Message);
+        assert_eq!(c.urgency, Urgency::Normal);
+        assert!(c.labels.contains(&"platform:slack".to_string()));
+        assert!(c.labels.contains(&"channel:engineering".to_string()));
+    }
+
+    #[test]
+    fn test_full_github_commit_classification() {
+        let event = make_event("github.commit", "connector:github:push", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Code);
+        assert_eq!(c.source_category, "connector");
+        assert!(c.labels.contains(&"platform:github".to_string()));
     }
 }

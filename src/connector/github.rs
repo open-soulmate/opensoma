@@ -131,7 +131,8 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
         let mut seen_issues: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut seen_releases: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut seen_commits: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut seen_review_comments: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut seen_review_comments: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         // Initial fetch
         for repo in &config.repos {
@@ -147,8 +148,13 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                 warn!("Initial GitHub commits fetch failed for {}: {}", repo, e);
             }
             if config.include_review_comments {
-                if let Err(e) = fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await {
-                    warn!("Initial GitHub review comments fetch failed for {}: {}", repo, e);
+                if let Err(e) =
+                    fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await
+                {
+                    warn!(
+                        "Initial GitHub review comments fetch failed for {}: {}",
+                        repo, e
+                    );
                 }
             }
         }
@@ -169,13 +175,20 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                     warn!("GitHub commits fetch failed for {}: {}", repo, e);
                 }
                 if config.include_review_comments {
-                    if let Err(e) = fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await {
+                    if let Err(e) =
+                        fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await
+                    {
                         warn!("GitHub review comments fetch failed for {}: {}", repo, e);
                     }
                 }
 
                 // Evict old seen records to prevent unbounded growth
-                for seen in [&mut seen_issues, &mut seen_releases, &mut seen_commits, &mut seen_review_comments] {
+                for seen in [
+                    &mut seen_issues,
+                    &mut seen_releases,
+                    &mut seen_commits,
+                    &mut seen_review_comments,
+                ] {
                     if seen.len() > 5000 {
                         let excess = seen.len() - 2500;
                         let to_remove: Vec<String> = seen.iter().take(excess).cloned().collect();
@@ -531,10 +544,7 @@ async fn fetch_review_comments(
             .as_ref()
             .map(|u| u.login.clone())
             .unwrap_or_default();
-        let line_info = comment
-            .line
-            .map(|l| format!(":{}", l))
-            .unwrap_or_default();
+        let line_info = comment.line.map(|l| format!(":{}", l)).unwrap_or_default();
 
         let content = format!(
             "# PR Review Comment on {}{}\n\nRepository: {}\nAuthor: {}\nURL: {}\nCreated: {}\nUpdated: {}\n\n{}",
@@ -568,7 +578,10 @@ async fn fetch_review_comments(
 
         seen.insert(item_id);
         new_count += 1;
-        debug!("Forwarded GitHub review comment {} on {}", comment.id, comment.path);
+        debug!(
+            "Forwarded GitHub review comment {} on {}",
+            comment.id, comment.path
+        );
     }
 
     if new_count > 0 {
@@ -897,7 +910,10 @@ mod tests {
         let mut tags = std::collections::HashMap::new();
         tags.insert("repo".to_string(), "o/r".to_string());
         tags.insert("type".to_string(), "review_comment".to_string());
-        tags.insert("author".to_string(), comment.user.as_ref().unwrap().login.clone());
+        tags.insert(
+            "author".to_string(),
+            comment.user.as_ref().unwrap().login.clone(),
+        );
         tags.insert("file".to_string(), comment.path.clone());
         tags.insert("url".to_string(), comment.html_url.clone());
 

@@ -236,10 +236,7 @@ fn extract_entities(text: &str) -> Vec<Entity> {
     }
 
     // MAC addresses (aa:bb:cc:dd:ee:ff or aa-bb-cc-dd-ee-ff)
-    for m in regex_find(
-        text,
-        r"(?i)\b(?:[0-9a-f]{2}[:\-]){5}[0-9a-f]{2}\b",
-    ) {
+    for m in regex_find(text, r"(?i)\b(?:[0-9a-f]{2}[:\-]){5}[0-9a-f]{2}\b") {
         entities.push(Entity {
             entity_type: EntityType::MacAddress,
             value: m.0.to_string(),
@@ -807,9 +804,7 @@ mod tests {
 
     #[test]
     fn test_extract_entities_aws_arn() {
-        let entities = extract_entities(
-            "Resource: arn:aws:s3:::my-bucket/path/to/object",
-        );
+        let entities = extract_entities("Resource: arn:aws:s3:::my-bucket/path/to/object");
         let arns: Vec<_> = entities
             .iter()
             .filter(|e| e.entity_type == EntityType::AwsArn)

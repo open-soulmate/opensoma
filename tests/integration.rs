@@ -526,7 +526,9 @@ fn test_classify_file_event() {
     use opensoma::processor::classify::{classify_event, ContentType, Urgency};
 
     let mut event = make_event("cls-001", "file", "file_change", "some file content");
-    event.tags.insert("extension".to_string(), "json".to_string());
+    event
+        .tags
+        .insert("extension".to_string(), "json".to_string());
 
     let classification = classify_event(&event);
     assert_eq!(classification.source_category, "file");
@@ -547,7 +549,12 @@ fn test_classify_process_event() {
 fn test_classify_network_event() {
     use opensoma::processor::classify::{classify_event, ContentType};
 
-    let event = make_event("cls-003", "network", "network_new_connection", "Connection to 10.0.0.1");
+    let event = make_event(
+        "cls-003",
+        "network",
+        "network_new_connection",
+        "Connection to 10.0.0.1",
+    );
     let classification = classify_event(&event);
     assert_eq!(classification.source_category, "network");
     assert_eq!(classification.content_type, ContentType::Network);
@@ -577,7 +584,9 @@ fn test_classify_log_file() {
     use opensoma::processor::classify::{classify_event, ContentType};
 
     let mut event = make_event("cls-006", "file", "file_change", "log output");
-    event.tags.insert("extension".to_string(), "log".to_string());
+    event
+        .tags
+        .insert("extension".to_string(), "log".to_string());
 
     let classification = classify_event(&event);
     assert_eq!(classification.content_type, ContentType::Log);
@@ -588,7 +597,9 @@ fn test_classify_config_file() {
     use opensoma::processor::classify::{classify_event, ContentType};
 
     let mut event = make_event("cls-007", "file", "file_change", "config data");
-    event.tags.insert("extension".to_string(), "yaml".to_string());
+    event
+        .tags
+        .insert("extension".to_string(), "yaml".to_string());
 
     let classification = classify_event(&event);
     assert_eq!(classification.content_type, ContentType::Data);
@@ -606,7 +617,7 @@ fn test_classify_unknown_source() {
 
 #[test]
 fn test_classify_apply_classification() {
-    use opensoma::processor::classify::{classify_event, apply_classification};
+    use opensoma::processor::classify::{apply_classification, classify_event};
 
     let event = make_event("cls-apply", "file", "file_change", "content");
     let classification = classify_event(&event);
@@ -627,7 +638,12 @@ fn test_classify_apply_classification() {
 fn test_enrich_event_basic() {
     use opensoma::processor::enrich::enrich_event;
 
-    let event = make_event("enrich-001", "file", "file_change", "Hello world, this is a test document.");
+    let event = make_event(
+        "enrich-001",
+        "file",
+        "file_change",
+        "Hello world, this is a test document.",
+    );
     let enrichment = enrich_event(&event);
 
     assert!(enrichment.word_count > 0);
@@ -646,7 +662,9 @@ fn test_enrich_event_with_url() {
     );
     let enrichment = enrich_event(&event);
 
-    let url_entities: Vec<_> = enrichment.entities.iter()
+    let url_entities: Vec<_> = enrichment
+        .entities
+        .iter()
         .filter(|e| e.entity_type == EntityType::Url)
         .collect();
     assert!(!url_entities.is_empty());
@@ -665,7 +683,9 @@ fn test_enrich_event_with_email() {
     );
     let enrichment = enrich_event(&event);
 
-    let email_entities: Vec<_> = enrichment.entities.iter()
+    let email_entities: Vec<_> = enrichment
+        .entities
+        .iter()
         .filter(|e| e.entity_type == EntityType::Email)
         .collect();
     assert!(!email_entities.is_empty());
@@ -684,7 +704,9 @@ fn test_enrich_event_with_ip() {
     );
     let enrichment = enrich_event(&event);
 
-    let ip_entities: Vec<_> = enrichment.entities.iter()
+    let ip_entities: Vec<_> = enrichment
+        .entities
+        .iter()
         .filter(|e| e.entity_type == EntityType::IpAddress)
         .collect();
     assert!(!ip_entities.is_empty());
@@ -692,7 +714,7 @@ fn test_enrich_event_with_ip() {
 
 #[test]
 fn test_enrich_apply_to_event() {
-    use opensoma::processor::enrich::{enrich_event, apply_enrichment};
+    use opensoma::processor::enrich::{apply_enrichment, enrich_event};
 
     let event = make_event(
         "enrich-apply",
@@ -808,8 +830,16 @@ fn test_connector_retry_delay_bounds() {
     // Verify retry delays are reasonable
     for attempt in 0..10 {
         let delay = opensoma::connector::retry_delay(attempt);
-        assert!(delay.as_millis() >= 500, "delay too short for attempt {}", attempt);
-        assert!(delay.as_secs() <= 300, "delay too long for attempt {}", attempt);
+        assert!(
+            delay.as_millis() >= 500,
+            "delay too short for attempt {}",
+            attempt
+        );
+        assert!(
+            delay.as_secs() <= 300,
+            "delay too long for attempt {}",
+            attempt
+        );
     }
 }
 
