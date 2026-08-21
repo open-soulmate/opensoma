@@ -1417,4 +1417,62 @@ cache_size_mb = 1024
         assert_eq!(config.sync.retry_backoff_ms, 2000);
         assert_eq!(config.sync.cache_size_mb, 1024);
     }
+
+    #[test]
+    fn test_github_config_with_review_comments() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector.github]
+enabled = true
+repos = ["owner/repo"]
+include_review_comments = true
+include_releases = false
+
+[processor]
+
+[sync]
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let github = config.connector.github.unwrap();
+        assert!(github.enabled);
+        assert!(github.include_review_comments);
+        assert!(!github.include_releases);
+        assert_eq!(github.repos, vec!["owner/repo"]);
+    }
+
+    #[test]
+    fn test_github_config_review_comments_default() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[connector.github]
+enabled = true
+repos = ["org/project"]
+
+[processor]
+
+[sync]
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let github = config.connector.github.unwrap();
+        assert!(!github.include_review_comments); // default false
+        assert!(github.include_releases); // default true
+        assert!(github.include_issues); // default true
+        assert!(github.include_prs); // default true
+    }
 }
