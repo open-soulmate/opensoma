@@ -516,3 +516,309 @@ fn test_raw_event_with_tags_roundtrip() {
     assert_eq!(deserialized.tags.get("pid").unwrap(), "1234");
     assert_eq!(deserialized.tags.get("class_category").unwrap(), "process");
 }
+
+// ─────────────────────────────────────────────
+// Processor Classify Tests
+// ─────────────────────────────────────────────
+
+#[test]
+fn test_classify_file_event() {
+    use opensoma::processor::classify::{classify_event, ContentType, Urgency};
+
+    let mut event = make_event("cls-001", "file", "file_change", "some file content");
+    event.tags.insert("extension".to_string(), "json".to_string());
+
+    let classification = classify_event(&event);
+    assert_eq!(classification.source_category, "file");
+    assert_eq!(classification.content_type, ContentType::Data);
+}
+
+#[test]
+fn test_classify_process_event() {
+    use opensoma::processor::classify::{classify_event, ContentType};
+
+    let event = make_event("cls-002", "process", "process_started", "PID 1234 started");
+    let classification = classify_event(&event);
+    assert_eq!(classification.source_category, "process");
+    assert_eq!(classification.content_type, ContentType::System);
+}
+
+#[test]
+fn test_classify_network_event() {
+    use opensoma::processor::classify::{classify_event, ContentType};
+
+    let event = make_event("cls-003", "network", "network_new_connection", "Connection to 10.0.0.1");
+    let classification = classify_event(&event);
+    assert_eq!(classification.source_category, "network");
+    assert_eq!(classification.content_type, ContentType::Network);
+}
+
+#[test]
+fn test_classify_clipboard_event() {
+    use opensoma::processor::classify::{classify_event, ContentType};
+
+    let event = make_event("cls-004", "clipboard", "clipboard_change", "copied text");
+    let classification = classify_event(&event);
+    assert_eq!(classification.source_category, "clipboard");
+    assert_eq!(classification.content_type, ContentType::Clipboard);
+}
+
+#[test]
+fn test_classify_webhook_notification() {
+    use opensoma::processor::classify::{classify_event, ContentType};
+
+    let event = make_event("cls-005", "webhook", "webhook", "incoming notification");
+    let classification = classify_event(&event);
+    assert_eq!(classification.content_type, ContentType::Notification);
+}
+
+#[test]
+fn test_classify_log_file() {
+    use opensoma::processor::classify::{classify_event, ContentType};
+
+    let mut event = make_event("cls-006", "file", "file_change", "log output");
+    event.tags.insert("extension".to_string(), "log".to_string());
+
+    let classification = classify_event(&event);
+    assert_eq!(classification.content_type, ContentType::Log);
+}
+
+#[test]
+fn test_classify_config_file() {
+    use opensoma::processor::classify::{classify_event, ContentType};
+
+    let mut event = make_event("cls-007", "file", "file_change", "config data");
+    event.tags.insert("extension".to_string(), "yaml".to_string());
+
+    let classification = classify_event(&event);
+    assert_eq!(classification.content_type, ContentType::Data);
+}
+
+#[test]
+fn test_classify_unknown_source() {
+    use opensoma::processor::classify::{classify_event, ContentType};
+
+    let event = make_event("cls-008", "unknown-source", "custom_event", "payload");
+    let classification = classify_event(&event);
+    assert_eq!(classification.source_category, "unknown-source");
+    assert_eq!(classification.content_type, ContentType::Generic);
+}
+
+#[test]
+fn test_classify_apply_classification() {
+    use opensoma::processor::classify::{classify_event, apply_classification};
+
+    let event = make_event("cls-apply", "file", "file_change", "content");
+    let classification = classify_event(&event);
+
+    let mut event = make_event("cls-apply", "file", "file_change", "content");
+    apply_classification(&mut event, &classification);
+
+    assert!(event.tags.contains_key("class_category"));
+    assert!(event.tags.contains_key("class_type"));
+    assert!(event.tags.contains_key("class_urgency"));
+}
+
+// ─────────────────────────────────────────────
+// Processor Enrich Tests
+// ─────────────────────────────────────────────
+
+#[test]
+fn test_enrich_event_basic() {
+    use opensoma::processor::enrich::enrich_event;
+
+    let event = make_event("enrich-001", "file", "file_change", "Hello world, this is a test document.");
+    let enrichment = enrich_event(&event);
+
+    assert!(enrichment.word_count > 0);
+    assert!(!enrichment.summary.is_empty());
+}
+
+#[test]
+fn test_enrich_event_with_url() {
+    use opensoma::processor::enrich::{enrich_event, EntityType};
+
+    let event = make_event(
+        "enrich-002",
+        "file",
+        "file_change",
+        "Visit https://example.com for more info",
+    );
+    let enrichment = enrich_event(&event);
+
+    let url_entities: Vec<_> = enrichment.entities.iter()
+        .filter(|e| e.entity_type == EntityType::Url)
+        .collect();
+    assert!(!url_entities.is_empty());
+    assert!(url_entities[0].value.contains("https://example.com"));
+}
+
+#[test]
+fn test_enrich_event_with_email() {
+    use opensoma::processor::enrich::{enrich_event, EntityType};
+
+    let event = make_event(
+        "enrich-003",
+        "file",
+        "file_change",
+        "Contact user@example.com for support",
+    );
+    let enrichment = enrich_event(&event);
+
+    let email_entities: Vec<_> = enrichment.entities.iter()
+        .filter(|e| e.entity_type == EntityType::Email)
+        .collect();
+    assert!(!email_entities.is_empty());
+    assert_eq!(email_entities[0].value, "user@example.com");
+}
+
+#[test]
+fn test_enrich_event_with_ip() {
+    use opensoma::processor::enrich::{enrich_event, EntityType};
+
+    let event = make_event(
+        "enrich-004",
+        "network",
+        "network_new_connection",
+        "Connected to 192.168.1.100 on port 443",
+    );
+    let enrichment = enrich_event(&event);
+
+    let ip_entities: Vec<_> = enrichment.entities.iter()
+        .filter(|e| e.entity_type == EntityType::IpAddress)
+        .collect();
+    assert!(!ip_entities.is_empty());
+}
+
+#[test]
+fn test_enrich_apply_to_event() {
+    use opensoma::processor::enrich::{enrich_event, apply_enrichment};
+
+    let event = make_event(
+        "enrich-apply",
+        "file",
+        "file_change",
+        "Visit https://example.com for details. Contact admin@test.org.",
+    );
+    let enrichment = enrich_event(&event);
+
+    let mut event = make_event(
+        "enrich-apply",
+        "file",
+        "file_change",
+        "Visit https://example.com for details. Contact admin@test.org.",
+    );
+    apply_enrichment(&mut event, &enrichment);
+
+    assert!(event.tags.contains_key("word_count"));
+    assert!(event.tags.contains_key("summary"));
+}
+
+#[test]
+fn test_enrich_empty_payload() {
+    use opensoma::processor::enrich::enrich_event;
+
+    let event = make_event("enrich-empty", "file", "file_change", "");
+    let enrichment = enrich_event(&event);
+
+    assert_eq!(enrichment.word_count, 0);
+    assert!(enrichment.entities.is_empty());
+}
+
+// ─────────────────────────────────────────────
+// Processor Normalize Tests
+// ─────────────────────────────────────────────
+
+#[test]
+fn test_normalize_fixes_zero_timestamp() {
+    use opensoma::processor::normalize::normalize_event;
+
+    let mut event = make_event("norm-001", "file", "file_change", "content");
+    event.timestamp_ms = 0;
+
+    let config = opensoma::config::ProcessorConfig {
+        normalize_timestamps: true,
+        max_event_size: 1_048_576,
+        dedup_window_secs: 60,
+        enable_classify: true,
+        enable_enrich: true,
+    };
+
+    normalize_event(&mut event, &config);
+    assert!(event.timestamp_ms > 0);
+}
+
+#[test]
+fn test_normalize_preserves_valid_timestamp() {
+    use opensoma::processor::normalize::normalize_event;
+
+    let ts = 1700000000000i64;
+    let mut event = make_event("norm-002", "file", "file_change", "content");
+    event.timestamp_ms = ts;
+
+    let config = opensoma::config::ProcessorConfig {
+        normalize_timestamps: true,
+        max_event_size: 1_048_576,
+        dedup_window_secs: 60,
+        enable_classify: true,
+        enable_enrich: true,
+    };
+
+    normalize_event(&mut event, &config);
+    assert_eq!(event.timestamp_ms, ts);
+}
+
+#[test]
+fn test_normalize_removes_empty_tags() {
+    use opensoma::processor::normalize::normalize_event;
+
+    let mut event = make_event("norm-003", "file", "file_change", "content");
+    event.tags.insert("valid".to_string(), "value".to_string());
+    event.tags.insert("empty".to_string(), "".to_string());
+
+    let config = opensoma::config::ProcessorConfig {
+        normalize_timestamps: true,
+        max_event_size: 1_048_576,
+        dedup_window_secs: 60,
+        enable_classify: true,
+        enable_enrich: true,
+    };
+
+    normalize_event(&mut event, &config);
+    assert!(event.tags.contains_key("valid"));
+    assert!(!event.tags.contains_key("empty"));
+}
+
+#[test]
+fn test_normalize_format_timestamp() {
+    use opensoma::processor::normalize::format_timestamp;
+
+    let ts = 1700000000000i64; // 2023-11-14T22:13:20Z
+    let formatted = format_timestamp(ts);
+    assert!(formatted.contains("2023"));
+    assert!(!formatted.is_empty());
+}
+
+// ─────────────────────────────────────────────
+// Connector Module Structure Tests
+// ─────────────────────────────────────────────
+
+#[test]
+fn test_connector_retry_delay_bounds() {
+    // Verify retry delays are reasonable
+    for attempt in 0..10 {
+        let delay = opensoma::connector::retry_delay(attempt);
+        assert!(delay.as_millis() >= 500, "delay too short for attempt {}", attempt);
+        assert!(delay.as_secs() <= 300, "delay too long for attempt {}", attempt);
+    }
+}
+
+#[test]
+fn test_connector_retry_delay_increases() {
+    let mut prev = std::time::Duration::ZERO;
+    for attempt in 0..6 {
+        let delay = opensoma::connector::retry_delay(attempt);
+        assert!(delay > prev, "delay should increase at attempt {}", attempt);
+        prev = delay;
+    }
+}
