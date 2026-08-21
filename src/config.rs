@@ -82,6 +82,8 @@ pub struct ConnectorConfig {
     pub github: Option<GitHubConfig>,
     #[serde(default)]
     pub slack: Option<SlackConfig>,
+    #[serde(default)]
+    pub telegram: Option<TelegramConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -248,6 +250,22 @@ pub struct SlackConfig {
     /// Include thread replies (default true)
     #[serde(default = "default_true")]
     pub include_threads: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TelegramConfig {
+    pub enabled: bool,
+    /// Telegram Bot API token (from @BotFather)
+    pub bot_token: String,
+    /// List of chat IDs to monitor (None = all chats)
+    #[serde(default)]
+    pub allowed_chats: Option<Vec<i64>>,
+    /// Include edited messages (default true)
+    #[serde(default = "default_true")]
+    pub include_edited: bool,
+    /// Polling interval in seconds (default 30)
+    #[serde(default = "default_telegram_interval")]
+    pub poll_interval_secs: u64,
 }
 
 /// Sense plugin configuration for multimodal content parsing.
@@ -845,6 +863,9 @@ fn default_rss_interval() -> u64 {
 }
 fn default_email_interval() -> u64 {
     120
+}
+fn default_telegram_interval() -> u64 {
+    30
 }
 fn default_imap_port() -> u16 {
     993

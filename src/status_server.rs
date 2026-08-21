@@ -183,6 +183,7 @@ impl ConfigSnapshot {
         summarize_connector!("webhook", config.connector.webhook);
         summarize_connector!("github", config.connector.github);
         summarize_connector!("slack", config.connector.slack);
+        summarize_connector!("telegram", config.connector.telegram);
 
         Self {
             node_id: config.daemon.node_id.clone(),
@@ -378,6 +379,7 @@ async fn api_connectors_handler(
         ("git", "Git"),
         ("obsidian", "Obsidian"),
         ("slack", "Slack"),
+        ("telegram", "Telegram"),
     ];
 
     let list: Vec<ConnectorInfo> = all_connectors
@@ -438,7 +440,7 @@ async fn api_connector_toggle(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let valid_connectors = [
         "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
-        "obsidian", "slack",
+        "obsidian", "slack", "telegram",
     ];
 
     if !valid_connectors.contains(&name.as_str()) {
@@ -627,7 +629,7 @@ async fn api_connectors_health_handler(
 
     let connectors = vec![
         "feishu", "dingtalk", "wecom", "rss", "email", "notion", "git", "obsidian", "webhook",
-        "github", "slack",
+        "github", "slack", "telegram",
     ];
 
     let health: Vec<serde_json::Value> = connectors
@@ -1078,6 +1080,7 @@ async fn build_connectors_page(state: &StatusServerState) -> String {
         ("git", "Git", "Git 仓库轮询采集"),
         ("obsidian", "Obsidian", "Obsidian Vault 文件监控"),
         ("slack", "Slack", "Slack 频道消息和线程采集"),
+        ("telegram", "Telegram", "Telegram Bot 消息采集"),
     ];
 
     let cards: String = all_connectors.iter().map(|(id, name, desc)| {
@@ -1586,7 +1589,7 @@ mod tests {
             .to_bytes();
         let connectors: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
-        assert_eq!(connectors.len(), 11);
+        assert_eq!(connectors.len(), 12);
 
         // Verify all connector IDs are present
         let ids: Vec<&str> = connectors
@@ -1595,7 +1598,7 @@ mod tests {
             .collect();
         for expected in &[
             "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
-            "obsidian", "slack",
+            "obsidian", "slack", "telegram",
         ] {
             assert!(ids.contains(expected), "Missing connector: {}", expected);
         }
@@ -2040,11 +2043,11 @@ mod tests {
         assert!(json["summary"].is_object());
 
         let connectors = json["connectors"].as_array().unwrap();
-        assert_eq!(connectors.len(), 11);
+        assert_eq!(connectors.len(), 12);
 
         // Verify summary
         let summary = &json["summary"];
-        assert_eq!(summary["total"].as_u64().unwrap(), 11);
+        assert_eq!(summary["total"].as_u64().unwrap(), 12);
         assert!(summary["enabled"].as_u64().is_some());
         assert!(summary["disabled"].as_u64().is_some());
         assert!(summary["total_events"].as_u64().is_some());
