@@ -916,6 +916,12 @@ fn run_connectors_list(config_path: &str) -> i32 {
         "Watch"
     );
     collect_connector!(config.connector.webhook, "Webhook", "HTTP POST", "Listen");
+    collect_connector!(
+        config.connector.telegram,
+        "Telegram",
+        "Telegram Bot API",
+        "Long-poll"
+    );
 
     if connectors.is_empty() {
         println!("  No connectors configured.");

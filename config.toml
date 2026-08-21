@@ -181,6 +181,18 @@ poll_interval_secs = 60
 # Include thread replies (default: true)
 include_threads = true
 
+# --- Telegram Bot ---
+[connector.telegram]
+enabled = false
+# Bot token from @BotFather (format: "123456:ABC-DEF...")
+bot_token = ""
+# List of chat IDs to monitor (empty = all chats)
+allowed_chats = []
+# Include edited messages (default: true)
+include_edited = true
+# Polling interval in seconds (default: 30)
+poll_interval_secs = 30
+
 # ---------------------------------------------------------------------------
 # Processor — normalization and deduplication
 # ---------------------------------------------------------------------------
