@@ -38,6 +38,10 @@ pub enum EntityType {
     Hash, // MD5/SHA hashes
     Port,
     Domain,
+    MacAddress,
+    Uuid,
+    AwsArn,
+    CreditCard,
 }
 
 /// Enrich a raw event with extracted entities, keywords, and summary.
@@ -231,7 +235,84 @@ fn extract_entities(text: &str) -> Vec<Entity> {
         }
     }
 
+    // MAC addresses (aa:bb:cc:dd:ee:ff or aa-bb-cc-dd-ee-ff)
+    for m in regex_find(
+        text,
+        r"(?i)\b(?:[0-9a-f]{2}[:\-]){5}[0-9a-f]{2}\b",
+    ) {
+        entities.push(Entity {
+            entity_type: EntityType::MacAddress,
+            value: m.0.to_string(),
+            offset: Some(m.1),
+        });
+    }
+
+    // UUIDs (v1-v5)
+    for m in regex_find(
+        text,
+        r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+    ) {
+        entities.push(Entity {
+            entity_type: EntityType::Uuid,
+            value: m.0.to_string(),
+            offset: Some(m.1),
+        });
+    }
+
+    // AWS ARNs (supports both full ARNs and S3-style without account ID)
+    for m in regex_find(
+        text,
+        r"arn:aws:[a-z0-9-]+:[a-z0-9-]*:(?:\d{12})?:?[a-zA-Z0-9/_.:-]+",
+    ) {
+        entities.push(Entity {
+            entity_type: EntityType::AwsArn,
+            value: m.0.to_string(),
+            offset: Some(m.1),
+        });
+    }
+
+    // Credit card numbers (13-19 digits, common patterns)
+    for m in regex_find(
+        text,
+        r"\b(?:4\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}|5[1-5]\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}|3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5})\b",
+    ) {
+        // Luhn check for basic validation
+        let digits: String = m.0.chars().filter(|c| c.is_ascii_digit()).collect();
+        if luhn_check(&digits) {
+            entities.push(Entity {
+                entity_type: EntityType::CreditCard,
+                value: m.0.to_string(),
+                offset: Some(m.1),
+            });
+        }
+    }
+
     entities
+}
+
+/// Luhn algorithm for credit card validation.
+fn luhn_check(number: &str) -> bool {
+    if number.len() < 13 || number.len() > 19 {
+        return false;
+    }
+    let mut sum = 0;
+    let mut alternate = false;
+    for ch in number.chars().rev() {
+        if let Some(digit) = ch.to_digit(10) {
+            let mut n = digit;
+            if alternate {
+                n *= 2;
+                if n > 9 {
+                    n -= 9;
+                }
+            }
+            sum += n;
+            alternate = !alternate;
+        } else {
+            return false;
+        }
+    }
+    sum % 10 == 0
 }
 
 /// Simple regex finder that returns (match_text, offset) pairs.
@@ -654,5 +735,161 @@ mod tests {
         assert!(types.contains(&EntityType::DateTime));
         assert!(types.contains(&EntityType::FilePath));
         assert!(types.contains(&EntityType::Hash));
+    }
+
+    // ── MAC address extraction ────────────────────────────────────
+
+    #[test]
+    fn test_extract_entities_mac_colon() {
+        let entities = extract_entities("Device MAC: 00:1A:2B:3C:4D:5E connected");
+        let macs: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::MacAddress)
+            .collect();
+        assert_eq!(macs.len(), 1);
+        assert_eq!(macs[0].value.to_lowercase(), "00:1a:2b:3c:4d:5e");
+    }
+
+    #[test]
+    fn test_extract_entities_mac_dash() {
+        let entities = extract_entities("NIC: AA-BB-CC-DD-EE-FF is up");
+        let macs: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::MacAddress)
+            .collect();
+        assert_eq!(macs.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_entities_mac_lowercase() {
+        let entities = extract_entities("eth0: aa:bb:cc:dd:ee:ff");
+        let macs: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::MacAddress)
+            .collect();
+        assert_eq!(macs.len(), 1);
+    }
+
+    // ── UUID extraction ───────────────────────────────────────────
+
+    #[test]
+    fn test_extract_entities_uuid_v4() {
+        let entities = extract_entities("ID: 550e8400-e29b-41d4-a716-446655440000");
+        let uuids: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Uuid)
+            .collect();
+        assert_eq!(uuids.len(), 1);
+        assert_eq!(uuids[0].value, "550e8400-e29b-41d4-a716-446655440000");
+    }
+
+    #[test]
+    fn test_extract_entities_uuid_v1() {
+        let entities = extract_entities("UUID: 6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+        let uuids: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Uuid)
+            .collect();
+        assert_eq!(uuids.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_entities_uuid_uppercase() {
+        let entities = extract_entities("Ref: 550E8400-E29B-41D4-A716-446655440000");
+        let uuids: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Uuid)
+            .collect();
+        assert_eq!(uuids.len(), 1);
+    }
+
+    // ── AWS ARN extraction ────────────────────────────────────────
+
+    #[test]
+    fn test_extract_entities_aws_arn() {
+        let entities = extract_entities(
+            "Resource: arn:aws:s3:::my-bucket/path/to/object",
+        );
+        let arns: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::AwsArn)
+            .collect();
+        assert_eq!(arns.len(), 1);
+        assert!(arns[0].value.contains("s3"));
+    }
+
+    #[test]
+    fn test_extract_entities_aws_arn_lambda() {
+        let entities = extract_entities(
+            "Function: arn:aws:lambda:us-east-1:123456789012:function:my-function",
+        );
+        let arns: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::AwsArn)
+            .collect();
+        assert_eq!(arns.len(), 1);
+        assert!(arns[0].value.contains("lambda"));
+    }
+
+    // ── Credit card extraction ────────────────────────────────────
+
+    #[test]
+    fn test_extract_entities_visa() {
+        // Visa test number (passes Luhn)
+        let entities = extract_entities("Card: 4111 1111 1111 1111");
+        let cards: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::CreditCard)
+            .collect();
+        assert_eq!(cards.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_entities_mastercard() {
+        // Mastercard test number (passes Luhn)
+        let entities = extract_entities("Card: 5500-0000-0000-0004");
+        let cards: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::CreditCard)
+            .collect();
+        assert_eq!(cards.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_entities_credit_card_invalid_luhn() {
+        // Invalid card number (fails Luhn)
+        let entities = extract_entities("Card: 4111 1111 1111 1112");
+        let cards: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::CreditCard)
+            .collect();
+        assert_eq!(cards.len(), 0);
+    }
+
+    // ── Luhn algorithm tests ──────────────────────────────────────
+
+    #[test]
+    fn test_luhn_valid_visa() {
+        assert!(luhn_check("4111111111111111"));
+    }
+
+    #[test]
+    fn test_luhn_valid_mastercard() {
+        assert!(luhn_check("5500000000000004"));
+    }
+
+    #[test]
+    fn test_luhn_invalid() {
+        assert!(!luhn_check("4111111111111112"));
+    }
+
+    #[test]
+    fn test_luhn_too_short() {
+        assert!(!luhn_check("4111111"));
+    }
+
+    #[test]
+    fn test_luhn_empty() {
+        assert!(!luhn_check(""));
     }
 }
