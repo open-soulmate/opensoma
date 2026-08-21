@@ -2,8 +2,7 @@
 ///
 /// All HTML, CSS, and JS files are included at compile time via `include_str!`
 /// so the binary is fully self-contained — no external files needed at runtime.
-
-/// Main dashboard HTML page
+// Main dashboard HTML page
 pub const INDEX_HTML: &str = include_str!("index.html");
 
 /// Admin framework CSS (sidebar layout, cards, tables)
