@@ -261,4 +261,61 @@ mod tests {
         assert_eq!(h1, h2);
         assert_ne!(h1, h3);
     }
+
+    #[test]
+    fn test_sniff_content_type_ip_address_is_text() {
+        // IP addresses are plain text in current implementation
+        assert_eq!(sniff_content_type("192.168.1.1"), "text");
+        assert_eq!(sniff_content_type("10.0.0.1"), "text");
+    }
+
+    #[test]
+    fn test_sniff_content_type_long_base64_is_text() {
+        // Current implementation does not detect base64 encoding
+        let b64 = "SGVsbG8gV29ybGQhIFRoaXMgaXMgYSBsb25nIGJhc2U2NCBlbmNvZGVkIHN0cmluZyB0aGF0IGlzIGxvbmdlciB0aGFuIDUwIGNoYXJhY3RlcnM=";
+        assert_eq!(sniff_content_type(b64), "text");
+    }
+
+    #[test]
+    fn test_sniff_content_type_multiline_json() {
+        let json = r#"{
+            "key": "value",
+            "nested": {
+                "array": [1, 2, 3]
+            }
+        }"#;
+        // Multiline JSON starts with '{' and is valid JSON, so it's detected as json
+        assert_eq!(sniff_content_type(json), "json");
+    }
+
+    #[test]
+    fn test_sniff_content_type_ssh_key_is_text() {
+        // SSH keys are detected as plain text (contain spaces)
+        assert_eq!(
+            sniff_content_type("ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7FBmMSVTj user@host"),
+            "text"
+        );
+    }
+
+    #[test]
+    fn test_sniff_content_type_env_var_is_text() {
+        // Env vars are detected as plain text in current implementation
+        assert_eq!(sniff_content_type("DATABASE_URL=postgres://localhost/db"), "text");
+        assert_eq!(sniff_content_type("API_KEY=sk-1234567890"), "text");
+    }
+
+    #[test]
+    fn test_hash_content_whitespace_sensitivity() {
+        let h1 = hash_content("hello world");
+        let h2 = hash_content("hello  world");
+        assert_ne!(h1, h2); // Different whitespace = different hash
+    }
+
+    #[test]
+    fn test_hash_content_long_text() {
+        let long_text = "x".repeat(100_000);
+        let h1 = hash_content(&long_text);
+        let h2 = hash_content(&long_text);
+        assert_eq!(h1, h2);
+    }
 }
