@@ -210,13 +210,8 @@ impl ConfigSnapshot {
     }
 }
 
-/// Embed the index.html and CSS at compile time.
-#[allow(dead_code)]
-const INDEX_HTML: &str = include_str!("web/index.html");
-const ADMIN_CSS: &str = include_str!("web/admin-framework.css");
-const ADMIN_JS: &str = include_str!("web/admin-framework.js");
-const SIDEBAR_CSS: &str = include_str!("web/sidebar.css");
-const SIDEBAR_JS: &str = include_str!("web/sidebar.js");
+/// Re-export web assets from the centralized web module.
+use crate::web;
 
 /// Start the HTTP status server on the given port.
 /// Exposes /health, /status, /api/* endpoints and the web UI.
@@ -256,38 +251,7 @@ pub async fn start_status_server(
     port: u16,
     state: StatusServerState,
 ) -> tokio::task::JoinHandle<()> {
-    let app = Router::new()
-        // Web UI
-        .route("/", get(index_handler))
-        .route("/shared-sidebar.css", get(css_handler))
-        .route("/admin-framework.css", get(css_handler))
-        .route("/admin-framework.js", get(js_handler))
-        .route("/sidebar.css", get(sidebar_css_handler))
-        .route("/sidebar.js", get(sidebar_js_handler))
-        // Existing endpoints
-        .route("/health", get(health_handler))
-        .route("/status", get(status_handler))
-        // Prometheus metrics
-        .route("/metrics", get(metrics_handler))
-        // New API endpoints
-        .route("/api/status", get(api_status_handler))
-        .route("/api/connectors", get(api_connectors_handler))
-        .route("/api/collectors", get(api_collectors_handler))
-        .route("/api/connectors/:name/toggle", post(api_connector_toggle))
-        .route("/api/connectors/:name/events", get(api_connector_events))
-        .route("/api/cache/stats", get(api_cache_stats_handler))
-        .route("/api/cache/evict", post(api_cache_evict_handler))
-        .route("/api/page/:page", get(api_page_handler))
-        .route("/api/events/recent", get(api_events_recent_handler))
-        .route("/api/events/search", get(api_events_search_handler))
-        .route("/api/system/info", get(api_system_info_handler))
-        .route("/api/connectors/health", get(api_connectors_health_handler))
-        .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
-        .route("/api/plugins", get(api_plugins_handler))
-        .route("/api/circuit-breakers", get(api_circuit_breakers_handler))
-        .route("/api/config", get(api_config_handler))
-        .layer(middleware::from_fn(cors_layer))
-        .with_state(state.clone());
+    let app = build_router(state);
 
     let addr = format!("0.0.0.0:{}", port);
     info!("OpenSoma status server listening on {}", addr);
@@ -306,7 +270,7 @@ pub async fn start_status_server(
 async fn index_handler() -> axum::response::Response {
     axum::response::Response::builder()
         .header("content-type", "text/html; charset=utf-8")
-        .body(axum::body::Body::from(INDEX_HTML))
+        .body(axum::body::Body::from(web::INDEX_HTML))
         .unwrap()
 }
 
@@ -314,7 +278,7 @@ async fn index_handler() -> axum::response::Response {
 async fn css_handler() -> axum::response::Response {
     axum::response::Response::builder()
         .header("content-type", "text/css; charset=utf-8")
-        .body(axum::body::Body::from(ADMIN_CSS))
+        .body(axum::body::Body::from(web::ADMIN_CSS))
         .unwrap()
 }
 
@@ -322,7 +286,7 @@ async fn css_handler() -> axum::response::Response {
 async fn js_handler() -> axum::response::Response {
     axum::response::Response::builder()
         .header("content-type", "application/javascript; charset=utf-8")
-        .body(axum::body::Body::from(ADMIN_JS))
+        .body(axum::body::Body::from(web::ADMIN_JS))
         .unwrap()
 }
 
@@ -330,7 +294,7 @@ async fn js_handler() -> axum::response::Response {
 async fn sidebar_css_handler() -> axum::response::Response {
     axum::response::Response::builder()
         .header("content-type", "text/css; charset=utf-8")
-        .body(axum::body::Body::from(SIDEBAR_CSS))
+        .body(axum::body::Body::from(web::SIDEBAR_CSS))
         .unwrap()
 }
 
@@ -338,7 +302,7 @@ async fn sidebar_css_handler() -> axum::response::Response {
 async fn sidebar_js_handler() -> axum::response::Response {
     axum::response::Response::builder()
         .header("content-type", "application/javascript; charset=utf-8")
-        .body(axum::body::Body::from(SIDEBAR_JS))
+        .body(axum::body::Body::from(web::SIDEBAR_JS))
         .unwrap()
 }
 

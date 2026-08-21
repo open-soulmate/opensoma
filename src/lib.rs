@@ -14,3 +14,4 @@ pub mod plugins;
 pub mod processor;
 pub mod status_server;
 pub mod sync;
+pub mod web;
