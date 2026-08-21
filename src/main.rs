@@ -538,6 +538,7 @@ fn run_validate_with_path(config_path: &str) -> i32 {
             check_connector!(config.connector.webhook);
             check_connector!(config.connector.github);
             check_connector!(config.connector.slack);
+            check_connector!(config.connector.telegram);
 
             println!();
             println!("Summary:");
