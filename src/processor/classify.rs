@@ -128,12 +128,31 @@ fn detect_content_type(event: &RawEvent) -> ContentType {
         // ── IM / chat messages ──
         "message" | "text" | "slack_message" | "slack_thread_reply" => ContentType::Message,
 
+        // ── Telegram events ──
+        "telegram_message"
+        | "telegram_edited_message"
+        | "telegram_channel_post"
+        | "telegram_edited_channel_post" => ContentType::Message,
+        "telegram_callback_query" => ContentType::Notification,
+
         // ── Approval / workflow events ──
         "approval" | "approval_change" | "bpms_instance_change" => ContentType::Approval,
 
         // ── DingTalk-specific events ──
-        "attendance" | "check_in" | "work_report" | "document" | "subscribe" | "user_add_org"
-        | "callback" => ContentType::Notification,
+        "attendance" | "check_in" | "work_report" | "subscribe" | "user_add_org" | "callback" => {
+            ContentType::Notification
+        }
+
+        // ── Document events (Feishu/Notion = Data, DingTalk = Notification) ──
+        "document" => {
+            if event.source.starts_with("connector:feishu")
+                || event.source.starts_with("connector:notion")
+            {
+                ContentType::Data
+            } else {
+                ContentType::Notification
+            }
+        }
 
         _ => ContentType::Generic,
     }
@@ -237,6 +256,25 @@ fn extract_labels(event: &RawEvent) -> Vec<String> {
     }
     if let Some(sender) = event.tags.get("sender") {
         labels.push(format!("sender:{}", sender));
+    }
+
+    // Add Telegram-specific labels
+    if let Some(chat_type) = event.tags.get("chat_type") {
+        labels.push(format!("chat_type:{}", chat_type));
+    }
+    if let Some(from) = event.tags.get("from") {
+        labels.push(format!("from:{}", from));
+    }
+    if let Some(media_type) = event.tags.get("media_type") {
+        if media_type != "text" {
+            labels.push(format!("media:{}", media_type));
+        }
+    }
+    if let Some(update_type) = event.tags.get("update_type") {
+        labels.push(format!("update:{}", update_type));
+    }
+    if event.tags.get("edited").is_some() {
+        labels.push("edited".to_string());
     }
 
     // Add approval-specific labels
@@ -887,5 +925,97 @@ mod tests {
         assert_eq!(c.content_type, ContentType::Code);
         assert_eq!(c.source_category, "connector");
         assert!(c.labels.contains(&"platform:github".to_string()));
+    }
+
+    // ── Telegram event classification ─────────────────────────────
+
+    #[test]
+    fn test_classify_telegram_message() {
+        for etype in &[
+            "telegram_message",
+            "telegram_edited_message",
+            "telegram_channel_post",
+            "telegram_edited_channel_post",
+        ] {
+            let event = make_event(etype, "connector:telegram:12345", HashMap::new());
+            let c = classify_event(&event);
+            assert_eq!(c.content_type, ContentType::Message, "type={}", etype);
+        }
+    }
+
+    #[test]
+    fn test_classify_telegram_callback_query() {
+        let event = make_event(
+            "telegram_callback_query",
+            "connector:telegram:12345",
+            HashMap::new(),
+        );
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Notification);
+    }
+
+    #[test]
+    fn test_telegram_message_labels() {
+        let mut tags = HashMap::new();
+        tags.insert("chat_type".into(), "group".into());
+        tags.insert("from".into(), "alice".into());
+        tags.insert("media_type".into(), "photo".into());
+        tags.insert("update_type".into(), "message".into());
+        let event = make_event("telegram_message", "connector:telegram:100", tags);
+        let c = classify_event(&event);
+        assert!(c.labels.contains(&"platform:telegram".to_string()));
+        assert!(c.labels.contains(&"chat_type:group".to_string()));
+        assert!(c.labels.contains(&"from:alice".to_string()));
+        assert!(c.labels.contains(&"media:photo".to_string()));
+        assert!(c.labels.contains(&"update:message".to_string()));
+    }
+
+    #[test]
+    fn test_telegram_edited_label() {
+        let mut tags = HashMap::new();
+        tags.insert("edited".into(), "true".into());
+        let event = make_event("telegram_edited_message", "connector:telegram:100", tags);
+        let c = classify_event(&event);
+        assert!(c.labels.contains(&"edited".to_string()));
+    }
+
+    #[test]
+    fn test_telegram_text_media_no_label() {
+        let mut tags = HashMap::new();
+        tags.insert("media_type".into(), "text".into());
+        let event = make_event("telegram_message", "connector:telegram:100", tags);
+        let c = classify_event(&event);
+        // "text" media type should NOT generate a media label
+        assert!(!c.labels.iter().any(|l| l.starts_with("media:")));
+    }
+
+    // ── Document classification (Feishu/Notion vs DingTalk) ──────
+
+    #[test]
+    fn test_classify_document_feishu_is_data() {
+        let event = make_event("document", "connector:feishu:doc-abc", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Data);
+    }
+
+    #[test]
+    fn test_classify_document_notion_is_data() {
+        let event = make_event("document", "connector:notion:page-xyz", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Data);
+    }
+
+    #[test]
+    fn test_classify_document_dingtalk_is_notification() {
+        let event = make_event("document", "connector:dingtalk:corp123", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Notification);
+    }
+
+    #[test]
+    fn test_classify_document_unknown_source_is_notification() {
+        let event = make_event("document", "unknown", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Notification);
     }
 }
