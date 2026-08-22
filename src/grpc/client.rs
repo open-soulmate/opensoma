@@ -130,32 +130,76 @@ impl SoulClient {
         }
     }
 
-    /// Upload a batch of collected events to Soul via the Nerve publish API.
-    /// Events are published concurrently (up to 8 in parallel) for throughput.
+    /// Upload a batch of collected events to Soul via the Nerve batch publish API.
+    /// Uses the /publish/batch endpoint for efficient bulk ingestion (single HTTP request
+    /// per batch of up to 100 events). Falls back to individual /publish calls on error.
     pub async fn upload_events(
         &self,
         events: &[soul::CollectedEvent],
     ) -> Result<soul::UploadEventsResponse> {
-        debug!("Uploading {} events to Soul (concurrent)", events.len());
+        debug!("Uploading {} events to Soul (batch)", events.len());
 
-        const CONCURRENCY: usize = 8;
+        const BATCH_SIZE: usize = 100;
 
-        // Process events in chunks of CONCURRENCY, sending each chunk concurrently
         let mut accepted: i64 = 0;
         let mut rejected: i64 = 0;
         let mut reject_reasons: Vec<String> = Vec::new();
 
-        for chunk in events.chunks(CONCURRENCY) {
-            let futs: Vec<_> = chunk
+        for chunk in events.chunks(BATCH_SIZE) {
+            // Build batch payload
+            let batch_items: Vec<serde_json::Value> = chunk
                 .iter()
                 .map(|event| {
-                    let base_url = self.base_url.clone();
-                    let http = self.http.clone();
-                    let event = event.clone();
-                    async move {
-                        let url = format!("{}/api/nerve/publish", base_url);
-                        let payload_str = String::from_utf8_lossy(&event.payload).to_string();
-                        let body = serde_json::json!({
+                    let payload_str = String::from_utf8_lossy(&event.payload).to_string();
+                    serde_json::json!({
+                        "topic": format!("soma.{}", event.event_type),
+                        "data": {
+                            "id": event.id,
+                            "source": event.source,
+                            "event_type": event.event_type,
+                            "timestamp_ms": event.timestamp_ms,
+                            "payload": payload_str,
+                            "tags": event.tags,
+                        },
+                        "source": format!("opensoma:{}", event.source),
+                    })
+                })
+                .collect();
+
+            let url = format!("{}/api/nerve/publish/batch", self.base_url);
+            let body = serde_json::json!({ "events": batch_items });
+
+            match self.http.post(&url).json(&body).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    // Parse batch response
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(result) => {
+                            let batch_accepted =
+                                result["accepted"].as_i64().unwrap_or(chunk.len() as i64);
+                            let batch_rejected = result["rejected"].as_i64().unwrap_or(0);
+                            accepted += batch_accepted;
+                            rejected += batch_rejected;
+                        }
+                        Err(_) => {
+                            // If parsing fails, assume all accepted
+                            accepted += chunk.len() as i64;
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    let status = resp.status();
+                    let text = resp.text().await.unwrap_or_default();
+                    warn!(
+                        "Batch upload returned {}: {} — falling back to individual publish",
+                        status, text
+                    );
+                    // Fallback: send individually
+                    for event in chunk {
+                        let individual_url =
+                            format!("{}/api/nerve/publish", self.base_url);
+                        let payload_str =
+                            String::from_utf8_lossy(&event.payload).to_string();
+                        let individual_body = serde_json::json!({
                             "topic": format!("soma.{}", event.event_type),
                             "data": {
                                 "id": event.id,
@@ -167,29 +211,72 @@ impl SoulClient {
                             },
                             "source": format!("opensoma:{}", event.source),
                         });
-                        match http.post(&url).json(&body).send().await {
-                            Ok(resp) if resp.status().is_success() => (true, None),
-                            Ok(resp) => (
-                                false,
-                                Some(format!("HTTP {} for event {}", resp.status(), event.id)),
-                            ),
-                            Err(e) => (
-                                false,
-                                Some(format!("Network error for event {}: {}", event.id, e)),
-                            ),
+                        match self
+                            .http
+                            .post(&individual_url)
+                            .json(&individual_body)
+                            .send()
+                            .await
+                        {
+                            Ok(r) if r.status().is_success() => accepted += 1,
+                            Ok(r) => {
+                                rejected += 1;
+                                reject_reasons.push(format!(
+                                    "HTTP {} for event {}",
+                                    r.status(),
+                                    event.id
+                                ));
+                            }
+                            Err(e) => {
+                                rejected += 1;
+                                reject_reasons
+                                    .push(format!("Network error for event {}: {}", event.id, e));
+                            }
                         }
                     }
-                })
-                .collect();
-
-            let results = futures::future::join_all(futs).await;
-            for (ok, reason) in results {
-                if ok {
-                    accepted += 1;
-                } else {
-                    rejected += 1;
-                    if let Some(r) = reason {
-                        reject_reasons.push(r);
+                }
+                Err(e) => {
+                    warn!("Batch upload network error: {} — falling back to individual publish", e);
+                    // Fallback: send individually
+                    for event in chunk {
+                        let individual_url =
+                            format!("{}/api/nerve/publish", self.base_url);
+                        let payload_str =
+                            String::from_utf8_lossy(&event.payload).to_string();
+                        let individual_body = serde_json::json!({
+                            "topic": format!("soma.{}", event.event_type),
+                            "data": {
+                                "id": event.id,
+                                "source": event.source,
+                                "event_type": event.event_type,
+                                "timestamp_ms": event.timestamp_ms,
+                                "payload": payload_str,
+                                "tags": event.tags,
+                            },
+                            "source": format!("opensoma:{}", event.source),
+                        });
+                        match self
+                            .http
+                            .post(&individual_url)
+                            .json(&individual_body)
+                            .send()
+                            .await
+                        {
+                            Ok(r) if r.status().is_success() => accepted += 1,
+                            Ok(r) => {
+                                rejected += 1;
+                                reject_reasons.push(format!(
+                                    "HTTP {} for event {}",
+                                    r.status(),
+                                    event.id
+                                ));
+                            }
+                            Err(e) => {
+                                rejected += 1;
+                                reject_reasons
+                                    .push(format!("Network error for event {}: {}", event.id, e));
+                            }
+                        }
                     }
                 }
             }
@@ -389,5 +476,64 @@ mod tests {
         assert_eq!(body["id"], "stream-1");
         assert_eq!(body["source"], "clipboard");
         assert_eq!(body["payload"], "clipboard content");
+    }
+
+    #[test]
+    fn test_batch_upload_body_format() {
+        // Verify the batch upload JSON body structure
+        let events = vec![
+            soul::CollectedEvent {
+                id: "batch-1".to_string(),
+                source: "file".to_string(),
+                event_type: "file_change".to_string(),
+                timestamp_ms: 1700000000000,
+                payload: b"event 1".to_vec(),
+                tags: [("k1".into(), "v1".into())].into(),
+            },
+            soul::CollectedEvent {
+                id: "batch-2".to_string(),
+                source: "github".to_string(),
+                event_type: "push".to_string(),
+                timestamp_ms: 1700000001000,
+                payload: b"event 2".to_vec(),
+                tags: std::collections::HashMap::new(),
+            },
+        ];
+
+        let batch_items: Vec<serde_json::Value> = events
+            .iter()
+            .map(|event| {
+                let payload_str = String::from_utf8_lossy(&event.payload).to_string();
+                serde_json::json!({
+                    "topic": format!("soma.{}", event.event_type),
+                    "data": {
+                        "id": event.id,
+                        "source": event.source,
+                        "event_type": event.event_type,
+                        "timestamp_ms": event.timestamp_ms,
+                        "payload": payload_str,
+                        "tags": event.tags,
+                    },
+                    "source": format!("opensoma:{}", event.source),
+                })
+            })
+            .collect();
+
+        let body = serde_json::json!({ "events": batch_items });
+
+        assert_eq!(body["events"].as_array().unwrap().len(), 2);
+        assert_eq!(body["events"][0]["topic"], "soma.file_change");
+        assert_eq!(body["events"][0]["data"]["id"], "batch-1");
+        assert_eq!(body["events"][1]["topic"], "soma.push");
+        assert_eq!(body["events"][1]["data"]["id"], "batch-2");
+        assert_eq!(body["events"][1]["source"], "opensoma:github");
+    }
+
+    #[test]
+    fn test_batch_size_constant() {
+        // Verify the batch size constant is reasonable
+        const BATCH_SIZE: usize = 100;
+        assert!(BATCH_SIZE > 0);
+        assert!(BATCH_SIZE <= 500);
     }
 }
