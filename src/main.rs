@@ -229,7 +229,10 @@ fn parse_config_path() -> String {
         println!("    --search <QUERY>       Search cached events by payload text");
         println!("    --source <PREFIX>      Filter cached events by source prefix");
         println!("    --type <TYPE>          Filter cached events by event type");
+        println!("    --stats                Show aggregate event statistics by source and type");
+        println!("    --tail [N]             Real-time event stream (poll every 2s, show last N)");
         println!("    --top                  Live monitoring dashboard (refreshes every 2s)");
+        println!("    --prune <DAYS>         Remove cached events older than N days");
         println!("    -V, --version          Print version information");
         println!("    --version-json         Print version as JSON (for scripts)");
         println!("    -h, --help             Print this help message");
@@ -401,6 +404,54 @@ fn parse_config_path() -> String {
             }
         }
         std::process::exit(run_type_filter(&config_path, &event_type));
+    }
+    // Handle --stats
+    if args.iter().any(|a| a == "--stats") {
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_stats(&config_path));
+    }
+    // Handle --tail [N]
+    if args.iter().any(|a| a == "--tail") {
+        let mut config_path = "config.toml".to_string();
+        let mut count = 10usize;
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+            if args[i] == "--tail" && i + 1 < args.len() {
+                if let Ok(n) = args[i + 1].parse::<usize>() {
+                    count = n;
+                }
+            }
+        }
+        std::process::exit(run_tail(&config_path, count));
+    }
+    // Handle --prune <DAYS>
+    if args.iter().any(|a| a == "--prune") {
+        let prune_idx = args.iter().position(|a| a == "--prune").unwrap();
+        if prune_idx + 1 >= args.len() {
+            eprintln!("❌ --prune requires a number of days argument");
+            std::process::exit(1);
+        }
+        let days: i64 = match args[prune_idx + 1].parse() {
+            Ok(n) => n,
+            Err(_) => {
+                eprintln!("❌ --prune requires a numeric argument (days)");
+                std::process::exit(1);
+            }
+        };
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_prune(&config_path, days));
     }
     // Handle --top
     if args.iter().any(|a| a == "--top") {
@@ -1636,6 +1687,288 @@ fn run_type_filter(config_path: &str, event_type: &str) -> i32 {
     }
     println!();
     0
+}
+
+/// Show aggregate event statistics by source, type, and time distribution.
+fn run_stats(config_path: &str) -> i32 {
+    use std::collections::HashMap;
+
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    let cache = match sync::cache::Cache::open(&config.daemon.data_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to open cache: {:#}", e);
+            return 1;
+        }
+    };
+
+    let stats = cache.stats();
+    let events = match cache.get_recent(10000) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("❌ Failed to read events: {:#}", e);
+            return 1;
+        }
+    };
+
+    if events.is_empty() {
+        println!("No events in cache.");
+        return 0;
+    }
+
+    // Aggregate by source
+    let mut by_source: HashMap<String, u64> = HashMap::new();
+    // Aggregate by event type
+    let mut by_type: HashMap<String, u64> = HashMap::new();
+    // Aggregate by hour
+    let mut by_hour: HashMap<String, u64> = HashMap::new();
+    // Aggregate by day
+    let mut by_day: HashMap<String, u64> = HashMap::new();
+
+    for event in &events {
+        *by_source.entry(event.source.clone()).or_insert(0) += 1;
+        *by_type.entry(event.event_type.clone()).or_insert(0) += 1;
+
+        if let Some(dt) = chrono::DateTime::from_timestamp_millis(event.timestamp_ms) {
+            let hour = dt.format("%Y-%m-%d %H:00").to_string();
+            let day = dt.format("%Y-%m-%d").to_string();
+            *by_hour.entry(hour).or_insert(0) += 1;
+            *by_day.entry(day).or_insert(0) += 1;
+        }
+    }
+
+    println!("╔══════════════════════════════════════════════════════╗");
+    println!("║            OpenSoma — Event Statistics               ║");
+    println!("╚══════════════════════════════════════════════════════╝");
+    println!();
+    println!("  Cache: {} total events, {} pending upload, {} bytes",
+        stats.total, stats.pending, stats.cache_size_bytes);
+    if let Some(first) = events.last() {
+        if let Some(dt) = chrono::DateTime::from_timestamp_millis(first.timestamp_ms) {
+            println!("  Oldest event: {}", dt.format("%Y-%m-%d %H:%M:%S"));
+        }
+    }
+    if let Some(last) = events.first() {
+        if let Some(dt) = chrono::DateTime::from_timestamp_millis(last.timestamp_ms) {
+            println!("  Newest event: {}", dt.format("%Y-%m-%d %H:%M:%S"));
+        }
+    }
+
+    // Events by source
+    println!();
+    println!("  ┌─── Events by Source ───────────────────────────┐");
+    let mut source_vec: Vec<_> = by_source.iter().collect();
+    source_vec.sort_by(|a, b| b.1.cmp(a.1));
+    let max_source_count = source_vec.first().map(|e| *e.1).unwrap_or(1);
+    for (source, count) in &source_vec {
+        let bar_width = (**count as f64 / max_source_count as f64 * 30.0) as usize;
+        println!(
+            "  │ {:<20} {:>6} {}",
+            truncate_str(source, 20),
+            count,
+            "█".repeat(bar_width)
+        );
+    }
+    println!("  └────────────────────────────────────────────────┘");
+
+    // Events by type
+    println!();
+    println!("  ┌─── Events by Type ─────────────────────────────┐");
+    let mut type_vec: Vec<_> = by_type.iter().collect();
+    type_vec.sort_by(|a, b| b.1.cmp(a.1));
+    let max_type_count = type_vec.first().map(|e| *e.1).unwrap_or(1);
+    for (event_type, count) in type_vec.iter().take(15) {
+        let bar_width = (**count as f64 / max_type_count as f64 * 30.0) as usize;
+        println!(
+            "  │ {:<20} {:>6} {}",
+            truncate_str(event_type, 20),
+            count,
+            "█".repeat(bar_width)
+        );
+    }
+    if type_vec.len() > 15 {
+        println!("  │ ... and {} more types", type_vec.len() - 15);
+    }
+    println!("  └────────────────────────────────────────────────┘");
+
+    // Events by day (last 14 days)
+    println!();
+    println!("  ┌─── Events by Day (recent) ─────────────────────┐");
+    let mut day_vec: Vec<_> = by_day.iter().collect();
+    day_vec.sort_by(|a, b| a.0.cmp(b.0));
+    let max_day_count = day_vec.iter().map(|e| *e.1).max().unwrap_or(1);
+    for (day, count) in day_vec.iter().rev().take(14).collect::<Vec<_>>().iter().rev() {
+        let bar_width = (**count as f64 / max_day_count as f64 * 30.0) as usize;
+        println!(
+            "  │ {:<12} {:>8} {}",
+            day,
+            count,
+            "█".repeat(bar_width)
+        );
+    }
+    println!("  └────────────────────────────────────────────────┘");
+    println!();
+    0
+}
+
+/// Real-time event stream — polls cache for new events every 2 seconds.
+/// Shows the last N events, then continuously shows new ones.
+fn run_tail(config_path: &str, initial_count: usize) -> i32 {
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    let cache = match sync::cache::Cache::open(&config.daemon.data_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to open cache: {:#}", e);
+            return 1;
+        }
+    };
+
+    // Show initial events
+    let events = match cache.get_recent(initial_count) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("❌ Failed to read events: {:#}", e);
+            return 1;
+        }
+    };
+
+    println!("╔══════════════════════════════════════════════════════╗");
+    println!("║         OpenSoma — Event Tail (poll: 2s)             ║");
+    println!("║         Press Ctrl+C to exit                         ║");
+    println!("╚══════════════════════════════════════════════════════╝");
+    println!();
+
+    if events.is_empty() {
+        println!("  (no events yet — waiting for new events...)");
+    } else {
+        println!(
+            "  {:<4} {:<14} {:<20} {:<20} Payload",
+            "#", "Source", "Type", "Time"
+        );
+        println!(
+            "  {:<4} {:<14} {:<20} {:<20} ───────",
+            "───", "──────", "────", "────"
+        );
+        for (i, event) in events.iter().enumerate() {
+            let ts = chrono::DateTime::from_timestamp_millis(event.timestamp_ms)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            let payload_preview: String = String::from_utf8_lossy(&event.payload)
+                .chars()
+                .take(50)
+                .collect();
+            println!(
+                "  {:<4} {:<14} {:<20} {:<20} {}",
+                i + 1,
+                truncate_str(&event.source, 14),
+                truncate_str(&event.event_type, 20),
+                ts,
+                payload_preview
+            );
+        }
+    }
+
+    // Track last seen timestamp to detect new events
+    let mut last_seen_ts = events.first().map(|e| e.timestamp_ms).unwrap_or(0);
+    println!();
+    println!("  ── Streaming new events (Ctrl+C to stop) ──");
+    println!();
+
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        // Get recent events and filter for new ones
+        if let Ok(recent) = cache.get_recent(50) {
+            let new_events: Vec<_> = recent
+                .iter()
+                .filter(|e| e.timestamp_ms > last_seen_ts)
+                .collect();
+
+            for event in &new_events {
+                let ts = chrono::DateTime::from_timestamp_millis(event.timestamp_ms)
+                    .map(|dt| dt.format("%H:%M:%S").to_string())
+                    .unwrap_or_else(|| "??:??:??".to_string());
+                let payload_preview: String = String::from_utf8_lossy(&event.payload)
+                    .chars()
+                    .take(60)
+                    .collect();
+                println!(
+                    "  [{}] {:<12} {:<18} {}",
+                    ts,
+                    truncate_str(&event.source, 12),
+                    truncate_str(&event.event_type, 18),
+                    payload_preview
+                );
+
+                if event.timestamp_ms > last_seen_ts {
+                    last_seen_ts = event.timestamp_ms;
+                }
+            }
+
+            if !new_events.is_empty() {
+                // Flush stdout
+                use std::io::Write;
+                std::io::stdout().flush().ok();
+            }
+        }
+    }
+}
+
+/// Remove cached events older than N days.
+fn run_prune(config_path: &str, days: i64) -> i32 {
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    let cache = match sync::cache::Cache::open(&config.daemon.data_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to open cache: {:#}", e);
+            return 1;
+        }
+    };
+
+    let stats_before = cache.stats();
+    let cutoff_ms = chrono::Utc::now().timestamp_millis() - (days * 86400 * 1000);
+
+    println!("Pruning events older than {} days...", days);
+    if let Some(cutoff_dt) = chrono::DateTime::from_timestamp_millis(cutoff_ms) {
+        println!("  Cutoff timestamp:      {}", cutoff_dt.format("%Y-%m-%d %H:%M:%S"));
+    }
+
+    match cache.evict_before(cutoff_ms) {
+        Ok(evicted) => {
+            let stats_after = cache.stats();
+            println!("✅ Pruned {} events.", evicted);
+            println!(
+                "   Cache: {} → {} events",
+                stats_before.total, stats_after.total
+            );
+            0
+        }
+        Err(e) => {
+            eprintln!("❌ Prune failed: {:#}", e);
+            1
+        }
+    }
 }
 
 /// Live monitoring dashboard — polls the daemon status every 2 seconds.
