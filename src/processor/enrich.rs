@@ -42,6 +42,9 @@ pub enum EntityType {
     Uuid,
     AwsArn,
     CreditCard,
+    Mention,    // @username (Telegram, Slack, etc.)
+    Hashtag,    // #topic (Telegram, Slack, Twitter)
+    BotCommand, // /command (Telegram bot commands)
 }
 
 /// Enrich a raw event with extracted entities, keywords, and summary.
@@ -282,6 +285,58 @@ fn extract_entities(text: &str) -> Vec<Entity> {
                 offset: Some(m.1),
             });
         }
+    }
+
+    // @mentions (Telegram, Slack, Discord, Twitter — @username with alphanumeric/underscore)
+    // Filter out email-like patterns (preceded by word char)
+    for m in regex_find(text, r"@[a-zA-Z_][a-zA-Z0-9_]{0,63}\b") {
+        // Skip if preceded by a word character (likely part of email)
+        if m.1 > 0 {
+            let prev_byte = text.as_bytes()[m.1 - 1];
+            if prev_byte.is_ascii_alphanumeric() || prev_byte == b'.' {
+                continue;
+            }
+        }
+        entities.push(Entity {
+            entity_type: EntityType::Mention,
+            value: m.0.to_string(),
+            offset: Some(m.1),
+        });
+    }
+
+    // #hashtags (word-boundary delimited, supports Unicode letters)
+    for m in regex_find(text, r"#[\p{L}\p{N}_]{1,128}\b") {
+        // Skip if preceded by a word character
+        if m.1 > 0 {
+            let prev_byte = text.as_bytes()[m.1 - 1];
+            if prev_byte.is_ascii_alphanumeric() || prev_byte == b'_' {
+                continue;
+            }
+        }
+        entities.push(Entity {
+            entity_type: EntityType::Hashtag,
+            value: m.0.to_string(),
+            offset: Some(m.1),
+        });
+    }
+
+    // /bot_commands (Telegram-style: /command or /command@botname)
+    for m in regex_find(
+        text,
+        r"/[a-zA-Z_][a-zA-Z0-9_]{0,63}(?:@[a-zA-Z_][a-zA-Z0-9_]{0,63})?\b",
+    ) {
+        // Skip if preceded by a non-whitespace character (likely URL path)
+        if m.1 > 0 {
+            let prev_byte = text.as_bytes()[m.1 - 1];
+            if !prev_byte.is_ascii_whitespace() {
+                continue;
+            }
+        }
+        entities.push(Entity {
+            entity_type: EntityType::BotCommand,
+            value: m.0.to_string(),
+            offset: Some(m.1),
+        });
     }
 
     entities
@@ -886,5 +941,160 @@ mod tests {
     #[test]
     fn test_luhn_empty() {
         assert!(!luhn_check(""));
+    }
+
+    // ── @mentions ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_extract_mention_simple() {
+        let entities = extract_entities("Hello @alice how are you?");
+        let mentions: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Mention)
+            .collect();
+        assert_eq!(mentions.len(), 1);
+        assert_eq!(mentions[0].value, "@alice");
+    }
+
+    #[test]
+    fn test_extract_mention_with_underscore() {
+        let entities = extract_entities("cc @user_name_123");
+        let mentions: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Mention)
+            .collect();
+        assert_eq!(mentions.len(), 1);
+        assert_eq!(mentions[0].value, "@user_name_123");
+    }
+
+    #[test]
+    fn test_extract_multiple_mentions() {
+        let entities = extract_entities("@alice @bob @charlie discussed this");
+        let mentions: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Mention)
+            .collect();
+        assert_eq!(mentions.len(), 3);
+    }
+
+    #[test]
+    fn test_no_mention_in_email() {
+        // Email addresses contain @ but should not be extracted as mentions
+        let entities = extract_entities("Send to user@example.com");
+        let mentions: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Mention)
+            .collect();
+        assert_eq!(mentions.len(), 0);
+    }
+
+    // ── #hashtags ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_extract_hashtag_simple() {
+        let entities = extract_entities("Check out #rust lang today");
+        let hashtags: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Hashtag)
+            .collect();
+        assert_eq!(hashtags.len(), 1);
+        assert_eq!(hashtags[0].value, "#rust");
+    }
+
+    #[test]
+    fn test_extract_hashtag_with_numbers() {
+        let entities = extract_entities("Join #dev2026 conference");
+        let hashtags: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Hashtag)
+            .collect();
+        assert_eq!(hashtags.len(), 1);
+        assert_eq!(hashtags[0].value, "#dev2026");
+    }
+
+    #[test]
+    fn test_extract_hashtag_unicode() {
+        let entities = extract_entities("发布 #技术分享 话题");
+        let hashtags: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Hashtag)
+            .collect();
+        assert_eq!(hashtags.len(), 1);
+        assert_eq!(hashtags[0].value, "#技术分享");
+    }
+
+    // ── /bot_commands ─────────────────────────────────────────────
+
+    #[test]
+    fn test_extract_bot_command_simple() {
+        let entities = extract_entities("/start hello");
+        let commands: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::BotCommand)
+            .collect();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].value, "/start");
+    }
+
+    #[test]
+    fn test_extract_bot_command_with_bot_name() {
+        let entities = extract_entities("/help@mybot do something");
+        let commands: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::BotCommand)
+            .collect();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].value, "/help@mybot");
+    }
+
+    #[test]
+    fn test_extract_multiple_commands() {
+        let entities = extract_entities("/start /help /settings");
+        let commands: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::BotCommand)
+            .collect();
+        assert_eq!(commands.len(), 3);
+    }
+
+    #[test]
+    fn test_no_command_in_url_path() {
+        // URL paths contain / but should not be extracted as commands
+        let entities = extract_entities("Visit https://example.com/api/test");
+        let commands: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::BotCommand)
+            .collect();
+        assert_eq!(commands.len(), 0);
+    }
+
+    // ── Mixed IM content ─────────────────────────────────────────
+
+    #[test]
+    fn test_extract_telegram_message_entities() {
+        let text = "Hey @alice check #projectX and run /status@workbot — see https://example.com";
+        let entities = extract_entities(text);
+
+        let mentions: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Mention)
+            .collect();
+        let hashtags: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Hashtag)
+            .collect();
+        let commands: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::BotCommand)
+            .collect();
+        let urls: Vec<_> = entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Url)
+            .collect();
+
+        assert_eq!(mentions.len(), 1);
+        assert_eq!(hashtags.len(), 1);
+        assert_eq!(commands.len(), 1);
+        assert_eq!(urls.len(), 1);
     }
 }
