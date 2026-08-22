@@ -6,11 +6,12 @@ use tracing::{debug, error, info, warn};
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::EmailConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 
 /// Start the Email connector. Polls IMAP accounts at regular intervals
 /// and forwards new emails into the collector pipeline.
-pub async fn start(config: EmailConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: EmailConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let poll_secs = config.poll_interval_secs;
     let accounts = config.accounts.clone();
 
@@ -21,6 +22,7 @@ pub async fn start(config: EmailConfig, tx: EventTx) -> Result<JoinHandle<()>> {
     );
 
     let handle = tokio::spawn(async move {
+        let _cb = circuit_breaker; // Circuit breaker integration point
         let mut interval = tokio::time::interval(Duration::from_secs(poll_secs));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 

@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::GitConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 
 /// Git connector implementing the unified Connector trait.
@@ -49,7 +50,7 @@ impl Connector for GitConnector {
 
 /// Start the Git connector. Clones (or pulls) a repo periodically, parses
 /// Markdown files, and forwards new/changed content into the collector pipeline.
-pub async fn start(config: GitConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: GitConfig, tx: EventTx, _circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let local_path = config.local_path.clone();
 
     // Ensure the local path parent exists

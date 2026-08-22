@@ -6,6 +6,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::TelegramConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 
 /// Telegram connector implementing the unified Connector trait.
@@ -56,7 +57,7 @@ impl Connector for TelegramConnector {
 
 /// Start the Telegram connector. Uses long-polling (getUpdates) to receive
 /// updates from the Bot API and forwards them into the collector pipeline.
-pub async fn start(config: TelegramConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: TelegramConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(Duration::from_secs(65)) // slightly > long-poll timeout
         .build()?;
@@ -77,6 +78,7 @@ pub async fn start(config: TelegramConfig, tx: EventTx) -> Result<JoinHandle<()>
     );
 
     let handle = tokio::spawn(async move {
+        let _cb = circuit_breaker; // Circuit breaker integration point
         let mut offset: i64 = 0;
         let mut interval = tokio::time::interval(poll_interval);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

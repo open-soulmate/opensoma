@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::FeishuConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 use crate::retry_async;
 
@@ -80,7 +81,7 @@ struct DocContentResponse {
 /// Start the Feishu connector. Authenticates with Feishu API, then periodically
 /// polls a configured folder for documents and forwards new/updated content
 /// into the collector pipeline.
-pub async fn start(config: FeishuConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: FeishuConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let http_client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
     // Fetch initial access token with retry
@@ -90,6 +91,7 @@ pub async fn start(config: FeishuConfig, tx: EventTx) -> Result<JoinHandle<()>> 
     info!("Feishu connector authenticated.");
 
     let handle = tokio::spawn(async move {
+        let _cb = circuit_breaker; // Circuit breaker integration point
         let mut current_token = token;
         let mut token_refresh = tokio::time::interval(Duration::from_secs(7000));
         let mut poll_interval = tokio::time::interval(Duration::from_secs(60));

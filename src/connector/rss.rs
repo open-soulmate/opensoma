@@ -6,6 +6,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::RssConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 
 /// RSS connector implementing the unified Connector trait.
@@ -47,7 +48,7 @@ impl Connector for RssConnector {
 
 /// Start the RSS connector. Polls configured RSS/Atom feeds at regular intervals
 /// and forwards new entries into the collector pipeline.
-pub async fn start(config: RssConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: RssConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(Duration::from_secs(30))
         .user_agent("OpenSoma/0.1 RSS Connector")
@@ -63,6 +64,7 @@ pub async fn start(config: RssConfig, tx: EventTx) -> Result<JoinHandle<()>> {
     );
 
     let handle = tokio::spawn(async move {
+        let _cb = circuit_breaker; // Circuit breaker integration point
         let mut interval = tokio::time::interval(Duration::from_secs(poll_secs));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 

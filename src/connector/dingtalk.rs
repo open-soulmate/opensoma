@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::DingtalkConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 use crate::retry_async;
 
@@ -180,7 +181,7 @@ struct WorkReportResult {
 
 /// Start the DingTalk connector. Authenticates via OAuth, then polls
 /// approval process instances, attendance records, and work reports.
-pub async fn start(config: DingtalkConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: DingtalkConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
@@ -193,6 +194,7 @@ pub async fn start(config: DingtalkConfig, tx: EventTx) -> Result<JoinHandle<()>
     let poll_secs = config.poll_interval_secs;
 
     let handle = tokio::spawn(async move {
+        let cb = circuit_breaker;
         let mut current_token = token;
         let mut token_refresh = tokio::time::interval(std::time::Duration::from_secs(6000));
         let mut poll_interval = tokio::time::interval(std::time::Duration::from_secs(poll_secs));
@@ -212,13 +214,25 @@ pub async fn start(config: DingtalkConfig, tx: EventTx) -> Result<JoinHandle<()>
                         Ok(new_token) => {
                             current_token = new_token;
                             info!("DingTalk access token refreshed.");
+                            if let Some(ref c) = cb { c.record_success().await; }
                         }
                         Err(e) => {
                             error!("Failed to refresh DingTalk token: {}", e);
+                            if let Some(ref c) = cb { c.record_failure().await; }
                         }
                     }
                 }
                 _ = poll_interval.tick() => {
+                    // Circuit breaker check
+                    if let Some(ref c) = cb {
+                        if c.allow_request().await.is_err() {
+                            debug!("DingTalk circuit breaker open — skipping poll cycle");
+                            continue;
+                        }
+                    }
+
+                    let mut any_failed = false;
+
                     // Poll approval process instances
                     match fetch_approval_list(&http_client, &current_token).await {
                         Ok(instances) => {
@@ -245,6 +259,7 @@ pub async fn start(config: DingtalkConfig, tx: EventTx) -> Result<JoinHandle<()>
                         }
                         Err(e) => {
                             warn!("Failed to fetch DingTalk approvals: {}", e);
+                            any_failed = true;
                         }
                     }
 
@@ -288,6 +303,7 @@ pub async fn start(config: DingtalkConfig, tx: EventTx) -> Result<JoinHandle<()>
                         }
                         Err(e) => {
                             debug!("Attendance poll skipped or failed: {}", e);
+                            any_failed = true;
                         }
                     }
 
@@ -317,7 +333,13 @@ pub async fn start(config: DingtalkConfig, tx: EventTx) -> Result<JoinHandle<()>
                         }
                         Err(e) => {
                             debug!("Work report poll skipped or failed: {}", e);
+                            any_failed = true;
                         }
+                    }
+
+                    // Record circuit breaker result for this poll cycle
+                    if let Some(ref c) = cb {
+                        if any_failed { c.record_failure().await; } else { c.record_success().await; }
                     }
 
                     // Evict old seen records

@@ -98,9 +98,12 @@ async fn main() -> Result<()> {
     // Create the shared health checker (used by connectors + status server)
     let health_checker = health::HealthChecker::new();
 
-    // Start connectors (feishu, dingtalk, wecom, …) with health checking
+    // Create the shared circuit breaker registry (used by connectors + status server)
+    let circuit_breaker_registry = opensoma::connector::circuit_breaker::CircuitBreakerRegistry::new();
+
+    // Start connectors (feishu, dingtalk, wecom, …) with health checking + circuit breakers
     let connector_handle =
-        connector::start_all(&config.connector, raw_tx.clone(), Some(health_checker.clone()))
+        connector::start_all(&config.connector, raw_tx.clone(), Some(health_checker.clone()), Some(circuit_breaker_registry.clone()))
             .await?;
 
     // Start processor pipeline: raw_rx → normalize → classify → enrich → dedup → processed_tx
@@ -158,7 +161,7 @@ async fn main() -> Result<()> {
         health_checker: Some(health_checker),
         plugin_registry: Some(plugin_registry),
         config_snapshot: Some(status_server::ConfigSnapshot::from_config(&config)),
-        circuit_breakers: Some(opensoma::connector::circuit_breaker::CircuitBreakerRegistry::new()),
+        circuit_breakers: Some(circuit_breaker_registry),
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;

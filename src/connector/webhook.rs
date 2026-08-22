@@ -5,6 +5,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::WebhookConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 
 /// Webhook connector implementing the unified Connector trait.
@@ -45,7 +46,7 @@ struct WebhookState {
 
 /// Start the Webhook connector. Runs an HTTP server that receives webhook
 /// payloads and forwards them into the collector pipeline.
-pub async fn start(config: WebhookConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: WebhookConfig, tx: EventTx, _circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let listen = config.listen.clone();
     let state = WebhookState {
         tx,

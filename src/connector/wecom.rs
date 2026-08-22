@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::WecomConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 
 /// WeCom connector implementing the unified Connector trait.
@@ -95,7 +96,7 @@ struct ExternalContactListResponse {
 
 /// Start the WeCom (企业微信) connector. Authenticates via API, then
 /// polls for received messages and forwards them as events.
-pub async fn start(config: WecomConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: WecomConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
@@ -106,6 +107,7 @@ pub async fn start(config: WecomConfig, tx: EventTx) -> Result<JoinHandle<()>> {
     let poll_secs = config.poll_interval_secs;
 
     let handle = tokio::spawn(async move {
+        let _cb = circuit_breaker; // Circuit breaker integration point
         let mut current_token = token;
         let mut token_refresh = tokio::time::interval(std::time::Duration::from_secs(6000));
         let mut poll_interval = tokio::time::interval(std::time::Duration::from_secs(poll_secs));

@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::ObsidianConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 
 /// Obsidian connector implementing the unified Connector trait.
@@ -47,13 +48,14 @@ impl Connector for ObsidianConnector {
 
 /// Start the Obsidian connector. Watches the vault directory for file changes
 /// and parses Markdown files with WikiLink resolution.
-pub async fn start(config: ObsidianConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: ObsidianConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let vault_path = Path::new(&config.vault_path).to_path_buf();
     if !vault_path.is_dir() {
         anyhow::bail!("Obsidian vault path does not exist: {}", config.vault_path);
     }
 
     let handle = tokio::spawn(async move {
+        let _cb = circuit_breaker; // Circuit breaker integration point
         // Track file hashes for change detection
         let mut known_hashes: HashMap<String, String> = HashMap::new();
 

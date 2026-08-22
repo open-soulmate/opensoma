@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::NotionConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 
 /// Notion connector implementing the unified Connector trait.
@@ -125,10 +126,11 @@ struct RichText {
 
 /// Start the Notion connector. Polls a configured database for pages,
 /// fetches page content, and forwards events into the collector pipeline.
-pub async fn start(config: NotionConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: NotionConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let http_client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
     let handle = tokio::spawn(async move {
+        let _cb = circuit_breaker; // Circuit breaker integration point
         let mut poll_interval =
             tokio::time::interval(Duration::from_secs(config.poll_interval_secs));
         poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

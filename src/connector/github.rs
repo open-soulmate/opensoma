@@ -10,6 +10,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::GitHubConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 
 /// GitHub connector implementing the unified Connector trait.
@@ -117,15 +118,16 @@ struct GitHubReviewComment {
 }
 
 /// Start the GitHub connector. Polls the GitHub API for issues, PRs, and releases.
-pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: GitHubConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let handle = tokio::spawn(async move {
         let poll_interval = Duration::from_secs(config.poll_interval_secs);
         let client = build_client(&config);
 
         info!(
-            "GitHub connector started — repos={}, polling every {}s",
+            "GitHub connector started — repos={}, polling every {}s, circuit_breaker={}",
             config.repos.join(", "),
-            config.poll_interval_secs
+            config.poll_interval_secs,
+            circuit_breaker.is_some()
         );
 
         let mut seen_issues: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -134,27 +136,64 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
         let mut seen_review_comments: std::collections::HashSet<String> =
             std::collections::HashSet::new();
 
-        // Initial fetch
-        for repo in &config.repos {
-            if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues).await {
-                warn!("Initial GitHub issues fetch failed for {}: {}", repo, e);
-            }
-            if config.include_releases {
-                if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases).await {
-                    warn!("Initial GitHub releases fetch failed for {}: {}", repo, e);
+        // Initial fetch (skip if circuit breaker is open)
+        if let Some(ref cb) = circuit_breaker {
+            if cb.allow_request().await.is_err() {
+                warn!("GitHub circuit breaker open — skipping initial fetch");
+            } else {
+                let mut any_failed = false;
+                for repo in &config.repos {
+                    if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues).await {
+                        warn!("Initial GitHub issues fetch failed for {}: {}", repo, e);
+                        any_failed = true;
+                    }
+                    if config.include_releases {
+                        if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases).await {
+                            warn!("Initial GitHub releases fetch failed for {}: {}", repo, e);
+                            any_failed = true;
+                        }
+                    }
+                    if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
+                        warn!("Initial GitHub commits fetch failed for {}: {}", repo, e);
+                        any_failed = true;
+                    }
+                    if config.include_review_comments {
+                        if let Err(e) =
+                            fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await
+                        {
+                            warn!(
+                                "Initial GitHub review comments fetch failed for {}: {}",
+                                repo, e
+                            );
+                            any_failed = true;
+                        }
+                    }
                 }
+                if any_failed { cb.record_failure().await; } else { cb.record_success().await; }
             }
-            if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
-                warn!("Initial GitHub commits fetch failed for {}: {}", repo, e);
-            }
-            if config.include_review_comments {
-                if let Err(e) =
-                    fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await
-                {
-                    warn!(
-                        "Initial GitHub review comments fetch failed for {}: {}",
-                        repo, e
-                    );
+        } else {
+            // No circuit breaker — fetch unconditionally
+            for repo in &config.repos {
+                if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues).await {
+                    warn!("Initial GitHub issues fetch failed for {}: {}", repo, e);
+                }
+                if config.include_releases {
+                    if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases).await {
+                        warn!("Initial GitHub releases fetch failed for {}: {}", repo, e);
+                    }
+                }
+                if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
+                    warn!("Initial GitHub commits fetch failed for {}: {}", repo, e);
+                }
+                if config.include_review_comments {
+                    if let Err(e) =
+                        fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await
+                    {
+                        warn!(
+                            "Initial GitHub review comments fetch failed for {}: {}",
+                            repo, e
+                        );
+                    }
                 }
             }
         }
@@ -162,23 +201,36 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
         loop {
             tokio::time::sleep(poll_interval).await;
 
+            // Circuit breaker check
+            if let Some(ref cb) = circuit_breaker {
+                if cb.allow_request().await.is_err() {
+                    debug!("GitHub circuit breaker open — skipping poll cycle");
+                    continue;
+                }
+            }
+
+            let mut any_failed = false;
             for repo in &config.repos {
                 if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues).await {
                     warn!("GitHub issues fetch failed for {}: {}", repo, e);
+                    any_failed = true;
                 }
                 if config.include_releases {
                     if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases).await {
                         warn!("GitHub releases fetch failed for {}: {}", repo, e);
+                        any_failed = true;
                     }
                 }
                 if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
                     warn!("GitHub commits fetch failed for {}: {}", repo, e);
+                    any_failed = true;
                 }
                 if config.include_review_comments {
                     if let Err(e) =
                         fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await
                     {
                         warn!("GitHub review comments fetch failed for {}: {}", repo, e);
+                        any_failed = true;
                     }
                 }
 
@@ -197,6 +249,11 @@ pub async fn start(config: GitHubConfig, tx: EventTx) -> Result<JoinHandle<()>> 
                         }
                     }
                 }
+            }
+
+            // Record circuit breaker result
+            if let Some(ref cb) = circuit_breaker {
+                if any_failed { cb.record_failure().await; } else { cb.record_success().await; }
             }
         }
     });

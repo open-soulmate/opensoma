@@ -85,6 +85,7 @@ pub async fn start_all(
     config: &ConnectorConfig,
     tx: EventTx,
     health_checker: Option<crate::health::HealthChecker>,
+    circuit_breakers: Option<circuit_breaker::CircuitBreakerRegistry>,
 ) -> Result<JoinHandle<()>> {
     let config = config.clone();
 
@@ -96,10 +97,15 @@ pub async fn start_all(
     let handle = tokio::spawn(async move {
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
 
+        // Helper to extract circuit breaker from registry
+        let get_cb = |name: &str| -> Option<circuit_breaker::CircuitBreaker> {
+            circuit_breakers.as_ref().and_then(|r| r.get(name).cloned())
+        };
+
         // Feishu connector
         if let Some(ref feishu_cfg) = config.feishu {
             if feishu_cfg.enabled {
-                match feishu::start(feishu_cfg.clone(), tx.clone()).await {
+                match feishu::start(feishu_cfg.clone(), tx.clone(), get_cb("feishu")).await {
                     Ok(h) => {
                         info!("Feishu connector started.");
                         handles.push(h);
@@ -112,7 +118,7 @@ pub async fn start_all(
         // DingTalk connector
         if let Some(ref dingtalk_cfg) = config.dingtalk {
             if dingtalk_cfg.enabled {
-                match dingtalk::start(dingtalk_cfg.clone(), tx.clone()).await {
+                match dingtalk::start(dingtalk_cfg.clone(), tx.clone(), get_cb("dingtalk")).await {
                     Ok(h) => {
                         info!("DingTalk connector started.");
                         handles.push(h);
@@ -125,7 +131,7 @@ pub async fn start_all(
         // WeCom connector
         if let Some(ref wecom_cfg) = config.wecom {
             if wecom_cfg.enabled {
-                match wecom::start(wecom_cfg.clone(), tx.clone()).await {
+                match wecom::start(wecom_cfg.clone(), tx.clone(), get_cb("wecom")).await {
                     Ok(h) => {
                         info!("WeCom connector started.");
                         handles.push(h);
@@ -138,7 +144,7 @@ pub async fn start_all(
         // RSS connector
         if let Some(ref rss_cfg) = config.rss {
             if rss_cfg.enabled {
-                match rss::start(rss_cfg.clone(), tx.clone()).await {
+                match rss::start(rss_cfg.clone(), tx.clone(), get_cb("rss")).await {
                     Ok(h) => {
                         info!("RSS connector started.");
                         handles.push(h);
@@ -151,7 +157,7 @@ pub async fn start_all(
         // Email connector
         if let Some(ref email_cfg) = config.email {
             if email_cfg.enabled {
-                match email::start(email_cfg.clone(), tx.clone()).await {
+                match email::start(email_cfg.clone(), tx.clone(), get_cb("email")).await {
                     Ok(h) => {
                         info!("Email connector started.");
                         handles.push(h);
@@ -164,7 +170,7 @@ pub async fn start_all(
         // Webhook connector
         if let Some(ref webhook_cfg) = config.webhook {
             if webhook_cfg.enabled {
-                match webhook::start(webhook_cfg.clone(), tx.clone()).await {
+                match webhook::start(webhook_cfg.clone(), tx.clone(), get_cb("webhook")).await {
                     Ok(h) => {
                         info!("Webhook connector started.");
                         handles.push(h);
@@ -177,7 +183,7 @@ pub async fn start_all(
         // GitHub connector
         if let Some(ref github_cfg) = config.github {
             if github_cfg.enabled {
-                match github::start(github_cfg.clone(), tx.clone()).await {
+                match github::start(github_cfg.clone(), tx.clone(), get_cb("github")).await {
                     Ok(h) => {
                         info!("GitHub connector started.");
                         handles.push(h);
@@ -190,7 +196,7 @@ pub async fn start_all(
         // Notion connector
         if let Some(ref notion_cfg) = config.notion {
             if notion_cfg.enabled {
-                match notion::start(notion_cfg.clone(), tx.clone()).await {
+                match notion::start(notion_cfg.clone(), tx.clone(), get_cb("notion")).await {
                     Ok(h) => {
                         info!("Notion connector started.");
                         handles.push(h);
@@ -203,7 +209,7 @@ pub async fn start_all(
         // Git connector
         if let Some(ref git_cfg) = config.git {
             if git_cfg.enabled {
-                match git::start(git_cfg.clone(), tx.clone()).await {
+                match git::start(git_cfg.clone(), tx.clone(), get_cb("git")).await {
                     Ok(h) => {
                         info!("Git connector started.");
                         handles.push(h);
@@ -216,7 +222,7 @@ pub async fn start_all(
         // Obsidian connector
         if let Some(ref obsidian_cfg) = config.obsidian {
             if obsidian_cfg.enabled {
-                match obsidian::start(obsidian_cfg.clone(), tx.clone()).await {
+                match obsidian::start(obsidian_cfg.clone(), tx.clone(), get_cb("obsidian")).await {
                     Ok(h) => {
                         info!("Obsidian connector started.");
                         handles.push(h);
@@ -229,7 +235,7 @@ pub async fn start_all(
         // Slack connector
         if let Some(ref slack_cfg) = config.slack {
             if slack_cfg.enabled {
-                match slack::start(slack_cfg.clone(), tx.clone()).await {
+                match slack::start(slack_cfg.clone(), tx.clone(), get_cb("slack")).await {
                     Ok(h) => {
                         info!("Slack connector started.");
                         handles.push(h);
@@ -242,7 +248,7 @@ pub async fn start_all(
         // Telegram connector
         if let Some(ref telegram_cfg) = config.telegram {
             if telegram_cfg.enabled {
-                match telegram::start(telegram_cfg.clone(), tx.clone()).await {
+                match telegram::start(telegram_cfg.clone(), tx.clone(), get_cb("telegram")).await {
                     Ok(h) => {
                         info!("Telegram connector started.");
                         handles.push(h);

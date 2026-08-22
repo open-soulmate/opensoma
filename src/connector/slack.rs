@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::collector::{EventTx, RawEvent};
 use crate::config::SlackConfig;
+use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 use crate::retry_async;
 
@@ -142,7 +143,7 @@ struct ChannelInfo {
 }
 
 /// Start the Slack connector. Polls configured channels for new messages.
-pub async fn start(config: SlackConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+pub async fn start(config: SlackConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
     let poll_secs = config.poll_interval_secs;
     let channels = config.channels.clone();
     let bot_token = config.bot_token.clone();
@@ -171,6 +172,7 @@ pub async fn start(config: SlackConfig, tx: EventTx) -> Result<JoinHandle<()>> {
     };
 
     let handle = tokio::spawn(async move {
+        let _cb = circuit_breaker; // Circuit breaker integration point
         if resolved_channels.is_empty() {
             warn!("No Slack channels to monitor — connector idle");
             // Still run the loop in case channels are added later
