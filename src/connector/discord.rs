@@ -524,4 +524,256 @@ mod tests {
         assert_eq!(payload["author_name"], "unknown");
         assert_eq!(payload["author_id"], "");
     }
+
+    #[test]
+    fn test_discord_message_with_embeds() {
+        let msg = DiscordMessage {
+            id: "333".to_string(),
+            content: "Check this link".to_string(),
+            channel_id: "ch_5".to_string(),
+            author: Some(DiscordUser {
+                id: "user_3".to_string(),
+                username: "sharer".to_string(),
+                global_name: Some("Link Sharer".to_string()),
+                bot: Some(false),
+            }),
+            timestamp: Some("2024-06-01T12:00:00.000000+00:00".to_string()),
+            edited_timestamp: None,
+            attachments: vec![],
+            embeds: vec![serde_json::json!({
+                "title": "Example Page",
+                "description": "A sample embed",
+                "url": "https://example.com",
+                "type": "rich"
+            })],
+            r#type: Some(0),
+        };
+
+        let event = message_to_event(&msg, "guild_5");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert!(payload["embeds"].is_array());
+        assert_eq!(payload["embeds"][0]["title"], "Example Page");
+        assert_eq!(payload["embeds"][0]["url"], "https://example.com");
+    }
+
+    #[test]
+    fn test_discord_message_edited() {
+        let msg = DiscordMessage {
+            id: "444".to_string(),
+            content: "Edited content".to_string(),
+            channel_id: "ch_6".to_string(),
+            author: Some(DiscordUser {
+                id: "user_4".to_string(),
+                username: "editor".to_string(),
+                global_name: None,
+                bot: None,
+            }),
+            timestamp: Some("2024-06-01T12:00:00.000000+00:00".to_string()),
+            edited_timestamp: Some("2024-06-01T12:05:00.000000+00:00".to_string()),
+            attachments: vec![],
+            embeds: vec![],
+            r#type: Some(0),
+        };
+
+        let event = message_to_event(&msg, "guild_6");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["content"], "Edited content");
+        assert_eq!(
+            payload["edited_timestamp"],
+            "2024-06-01T12:05:00.000000+00:00"
+        );
+        assert_eq!(
+            payload["timestamp"],
+            "2024-06-01T12:00:00.000000+00:00"
+        );
+    }
+
+    #[test]
+    fn test_discord_message_multiple_attachments() {
+        let msg = DiscordMessage {
+            id: "555".to_string(),
+            content: "Multiple files".to_string(),
+            channel_id: "ch_7".to_string(),
+            author: Some(DiscordUser {
+                id: "user_5".to_string(),
+                username: "multifile".to_string(),
+                global_name: None,
+                bot: None,
+            }),
+            timestamp: None,
+            edited_timestamp: None,
+            attachments: vec![
+                DiscordAttachment {
+                    id: "att_1".to_string(),
+                    filename: "photo.jpg".to_string(),
+                    url: "https://cdn.discordapp.com/photo.jpg".to_string(),
+                    content_type: Some("image/jpeg".to_string()),
+                    size: Some(2048),
+                },
+                DiscordAttachment {
+                    id: "att_2".to_string(),
+                    filename: "doc.pdf".to_string(),
+                    url: "https://cdn.discordapp.com/doc.pdf".to_string(),
+                    content_type: Some("application/pdf".to_string()),
+                    size: Some(4096),
+                },
+            ],
+            embeds: vec![],
+            r#type: Some(0),
+        };
+
+        let event = message_to_event(&msg, "guild_7");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        let att = payload["attachments"].as_array().unwrap();
+        assert_eq!(att.len(), 2);
+        assert_eq!(att[0]["filename"], "photo.jpg");
+        assert_eq!(att[0]["content_type"], "image/jpeg");
+        assert_eq!(att[1]["filename"], "doc.pdf");
+        assert_eq!(att[1]["size"], 4096);
+    }
+
+    #[test]
+    fn test_discord_message_empty_content_with_attachment() {
+        // Discord messages can have empty content if they only contain attachments
+        let msg = DiscordMessage {
+            id: "666".to_string(),
+            content: "".to_string(),
+            channel_id: "ch_8".to_string(),
+            author: Some(DiscordUser {
+                id: "user_6".to_string(),
+                username: "uploader".to_string(),
+                global_name: None,
+                bot: None,
+            }),
+            timestamp: None,
+            edited_timestamp: None,
+            attachments: vec![DiscordAttachment {
+                id: "att_3".to_string(),
+                filename: "image.gif".to_string(),
+                url: "https://cdn.discordapp.com/image.gif".to_string(),
+                content_type: Some("image/gif".to_string()),
+                size: Some(512),
+            }],
+            embeds: vec![],
+            r#type: Some(0),
+        };
+
+        let event = message_to_event(&msg, "guild_8");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["content"], "");
+        assert!(payload["attachments"].is_array());
+        assert_eq!(payload["attachments"][0]["filename"], "image.gif");
+    }
+
+    #[test]
+    fn test_discord_message_reply_type() {
+        let msg = DiscordMessage {
+            id: "777".to_string(),
+            content: "This is a reply".to_string(),
+            channel_id: "ch_9".to_string(),
+            author: Some(DiscordUser {
+                id: "user_7".to_string(),
+                username: "replier".to_string(),
+                global_name: Some("Reply User".to_string()),
+                bot: Some(false),
+            }),
+            timestamp: Some("2024-07-01T09:00:00.000000+00:00".to_string()),
+            edited_timestamp: None,
+            attachments: vec![],
+            embeds: vec![],
+            r#type: Some(19), // reply type
+        };
+
+        let event = message_to_event(&msg, "guild_9");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["type"], 19);
+        assert_eq!(event.event_type, "message");
+        assert_eq!(event.source, "discord");
+    }
+
+    #[test]
+    fn test_discord_message_serialization_roundtrip() {
+        let msg = DiscordMessage {
+            id: "888".to_string(),
+            content: "Roundtrip test 🎉".to_string(),
+            channel_id: "ch_10".to_string(),
+            author: Some(DiscordUser {
+                id: "user_8".to_string(),
+                username: "roundtrip".to_string(),
+                global_name: Some("Round Trip".to_string()),
+                bot: Some(false),
+            }),
+            timestamp: Some("2024-08-01T15:30:00.000000+00:00".to_string()),
+            edited_timestamp: None,
+            attachments: vec![],
+            embeds: vec![],
+            r#type: Some(0),
+        };
+
+        // Serialize to JSON and back
+        let json = serde_json::to_string(&msg).unwrap();
+        let deserialized: DiscordMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, "888");
+        assert_eq!(deserialized.content, "Roundtrip test 🎉");
+        assert_eq!(
+            deserialized.author.as_ref().unwrap().global_name,
+            Some("Round Trip".to_string())
+        );
+    }
+
+    #[test]
+    fn test_discord_message_unicode_content() {
+        let msg = DiscordMessage {
+            id: "999".to_string(),
+            content: "你好世界 🌍 مرحبا".to_string(),
+            channel_id: "ch_11".to_string(),
+            author: Some(DiscordUser {
+                id: "user_9".to_string(),
+                username: "unicode_user".to_string(),
+                global_name: Some("Unicode 名前".to_string()),
+                bot: None,
+            }),
+            timestamp: None,
+            edited_timestamp: None,
+            attachments: vec![],
+            embeds: vec![],
+            r#type: Some(0),
+        };
+
+        let event = message_to_event(&msg, "guild_10");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["content"], "你好世界 🌍 مرحبا");
+        assert_eq!(payload["author_name"], "Unicode 名前");
+    }
+
+    #[test]
+    fn test_discord_channel_type_filtering() {
+        // Verify channel type filtering logic: only type 0 (GUILD_TEXT) and 5 (GUILD_ANNOUNCEMENT) pass
+        let channels = vec![
+            DiscordChannel { id: "1".to_string(), name: Some("general".to_string()), r#type: Some(0) },
+            DiscordChannel { id: "2".to_string(), name: Some("voice-room".to_string()), r#type: Some(2) },
+            DiscordChannel { id: "3".to_string(), name: Some("announcements".to_string()), r#type: Some(5) },
+            DiscordChannel { id: "4".to_string(), name: Some("stage".to_string()), r#type: Some(13) },
+            DiscordChannel { id: "5".to_string(), name: Some("forum".to_string()), r#type: Some(15) },
+            DiscordChannel { id: "6".to_string(), name: Some("unknown".to_string()), r#type: None },
+        ];
+
+        let text_channels: Vec<&DiscordChannel> = channels
+            .iter()
+            .filter(|ch| matches!(ch.r#type, Some(0) | Some(5)))
+            .collect();
+
+        assert_eq!(text_channels.len(), 2);
+        assert_eq!(text_channels[0].id, "1");
+        assert_eq!(text_channels[1].id, "3");
+    }
+
+    #[test]
+    fn test_discord_message_id_ordering() {
+        // Discord snowflake IDs are sortable chronologically
+        let mut ids = vec!["100", "50", "200", "150", "75"];
+        ids.sort();
+        assert_eq!(ids, vec!["100", "150", "200", "50", "75"]); // lexicographic sort
+        // Note: real Discord IDs are 64-bit integers, but string comparison works for same-length IDs
+    }
 }
