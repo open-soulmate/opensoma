@@ -273,7 +273,7 @@ fn extract_labels(event: &RawEvent) -> Vec<String> {
     if let Some(update_type) = event.tags.get("update_type") {
         labels.push(format!("update:{}", update_type));
     }
-    if event.tags.get("edited").is_some() {
+    if event.tags.contains_key("edited") {
         labels.push("edited".to_string());
     }
 
