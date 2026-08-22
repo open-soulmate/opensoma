@@ -77,8 +77,21 @@ pub fn retry_delay(attempt: u32) -> std::time::Duration {
 
 /// Start all enabled connectors. Each connector runs its own HTTP server or
 /// polling loop, forwarding events into the shared collector channel.
-pub async fn start_all(config: &ConnectorConfig, tx: EventTx) -> Result<JoinHandle<()>> {
+///
+/// When a `HealthChecker` is provided, a background health-check loop is also
+/// spawned that periodically pings each enabled connector and records the
+/// result.  This feeds the `/api/health/connectors` status-server endpoint.
+pub async fn start_all(
+    config: &ConnectorConfig,
+    tx: EventTx,
+    health_checker: Option<crate::health::HealthChecker>,
+) -> Result<JoinHandle<()>> {
     let config = config.clone();
+
+    // Collect connector names for background health checking
+    let connector_names: Vec<String> = build_enabled_connector_names(&config);
+    // Clone config for the health-check loop (the main handle consumes `config`)
+    let health_config = config.clone();
 
     let handle = tokio::spawn(async move {
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
@@ -245,7 +258,172 @@ pub async fn start_all(config: &ConnectorConfig, tx: EventTx) -> Result<JoinHand
         }
     });
 
+    // Spawn background health-check loop when a HealthChecker is provided
+    if let Some(checker) = health_checker {
+        if !connector_names.is_empty() {
+            let names = connector_names;
+            let cfg = health_config;
+            tokio::spawn(async move {
+                // Wait a bit before first health check to let connectors initialize
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                info!(
+                    "Connector health-check loop started — {} connectors, interval=60s",
+                    names.len()
+                );
+
+                let mut interval =
+                    tokio::time::interval(std::time::Duration::from_secs(60));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+                loop {
+                    interval.tick().await;
+                    for name in &names {
+                        let result =
+                            ping_connector_by_name(name, &cfg).await;
+                        match result {
+                            Ok(()) => checker.record_healthy(name).await,
+                            Err(e) => {
+                                checker
+                                    .record_unhealthy(name, &e.to_string())
+                                    .await
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
     Ok(handle)
+}
+
+/// Build a list of enabled connector names from config (for health tracking).
+fn build_enabled_connector_names(config: &ConnectorConfig) -> Vec<String> {
+    let mut names = Vec::new();
+    if config.feishu.as_ref().is_some_and(|c| c.enabled) {
+        names.push("feishu".to_string());
+    }
+    if config.dingtalk.as_ref().is_some_and(|c| c.enabled) {
+        names.push("dingtalk".to_string());
+    }
+    if config.wecom.as_ref().is_some_and(|c| c.enabled) {
+        names.push("wecom".to_string());
+    }
+    if config.rss.as_ref().is_some_and(|c| c.enabled) {
+        names.push("rss".to_string());
+    }
+    if config.email.as_ref().is_some_and(|c| c.enabled) {
+        names.push("email".to_string());
+    }
+    if config.webhook.as_ref().is_some_and(|c| c.enabled) {
+        names.push("webhook".to_string());
+    }
+    if config.github.as_ref().is_some_and(|c| c.enabled) {
+        names.push("github".to_string());
+    }
+    if config.notion.as_ref().is_some_and(|c| c.enabled) {
+        names.push("notion".to_string());
+    }
+    if config.git.as_ref().is_some_and(|c| c.enabled) {
+        names.push("git".to_string());
+    }
+    if config.obsidian.as_ref().is_some_and(|c| c.enabled) {
+        names.push("obsidian".to_string());
+    }
+    if config.slack.as_ref().is_some_and(|c| c.enabled) {
+        names.push("slack".to_string());
+    }
+    if config.telegram.as_ref().is_some_and(|c| c.enabled) {
+        names.push("telegram".to_string());
+    }
+    names
+}
+
+/// Ping a connector by name using its `Connector::ping()` implementation.
+///
+/// This instantiates a temporary connector object purely for the health probe
+/// so we don't need to hold references to the running connector instances.
+async fn ping_connector_by_name(
+    name: &str,
+    config: &ConnectorConfig,
+) -> Result<()> {
+    match name {
+        "feishu" => {
+            if let Some(ref cfg) = config.feishu {
+                let c = feishu::FeishuConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "dingtalk" => {
+            if let Some(ref cfg) = config.dingtalk {
+                let c = dingtalk::DingtalkConnector::new(cfg.clone())
+                    .map_err(|e| anyhow::anyhow!("DingtalkConnector init: {}", e))?;
+                return c.ping().await;
+            }
+        }
+        "wecom" => {
+            if let Some(ref cfg) = config.wecom {
+                let c = wecom::WecomConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "rss" => {
+            if let Some(ref cfg) = config.rss {
+                let c = rss::RssConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "email" => {
+            if let Some(ref cfg) = config.email {
+                let c = email::EmailConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "webhook" => {
+            if let Some(ref cfg) = config.webhook {
+                let c = webhook::WebhookConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "github" => {
+            if let Some(ref cfg) = config.github {
+                let c = github::GitHubConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "notion" => {
+            if let Some(ref cfg) = config.notion {
+                let c = notion::NotionConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "git" => {
+            if let Some(ref cfg) = config.git {
+                let c = git::GitConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "obsidian" => {
+            if let Some(ref cfg) = config.obsidian {
+                let c = obsidian::ObsidianConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "slack" => {
+            if let Some(ref cfg) = config.slack {
+                let c = slack::SlackConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "telegram" => {
+            if let Some(ref cfg) = config.telegram {
+                let c = telegram::TelegramConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        _ => {}
+    }
+    anyhow::bail!("Connector '{}' not found in config", name)
 }
 
 #[cfg(test)]
@@ -343,5 +521,106 @@ mod tests {
         let result: anyhow::Result<i32> =
             retry_async!("single_fail", 1, { Err(anyhow::anyhow!("oops")) });
         assert!(result.is_err());
+    }
+
+    // ── Health-check integration tests ────────────────────────────
+
+    #[test]
+    fn test_build_enabled_connector_names_all_disabled() {
+        let config = ConnectorConfig {
+            feishu: None,
+            dingtalk: None,
+            wecom: None,
+            rss: None,
+            email: None,
+            webhook: None,
+            github: None,
+            notion: None,
+            git: None,
+            obsidian: None,
+            slack: None,
+            telegram: None,
+        };
+        let names = build_enabled_connector_names(&config);
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn test_build_enabled_connector_names_some_enabled() {
+        let config = ConnectorConfig {
+            feishu: Some(crate::config::FeishuConfig {
+                enabled: true,
+                app_id: "id".into(),
+                app_secret: "secret".into(),
+                webhook_path: "/hook".into(),
+                folder_token: None,
+            }),
+            dingtalk: None,
+            wecom: None,
+            rss: Some(crate::config::RssConfig {
+                enabled: true,
+                feeds: vec![],
+                poll_interval_secs: 60,
+            }),
+            email: None,
+            webhook: None,
+            github: None,
+            notion: None,
+            git: None,
+            obsidian: None,
+            slack: None,
+            telegram: None,
+        };
+        let names = build_enabled_connector_names(&config);
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"feishu".to_string()));
+        assert!(names.contains(&"rss".to_string()));
+    }
+
+    #[test]
+    fn test_build_enabled_connector_names_disabled_not_included() {
+        let config = ConnectorConfig {
+            feishu: Some(crate::config::FeishuConfig {
+                enabled: false,
+                app_id: "id".into(),
+                app_secret: "secret".into(),
+                webhook_path: "/hook".into(),
+                folder_token: None,
+            }),
+            dingtalk: None,
+            wecom: None,
+            rss: None,
+            email: None,
+            webhook: None,
+            github: None,
+            notion: None,
+            git: None,
+            obsidian: None,
+            slack: None,
+            telegram: None,
+        };
+        let names = build_enabled_connector_names(&config);
+        assert!(names.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_ping_connector_unknown_name() {
+        let config = ConnectorConfig {
+            feishu: None,
+            dingtalk: None,
+            wecom: None,
+            rss: None,
+            email: None,
+            webhook: None,
+            github: None,
+            notion: None,
+            git: None,
+            obsidian: None,
+            slack: None,
+            telegram: None,
+        };
+        let result = ping_connector_by_name("nonexistent", &config).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
     }
 }

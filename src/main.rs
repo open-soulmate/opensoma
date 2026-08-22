@@ -95,8 +95,13 @@ async fn main() -> Result<()> {
     // Start collectors (file watcher)
     let collector_handle = collector::start_all(&config.collector, raw_tx.clone()).await?;
 
-    // Start connectors (feishu, dingtalk, wecom)
-    let connector_handle = connector::start_all(&config.connector, raw_tx.clone()).await?;
+    // Create the shared health checker (used by connectors + status server)
+    let health_checker = health::HealthChecker::new();
+
+    // Start connectors (feishu, dingtalk, wecom, …) with health checking
+    let connector_handle =
+        connector::start_all(&config.connector, raw_tx.clone(), Some(health_checker.clone()))
+            .await?;
 
     // Start processor pipeline: raw_rx → normalize → classify → enrich → dedup → processed_tx
     let pipeline_metrics = metrics::PipelineMetrics::new();
@@ -150,7 +155,7 @@ async fn main() -> Result<()> {
         cache_stats: cache_stats.clone(),
         cache: Some(cache_clone),
         pipeline_metrics: Some(pipeline_metrics),
-        health_checker: Some(health::HealthChecker::new()),
+        health_checker: Some(health_checker),
         plugin_registry: Some(plugin_registry),
         config_snapshot: Some(status_server::ConfigSnapshot::from_config(&config)),
         circuit_breakers: Some(opensoma::connector::circuit_breaker::CircuitBreakerRegistry::new()),
