@@ -84,6 +84,8 @@ pub struct ConnectorConfig {
     pub slack: Option<SlackConfig>,
     #[serde(default)]
     pub telegram: Option<TelegramConfig>,
+    #[serde(default)]
+    pub discord: Option<DiscordConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -265,6 +267,25 @@ pub struct TelegramConfig {
     pub include_edited: bool,
     /// Polling interval in seconds (default 30)
     #[serde(default = "default_telegram_interval")]
+    pub poll_interval_secs: u64,
+}
+
+/// Discord connector configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiscordConfig {
+    pub enabled: bool,
+    /// Discord Bot token (from Discord Developer Portal)
+    pub bot_token: String,
+    /// Discord guild (server) ID to monitor
+    pub guild_id: String,
+    /// Specific channel IDs to monitor (empty = all text channels)
+    #[serde(default)]
+    pub channels: Vec<String>,
+    /// Ignore bot messages (default true)
+    #[serde(default = "default_true")]
+    pub ignore_bots: bool,
+    /// Polling interval in seconds (default 30)
+    #[serde(default = "default_discord_interval")]
     pub poll_interval_secs: u64,
 }
 
@@ -894,6 +915,9 @@ fn default_email_interval() -> u64 {
     120
 }
 fn default_telegram_interval() -> u64 {
+    30
+}
+fn default_discord_interval() -> u64 {
     30
 }
 fn default_imap_port() -> u16 {

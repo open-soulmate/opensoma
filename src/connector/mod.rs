@@ -1,4 +1,5 @@
 pub mod circuit_breaker;
+pub mod discord;
 pub mod dingtalk;
 pub mod email;
 pub mod feishu;
@@ -258,6 +259,19 @@ pub async fn start_all(
             }
         }
 
+        // Discord connector
+        if let Some(ref discord_cfg) = config.discord {
+            if discord_cfg.enabled {
+                match discord::start(discord_cfg.clone(), tx.clone(), get_cb("discord")).await {
+                    Ok(h) => {
+                        info!("Discord connector started.");
+                        handles.push(h);
+                    }
+                    Err(e) => tracing::error!("Failed to start Discord connector: {}", e),
+                }
+            }
+        }
+
         // Wait for all connector tasks
         for h in handles {
             let _ = h.await;
@@ -342,6 +356,9 @@ fn build_enabled_connector_names(config: &ConnectorConfig) -> Vec<String> {
     if config.telegram.as_ref().is_some_and(|c| c.enabled) {
         names.push("telegram".to_string());
     }
+    if config.discord.as_ref().is_some_and(|c| c.enabled) {
+        names.push("discord".to_string());
+    }
     names
 }
 
@@ -424,6 +441,12 @@ async fn ping_connector_by_name(
         "telegram" => {
             if let Some(ref cfg) = config.telegram {
                 let c = telegram::TelegramConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "discord" => {
+            if let Some(ref cfg) = config.discord {
+                let c = discord::DiscordConnector::new(cfg.clone());
                 return c.ping().await;
             }
         }
@@ -546,6 +569,7 @@ mod tests {
             obsidian: None,
             slack: None,
             telegram: None,
+            discord: None,
         };
         let names = build_enabled_connector_names(&config);
         assert!(names.is_empty());
@@ -576,6 +600,7 @@ mod tests {
             obsidian: None,
             slack: None,
             telegram: None,
+            discord: None,
         };
         let names = build_enabled_connector_names(&config);
         assert_eq!(names.len(), 2);
@@ -604,6 +629,7 @@ mod tests {
             obsidian: None,
             slack: None,
             telegram: None,
+            discord: None,
         };
         let names = build_enabled_connector_names(&config);
         assert!(names.is_empty());
@@ -624,6 +650,7 @@ mod tests {
             obsidian: None,
             slack: None,
             telegram: None,
+            discord: None,
         };
         let result = ping_connector_by_name("nonexistent", &config).await;
         assert!(result.is_err());

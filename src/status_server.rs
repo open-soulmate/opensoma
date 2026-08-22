@@ -344,6 +344,7 @@ async fn api_connectors_handler(
         ("obsidian", "Obsidian"),
         ("slack", "Slack"),
         ("telegram", "Telegram"),
+        ("discord", "Discord"),
     ];
 
     let list: Vec<ConnectorInfo> = all_connectors
@@ -404,7 +405,7 @@ async fn api_connector_toggle(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let valid_connectors = [
         "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
-        "obsidian", "slack", "telegram",
+        "obsidian", "slack", "telegram", "discord",
     ];
 
     if !valid_connectors.contains(&name.as_str()) {
@@ -1553,7 +1554,7 @@ mod tests {
             .to_bytes();
         let connectors: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
-        assert_eq!(connectors.len(), 12);
+        assert_eq!(connectors.len(), 13);
 
         // Verify all connector IDs are present
         let ids: Vec<&str> = connectors
@@ -1562,7 +1563,7 @@ mod tests {
             .collect();
         for expected in &[
             "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
-            "obsidian", "slack", "telegram",
+            "obsidian", "slack", "telegram", "discord",
         ] {
             assert!(ids.contains(expected), "Missing connector: {}", expected);
         }

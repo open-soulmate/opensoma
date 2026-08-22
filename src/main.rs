@@ -604,6 +604,7 @@ fn run_validate_with_path(config_path: &str) -> i32 {
             check_connector!(config.connector.github);
             check_connector!(config.connector.slack);
             check_connector!(config.connector.telegram);
+            check_connector!(config.connector.discord);
 
             println!();
             println!("Summary:");
@@ -727,6 +728,14 @@ watch_dirs = []
 # allowed_chats = [123456789]
 # poll_interval_secs = 30
 # include_edited = true
+#
+# [connector.discord]
+# enabled = true
+# bot_token = "your-discord-bot-token"
+# guild_id = "1234567890123456789"
+# channels = []  # empty = all text channels
+# ignore_bots = true
+# poll_interval_secs = 30
 
 [processor]
 # normalize_timestamps = true
