@@ -38,7 +38,7 @@ OpenSoma is a headless daemon that acts as your digital twin's sensory layer. It
 ```
 
 **Key design principles:**
-- **Headless** — no UI, no web server overhead. Runs as a systemd service, Docker container, or bare process.
+- **Headless-first** — designed to run as a background daemon (systemd, Docker, or bare process). Includes an optional built-in web dashboard on `status_port` for monitoring.
 - **Distributed** — deploy multiple nodes on different machines; each node has a unique `node_id` and connects independently to the Soul agent.
 - **Offline-first** — local sled cache buffers events when the network is down; automatic retry on reconnection.
 - **Hot-reload** — edit `config.toml` while running; changes apply without restart.
@@ -60,6 +60,7 @@ OpenSoma is a headless daemon that acts as your digital twin's sensory layer. It
 | **GitHub**   | GitHub REST API          | Poll         | Syncs issues, PRs, and releases from repositories |
 | **Slack**    | Slack API                | Poll         | Collects messages and thread replies from channels |
 | **Telegram** | Telegram Bot API         | Long-poll    | Receives messages via getUpdates with HMAC verify  |
+| **Discord**  | Discord Bot API          | WebSocket    | Receives messages, reactions, and thread events    |
 
 ## Quick Start
 
@@ -110,9 +111,19 @@ Options:
   --health               Quick health check (exit 0=ok, 1=down)
   --connectors           List configured connectors and their status
   --doctor               Diagnose runtime environment and dependencies
+  --self-test            Run end-to-end pipeline self-test (no Soul needed)
   --export <FILE>        Export cached events to JSON file
   --import <FILE>        Import events from JSON file into cache
   --cache-info           Show local event cache statistics
+  --recent [N]           Show N most recent cached events (default: 10)
+  --search <QUERY>       Search cached events by payload text
+  --source <PREFIX>      Filter cached events by source prefix
+  --type <TYPE>          Filter cached events by event type
+  --stats                Show aggregate event statistics by source and type
+  --tail [N]             Real-time event stream (poll every 2s, show last N)
+  --top                  Live monitoring dashboard (refreshes every 2s)
+  --prune <DAYS>         Remove cached events older than N days
+  --test-connector <N>   Test connectivity to a specific connector
   -V, --version          Print version information
   --version-json         Print version as JSON (for scripts)
   -h, --help             Print help
@@ -179,7 +190,7 @@ To add a new plugin, create a module under `src/plugins/sense/` and register it 
 | Module       | Responsibility                                          |
 |-------------|--------------------------------------------------------|
 | `collector`  | File system watcher + process/network/clipboard monitors |
-| `connector`  | IM platform integrations — Feishu, DingTalk, WeCom, RSS, Email, Notion, Git, Obsidian, Webhook, GitHub, Slack, Telegram |
+| `connector`  | IM platform integrations — Feishu, DingTalk, WeCom, RSS, Email, Notion, Git, Obsidian, Webhook, GitHub, Slack, Telegram, Discord |
 | `processor`  | Normalize → Classify → Enrich → Dedup pipeline         |
 | `sync`       | Incremental upload with local sled cache + offline retry |
 | `grpc`       | Tonic client for Soul Agent API                         |
@@ -189,6 +200,22 @@ To add a new plugin, create a module under `src/plugins/sense/` and register it 
 | `health`     | Connector health check system with status tracking        |
 | `metrics`    | Pipeline and system metrics with Prometheus export      |
 | `status_server` | HTTP monitoring API for daemon status and health     |
+
+## Web Dashboard
+
+OpenSoma includes a built-in monitoring dashboard accessible at `http://localhost:<status_port>` (default port 8091). The dashboard provides:
+
+| Page         | Description                                          |
+|-------------|------------------------------------------------------|
+| Dashboard    | System overview with health, uptime, and event counts |
+| Connectors   | Status and health of all configured connectors       |
+| Collectors   | File, process, network, and clipboard monitor status  |
+| Sync         | Upload queue, cache stats, and conflict resolution    |
+| Monitor      | Live event stream with real-time updates              |
+| Config       | Current configuration view                            |
+| Plugins      | Sense plugin registry and activation status           |
+
+The dashboard is fully embedded in the binary — no external files needed at runtime.
 
 ## Build
 
@@ -266,6 +293,7 @@ opensoma/
     │   ├── github.rs     # Issues, PRs, releases
     │   ├── slack.rs      # Slack channel messages + threads
     │   ├── telegram.rs   # Telegram Bot API (long-polling)
+    │   ├── discord.rs    # Discord Bot API (WebSocket)
     │   └── circuit_breaker.rs  # Per-connector circuit breaker
     ├── grpc/             # HTTP client for Soul API
     ├── plugins/
