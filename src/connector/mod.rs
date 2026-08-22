@@ -366,7 +366,7 @@ fn build_enabled_connector_names(config: &ConnectorConfig) -> Vec<String> {
 ///
 /// This instantiates a temporary connector object purely for the health probe
 /// so we don't need to hold references to the running connector instances.
-async fn ping_connector_by_name(
+pub async fn ping_connector_by_name(
     name: &str,
     config: &ConnectorConfig,
 ) -> Result<()> {

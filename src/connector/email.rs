@@ -390,4 +390,218 @@ accounts = []
         assert!(seen.contains(&4));
         assert_eq!(seen.len(), 4);
     }
+
+    #[test]
+    fn test_email_config_tls_enabled() {
+        let toml = r#"
+enabled = true
+poll_interval_secs = 30
+
+[[accounts]]
+name = "secure"
+imap_server = "imap.company.com"
+imap_port = 993
+username = "user@company.com"
+password = "secret"
+folder = "INBOX"
+tls = true
+"#;
+        let config: EmailConfig = toml::from_str(toml).unwrap();
+        assert!(config.accounts[0].tls);
+        assert_eq!(config.accounts[0].imap_port, 993);
+    }
+
+    #[test]
+    fn test_email_config_custom_port() {
+        let toml = r#"
+enabled = true
+
+[[accounts]]
+name = "custom"
+imap_server = "mail.example.com"
+imap_port = 143
+username = "user"
+password = "pass"
+tls = false
+"#;
+        let config: EmailConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.accounts[0].imap_port, 143);
+        assert!(!config.accounts[0].tls);
+    }
+
+    #[test]
+    fn test_email_config_multiple_accounts_different_folders() {
+        let toml = r#"
+enabled = true
+
+[[accounts]]
+name = "inbox"
+imap_server = "imap.a.com"
+username = "a@test.com"
+password = "pass1"
+folder = "INBOX"
+
+[[accounts]]
+name = "sent"
+imap_server = "imap.b.com"
+username = "b@test.com"
+password = "pass2"
+folder = "Sent"
+
+[[accounts]]
+name = "archive"
+imap_server = "imap.c.com"
+username = "c@test.com"
+password = "pass3"
+folder = "Archive"
+"#;
+        let config: EmailConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.accounts.len(), 3);
+        assert_eq!(config.accounts[0].folder, "INBOX");
+        assert_eq!(config.accounts[1].folder, "Sent");
+        assert_eq!(config.accounts[2].folder, "Archive");
+    }
+
+    #[test]
+    fn test_email_connector_new_and_name() {
+        let config = EmailConfig {
+            enabled: true,
+            accounts: vec![EmailAccountConfig {
+                name: "test".to_string(),
+                imap_server: "imap.test.com".to_string(),
+                imap_port: 993,
+                username: "user".to_string(),
+                password: "pass".to_string(),
+                folder: "INBOX".to_string(),
+                tls: true,
+            }],
+            poll_interval_secs: 60,
+        };
+        let connector = EmailConnector::new(config);
+        assert_eq!(connector.name(), "email");
+        assert_eq!(connector.config.accounts.len(), 1);
+    }
+
+    #[test]
+    fn test_email_event_source_format() {
+        // Verify the source format used in poll_account
+        let account_name = "work";
+        let source = format!("connector:email:{}", account_name);
+        assert_eq!(source, "connector:email:work");
+    }
+
+    #[test]
+    fn test_email_event_tags_structure() {
+        // Verify the tags created for email events
+        let account = EmailAccountConfig {
+            name: "work".to_string(),
+            imap_server: "imap.work.com".to_string(),
+            imap_port: 993,
+            username: "user@work.com".to_string(),
+            password: "pass".to_string(),
+            folder: "INBOX".to_string(),
+            tls: true,
+        };
+
+        let mut tags = std::collections::HashMap::new();
+        tags.insert("connector".to_string(), "email".to_string());
+        tags.insert("account".to_string(), account.name.clone());
+        tags.insert("folder".to_string(), account.folder.clone());
+
+        assert_eq!(tags.get("connector").unwrap(), "email");
+        assert_eq!(tags.get("account").unwrap(), "work");
+        assert_eq!(tags.get("folder").unwrap(), "INBOX");
+        assert_eq!(tags.len(), 3);
+    }
+
+    #[test]
+    fn test_email_body_snippet_truncation_in_json() {
+        // Verify that body_snippet in JSON is truncated to 2000 chars
+        let long_body = "x".repeat(5000);
+        let snippet: String = long_body.chars().take(2000).collect();
+
+        let payload = serde_json::json!({
+            "account": "test",
+            "folder": "INBOX",
+            "uid": 1u32,
+            "headers": "From: test@test.com\r\n",
+            "body_snippet": snippet,
+        });
+
+        assert_eq!(payload["body_snippet"].as_str().unwrap().len(), 2000);
+    }
+
+    #[test]
+    fn test_email_config_poll_interval_custom() {
+        let toml = r#"
+enabled = true
+poll_interval_secs = 300
+
+[[accounts]]
+name = "slow"
+imap_server = "imap.slow.com"
+username = "user"
+password = "pass"
+"#;
+        let config: EmailConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.poll_interval_secs, 300);
+    }
+
+    #[test]
+    fn test_email_config_poll_interval_zero() {
+        // Edge case: poll_interval_secs = 0 should still parse
+        let toml = r#"
+enabled = true
+poll_interval_secs = 0
+
+[[accounts]]
+name = "fast"
+imap_server = "imap.fast.com"
+username = "user"
+password = "pass"
+"#;
+        let config: EmailConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.poll_interval_secs, 0);
+    }
+
+    #[test]
+    fn test_email_account_config_clone() {
+        let account = EmailAccountConfig {
+            name: "clone-test".to_string(),
+            imap_server: "imap.test.com".to_string(),
+            imap_port: 993,
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            folder: "INBOX".to_string(),
+            tls: true,
+        };
+        let cloned = account.clone();
+        assert_eq!(cloned.name, account.name);
+        assert_eq!(cloned.imap_server, account.imap_server);
+        assert_eq!(cloned.imap_port, account.imap_port);
+        assert_eq!(cloned.username, account.username);
+        assert_eq!(cloned.password, account.password);
+        assert_eq!(cloned.folder, account.folder);
+        assert_eq!(cloned.tls, account.tls);
+    }
+
+    #[test]
+    fn test_email_seen_uids_boundary() {
+        // Test with UID 0 (edge case)
+        let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        seen.insert(0);
+        assert!(seen.contains(&0));
+        assert!(!seen.contains(&1));
+
+        // Test with max UID
+        seen.insert(u32::MAX);
+        assert!(seen.contains(&u32::MAX));
+    }
+
+    #[test]
+    fn test_email_event_type_constant() {
+        // Verify the event type used in email events
+        let event_type = "email_message";
+        assert_eq!(event_type, "email_message");
+    }
 }

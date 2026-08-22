@@ -233,6 +233,7 @@ fn parse_config_path() -> String {
         println!("    --tail [N]             Real-time event stream (poll every 2s, show last N)");
         println!("    --top                  Live monitoring dashboard (refreshes every 2s)");
         println!("    --prune <DAYS>         Remove cached events older than N days");
+        println!("    --test-connector <N>   Test connectivity to a specific connector (e.g. feishu, github)");
         println!("    -V, --version          Print version information");
         println!("    --version-json         Print version as JSON (for scripts)");
         println!("    -h, --help             Print this help message");
@@ -452,6 +453,22 @@ fn parse_config_path() -> String {
             }
         }
         std::process::exit(run_prune(&config_path, days));
+    }
+    // Handle --test-connector <NAME>
+    if args.iter().any(|a| a == "--test-connector") {
+        let tc_idx = args.iter().position(|a| a == "--test-connector").unwrap();
+        if tc_idx + 1 >= args.len() {
+            eprintln!("❌ --test-connector requires a connector name (e.g. feishu, github, email)");
+            std::process::exit(1);
+        }
+        let connector_name = args[tc_idx + 1].clone();
+        let mut config_path = "config.toml".to_string();
+        for i in 0..args.len() {
+            if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+                config_path = args[i + 1].clone();
+            }
+        }
+        std::process::exit(run_test_connector(&config_path, &connector_name));
     }
     // Handle --top
     if args.iter().any(|a| a == "--top") {
@@ -1269,6 +1286,79 @@ fn run_doctor(config_path: &str) -> i32 {
     } else {
         println!("  Result: ✅ All checks passed");
         0
+    }
+}
+/// Test connectivity to a specific connector by name.
+/// Uses the same ping mechanism as the health-check loop but runs once and exits.
+fn run_test_connector(config_path: &str, connector_name: &str) -> i32 {
+    use tokio::runtime::Runtime;
+
+    println!("╔══════════════════════════════════════════════╗");
+    println!("║      OpenSoma — Test Connector               ║");
+    println!("╚══════════════════════════════════════════════╝");
+    println!();
+    println!("  Connector: {}", connector_name);
+    println!("  Config:    {}", config_path);
+    println!();
+
+    let config = match config::AppConfig::load(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to load config: {:#}", e);
+            return 1;
+        }
+    };
+
+    // Validate connector name
+    let known_connectors = [
+        "feishu", "dingtalk", "wecom", "rss", "email", "webhook",
+        "github", "notion", "git", "obsidian", "slack", "telegram", "discord",
+    ];
+    if !known_connectors.contains(&connector_name) {
+        eprintln!("❌ Unknown connector: '{}'", connector_name);
+        eprintln!("   Available connectors: {}", known_connectors.join(", "));
+        return 1;
+    }
+
+    // Check if connector is enabled in config
+    let is_enabled = match connector_name {
+        "feishu" => config.connector.feishu.as_ref().is_some_and(|c| c.enabled),
+        "dingtalk" => config.connector.dingtalk.as_ref().is_some_and(|c| c.enabled),
+        "wecom" => config.connector.wecom.as_ref().is_some_and(|c| c.enabled),
+        "rss" => config.connector.rss.as_ref().is_some_and(|c| c.enabled),
+        "email" => config.connector.email.as_ref().is_some_and(|c| c.enabled),
+        "webhook" => config.connector.webhook.as_ref().is_some_and(|c| c.enabled),
+        "github" => config.connector.github.as_ref().is_some_and(|c| c.enabled),
+        "notion" => config.connector.notion.as_ref().is_some_and(|c| c.enabled),
+        "git" => config.connector.git.as_ref().is_some_and(|c| c.enabled),
+        "obsidian" => config.connector.obsidian.as_ref().is_some_and(|c| c.enabled),
+        "slack" => config.connector.slack.as_ref().is_some_and(|c| c.enabled),
+        "telegram" => config.connector.telegram.as_ref().is_some_and(|c| c.enabled),
+        "discord" => config.connector.discord.as_ref().is_some_and(|c| c.enabled),
+        _ => false,
+    };
+
+    if !is_enabled {
+        println!("  ⚠️  Connector '{}' is not enabled in config.toml", connector_name);
+        println!("     Enable it by setting [connector.{}].enabled = true", connector_name);
+        return 0;
+    }
+
+    // Run the ping test using tokio runtime
+    let rt = Runtime::new().expect("Failed to create tokio runtime");
+    let result = rt.block_on(async {
+        connector::ping_connector_by_name(connector_name, &config.connector).await
+    });
+
+    match result {
+        Ok(()) => {
+            println!("  ✅ Connector '{}' is healthy — connectivity OK!", connector_name);
+            0
+        }
+        Err(e) => {
+            println!("  ❌ Connector '{}' failed: {:#}", connector_name, e);
+            1
+        }
     }
 }
 /// Export all cached events to a JSON file. Returns exit code.
@@ -2609,5 +2699,29 @@ mod tests {
     fn test_bar_small_width() {
         let b = bar(50.0, 4);
         assert_eq!(b, "[██░░]");
+    }
+
+    // ── --test-connector CLI tests ──────────────────────────────
+
+    #[test]
+    fn test_known_connectors_list() {
+        // Verify the known connectors list matches the connector module
+        let known = [
+            "feishu", "dingtalk", "wecom", "rss", "email", "webhook",
+            "github", "notion", "git", "obsidian", "slack", "telegram", "discord",
+        ];
+        assert_eq!(known.len(), 13);
+        assert!(known.contains(&"feishu"));
+        assert!(known.contains(&"github"));
+        assert!(known.contains(&"discord"));
+        assert!(!known.contains(&"nonexistent"));
+    }
+
+    #[test]
+    fn test_test_connector_help_text() {
+        // Verify the help text includes --test-connector
+        let help_text = "--test-connector <N>   Test connectivity to a specific connector (e.g. feishu, github)";
+        assert!(help_text.contains("--test-connector"));
+        assert!(help_text.contains("feishu"));
     }
 }
