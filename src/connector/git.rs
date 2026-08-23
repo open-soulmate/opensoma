@@ -149,22 +149,39 @@ async fn scan_and_forward(
     known_hashes: &mut std::collections::HashMap<String, String>,
 ) -> Result<()> {
     let repo_path = std::path::Path::new(&config.local_path);
-    let md_files = find_markdown_files(repo_path)?;
+    let tracked_files = find_tracked_files(repo_path, &config.file_extensions)?;
 
-    for file_path in md_files {
+    // Build set of currently-existing file paths for deletion detection
+    let mut current_files: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for file_path in tracked_files {
         let relative = file_path
             .strip_prefix(repo_path)
             .unwrap_or(&file_path)
             .to_string_lossy()
             .to_string();
 
+        // Skip files exceeding max size
+        if config.max_file_size_bytes > 0 {
+            if let Ok(meta) = std::fs::metadata(&file_path) {
+                if meta.len() > config.max_file_size_bytes {
+                    debug!("Skipping {} ({} bytes exceeds max {})", relative, meta.len(), config.max_file_size_bytes);
+                    current_files.insert(relative.clone());
+                    continue;
+                }
+            }
+        }
+
         let content = match std::fs::read_to_string(&file_path) {
             Ok(c) => c,
             Err(e) => {
                 warn!("Failed to read {}: {}", relative, e);
+                current_files.insert(relative.clone());
                 continue;
             }
         };
+
+        current_files.insert(relative.clone());
 
         let hash = compute_hash(&content);
 
@@ -189,11 +206,35 @@ async fn scan_and_forward(
         }
     }
 
+    // Detect deletions: files in known_hashes but not on disk anymore
+    if config.detect_deletions {
+        let deleted: Vec<String> = known_hashes
+            .keys()
+            .filter(|k| !current_files.contains(*k))
+            .cloned()
+            .collect();
+
+        for relative in deleted {
+            known_hashes.remove(&relative);
+            let event = to_deletion_event(&relative);
+            match tx.try_send(event) {
+                Ok(()) => info!("Detected deleted file: {}", relative),
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    warn!("Event channel full, dropping deletion event: {}", relative);
+                }
+                Err(e) => error!("Failed to send deletion event: {}", e),
+            }
+        }
+    }
+
     Ok(())
 }
 
-/// Recursively find all `.md` files under a directory.
-fn find_markdown_files(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
+/// Recursively find all files with the given extensions under a directory.
+fn find_tracked_files(
+    dir: &std::path::Path,
+    extensions: &[String],
+) -> Result<Vec<std::path::PathBuf>> {
     let mut results = Vec::new();
 
     if !dir.is_dir() {
@@ -202,7 +243,12 @@ fn find_markdown_files(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>>
 
     for entry in walkdir_or_fallback(dir)? {
         let path = entry;
-        if path.extension().is_some_and(|ext| ext == "md") {
+        let ext_matches = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| extensions.iter().any(|e| e == ext))
+            .unwrap_or(false);
+        if ext_matches {
             results.push(path);
         }
     }
@@ -295,9 +341,30 @@ fn extract_markdown_title(content: &str) -> Option<String> {
     None
 }
 
+/// Create a deletion event for a removed file.
+fn to_deletion_event(relative_path: &str) -> RawEvent {
+    let mut tags = std::collections::HashMap::new();
+    tags.insert("platform".to_string(), "git".to_string());
+    tags.insert("file_path".to_string(), relative_path.to_string());
+    tags.insert("action".to_string(), "deleted".to_string());
+
+    RawEvent {
+        id: Uuid::new_v4().to_string(),
+        source: format!("connector:git:{}", relative_path),
+        event_type: "document_deleted".to_string(),
+        timestamp_ms: chrono::Utc::now().timestamp_millis(),
+        payload: Vec::new(),
+        tags,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn default_extensions() -> Vec<String> {
+        vec!["md".into(), "txt".into(), "rst".into(), "org".into(), "adoc".into()]
+    }
 
     #[test]
     fn test_compute_hash_deterministic() {
@@ -339,39 +406,42 @@ mod tests {
     }
 
     #[test]
-    fn test_find_markdown_files_empty_dir() {
+    fn test_find_tracked_files_empty_dir() {
         let dir = std::env::temp_dir().join("opensoma_test_empty_md");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let result = find_markdown_files(&dir).unwrap();
+        let result = find_tracked_files(&dir, &default_extensions()).unwrap();
         assert!(result.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn test_find_markdown_files_with_files() {
+    fn test_find_tracked_files_with_files() {
         let dir = std::env::temp_dir().join("opensoma_test_md_files");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("readme.md"), "# Test").unwrap();
         std::fs::write(dir.join("notes.txt"), "not markdown").unwrap();
         std::fs::write(dir.join("guide.md"), "# Guide").unwrap();
+        std::fs::write(dir.join("manual.rst"), "Title\n=====").unwrap();
         // .md in subdirectory
         let subdir = dir.join("subdir");
         std::fs::create_dir_all(&subdir).unwrap();
         std::fs::write(subdir.join("nested.md"), "# Nested").unwrap();
 
-        let mut result = find_markdown_files(&dir).unwrap();
+        let mut result = find_tracked_files(&dir, &default_extensions()).unwrap();
         result.sort();
-        assert_eq!(result.len(), 3);
+        assert_eq!(result.len(), 5); // readme.md, guide.md, manual.rst, nested.md, notes.txt
         assert!(result.iter().any(|p| p.ends_with("readme.md")));
         assert!(result.iter().any(|p| p.ends_with("guide.md")));
+        assert!(result.iter().any(|p| p.ends_with("manual.rst")));
         assert!(result.iter().any(|p| p.ends_with("nested.md")));
+        assert!(result.iter().any(|p| p.ends_with("notes.txt")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn test_find_markdown_files_skips_hidden_dirs() {
+    fn test_find_tracked_files_skips_hidden_dirs() {
         let dir = std::env::temp_dir().join("opensoma_test_md_hidden");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -380,16 +450,16 @@ mod tests {
         std::fs::create_dir_all(&hidden).unwrap();
         std::fs::write(hidden.join("secret.md"), "# Secret").unwrap();
 
-        let result = find_markdown_files(&dir).unwrap();
+        let result = find_tracked_files(&dir, &default_extensions()).unwrap();
         assert_eq!(result.len(), 1);
         assert!(result[0].ends_with("visible.md"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn test_find_markdown_files_nonexistent_dir() {
+    fn test_find_tracked_files_nonexistent_dir() {
         let dir = std::path::Path::new("/nonexistent/path/that/does/not/exist");
-        let result = find_markdown_files(dir).unwrap();
+        let result = find_tracked_files(dir, &default_extensions()).unwrap();
         assert!(result.is_empty());
     }
 
@@ -415,5 +485,56 @@ mod tests {
         assert_eq!(extract_markdown_title(""), None);
         assert_eq!(extract_markdown_title("Just text\nNo heading"), None);
         assert_eq!(extract_markdown_title("## Sub heading only"), None);
+    }
+
+    #[test]
+    fn test_to_deletion_event_structure() {
+        let event = to_deletion_event("docs/old.md");
+        assert_eq!(event.event_type, "document_deleted");
+        assert_eq!(event.source, "connector:git:docs/old.md");
+        assert_eq!(event.tags.get("platform").unwrap(), "git");
+        assert_eq!(event.tags.get("file_path").unwrap(), "docs/old.md");
+        assert_eq!(event.tags.get("action").unwrap(), "deleted");
+        assert!(event.payload.is_empty());
+    }
+
+    #[test]
+    fn test_find_tracked_files_custom_extensions() {
+        let dir = std::env::temp_dir().join("opensoma_test_custom_ext");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("data.json"), "{}").unwrap();
+        std::fs::write(dir.join("config.yaml"), "key: val").unwrap();
+        std::fs::write(dir.join("readme.md"), "# Test").unwrap();
+
+        // Only scan .json and .yaml
+        let exts: Vec<String> = vec!["json".into(), "yaml".into()];
+        let result = find_tracked_files(&dir, &exts).unwrap();
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().any(|p| p.ends_with("data.json")));
+        assert!(result.iter().any(|p| p.ends_with("config.yaml")));
+        assert!(!result.iter().any(|p| p.ends_with("readme.md")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_find_tracked_files_empty_extensions() {
+        let dir = std::env::temp_dir().join("opensoma_test_empty_ext");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("file.md"), "# Test").unwrap();
+
+        let result = find_tracked_files(&dir, &[]).unwrap();
+        assert!(result.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_to_raw_event_no_title() {
+        let event = to_raw_event("notes/plain.txt", "Just some text", "def456");
+        assert_eq!(event.event_type, "document");
+        assert_eq!(event.source, "connector:git:notes/plain.txt");
+        assert_eq!(event.tags.get("format").unwrap(), "markdown");
+        assert!(!event.tags.contains_key("title"));
     }
 }

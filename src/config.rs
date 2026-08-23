@@ -182,6 +182,15 @@ pub struct GitConfig {
     /// Polling interval in seconds (default 300)
     #[serde(default = "default_git_interval")]
     pub poll_interval_secs: u64,
+    /// File extensions to scan (default: ["md", "txt", "rst", "org", "adoc"])
+    #[serde(default = "default_git_extensions")]
+    pub file_extensions: Vec<String>,
+    /// Maximum file size in bytes to process (default: 1MB)
+    #[serde(default = "default_git_max_file_size")]
+    pub max_file_size_bytes: u64,
+    /// Whether to emit events for deleted files (default: true)
+    #[serde(default = "default_true")]
+    pub detect_deletions: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -944,6 +953,18 @@ fn default_git_branch() -> String {
 }
 fn default_git_interval() -> u64 {
     300
+}
+fn default_git_extensions() -> Vec<String> {
+    vec![
+        "md".into(),
+        "txt".into(),
+        "rst".into(),
+        "org".into(),
+        "adoc".into(),
+    ]
+}
+fn default_git_max_file_size() -> u64 {
+    1_048_576 // 1 MB
 }
 fn default_obsidian_debounce() -> u64 {
     500

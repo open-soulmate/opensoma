@@ -178,7 +178,18 @@ impl ConfigSnapshot {
         summarize_connector!("rss", config.connector.rss);
         summarize_connector!("email", config.connector.email);
         summarize_connector!("notion", config.connector.notion);
-        summarize_connector!("git", config.connector.git);
+        if let Some(ref c) = config.connector.git {
+            let mut extra = HashMap::new();
+            extra.insert("repo_url".to_string(), c.repo_url.clone());
+            extra.insert("branch".to_string(), c.branch.clone());
+            extra.insert("file_extensions".to_string(), c.file_extensions.join(", "));
+            extra.insert("detect_deletions".to_string(), c.detect_deletions.to_string());
+            connectors.push(ConnectorConfigSummary {
+                name: "git".to_string(),
+                enabled: c.enabled,
+                extra,
+            });
+        }
         summarize_connector!("obsidian", config.connector.obsidian);
         summarize_connector!("webhook", config.connector.webhook);
         summarize_connector!("github", config.connector.github);

@@ -97,6 +97,12 @@ repo_url = "https://github.com/your-org/your-repo.git"
 branch = "main"
 local_path = "/var/lib/opensoma/repos/your-repo"
 poll_interval_secs = 300
+# File extensions to scan (default: ["md", "txt", "rst", "org", "adoc"])
+# file_extensions = ["md", "txt", "rst"]
+# Maximum file size in bytes (default: 1048576 = 1MB)
+# max_file_size_bytes = 1048576
+# Detect deleted files and emit events (default: true)
+# detect_deletions = true
 
 [connector.obsidian]
 enabled = false
