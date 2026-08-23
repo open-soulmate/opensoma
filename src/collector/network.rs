@@ -231,13 +231,23 @@ fn parse_address(hex_str: &str) -> (String, u16) {
             return (ip, port);
         }
     } else if addr_hex.len() == 32 {
-        // IPv6 — parse as 4 x u32 little-endian groups
-        let mut segments = [0u32; 4];
+        // IPv6 — /proc/net/tcp6 stores address as 4 x u32 in little-endian.
+        // Each u32 represents 4 bytes of the IPv6 address in network byte order
+        // after byte-swapping each u32.
+        let mut octets = [0u8; 16];
         let mut ok = true;
-        for (i, segment) in segments.iter_mut().enumerate() {
+        for i in 0..4 {
             let start = i * 8;
             match u32::from_str_radix(&addr_hex[start..start + 8], 16) {
-                Ok(n) => *segment = n,
+                Ok(n) => {
+                    let bytes = n.to_le_bytes();
+                    // /proc/net/tcp6 stores each u32 in little-endian host byte order.
+                    // Use the LE bytes directly as the IPv6 address octets.
+                    octets[i * 4] = bytes[0];
+                    octets[i * 4 + 1] = bytes[1];
+                    octets[i * 4 + 2] = bytes[2];
+                    octets[i * 4 + 3] = bytes[3];
+                }
                 Err(_) => {
                     ok = false;
                     break;
@@ -245,23 +255,76 @@ fn parse_address(hex_str: &str) -> (String, u16) {
             }
         }
         if ok {
-            // Simplified: just return ::1 or the raw hex for display
-            if segments == [0, 0, 0, 0x01000000] {
-                return ("::1".to_string(), port);
-            } else if segments == [0, 0, 0, 0] {
-                return ("::".to_string(), port);
-            }
-            return (
-                format!(
-                    "{:08x}{:08x}{:08x}{:08x}",
-                    segments[0], segments[1], segments[2], segments[3]
-                ),
-                port,
-            );
+            // Parse as 8 x u16 groups for standard IPv6 representation
+            let groups: [u16; 8] = [
+                u16::from_be_bytes([octets[0], octets[1]]),
+                u16::from_be_bytes([octets[2], octets[3]]),
+                u16::from_be_bytes([octets[4], octets[5]]),
+                u16::from_be_bytes([octets[6], octets[7]]),
+                u16::from_be_bytes([octets[8], octets[9]]),
+                u16::from_be_bytes([octets[10], octets[11]]),
+                u16::from_be_bytes([octets[12], octets[13]]),
+                u16::from_be_bytes([octets[14], octets[15]]),
+            ];
+            return (format_ipv6(&groups), port);
         }
     }
 
     (hex_str.to_string(), port)
+}
+
+/// Format 8 x u16 IPv6 groups into standard colon notation with :: compression.
+/// Follows RFC 5952 rules: compress the longest run of zero groups (≥2).
+fn format_ipv6(groups: &[u16; 8]) -> String {
+    // Find the longest run of consecutive zero groups for :: compression
+    let mut best_start = 8;
+    let mut best_len = 0;
+    let mut cur_start = 8;
+    let mut cur_len = 0;
+
+    for (i, &g) in groups.iter().enumerate() {
+        if g == 0 {
+            if cur_len == 0 {
+                cur_start = i;
+            }
+            cur_len += 1;
+            if cur_len > best_len {
+                best_start = cur_start;
+                best_len = cur_len;
+            }
+        } else {
+            cur_len = 0;
+        }
+    }
+
+    // Only compress runs of 2+ zero groups
+    if best_len < 2 {
+        return groups
+            .iter()
+            .map(|g| format!("{:x}", g))
+            .collect::<Vec<_>>()
+            .join(":");
+    }
+
+    // Build prefix (groups before compressed section) and suffix (groups after)
+    let prefix: String = groups[..best_start]
+        .iter()
+        .map(|g| format!("{:x}", g))
+        .collect::<Vec<_>>()
+        .join(":");
+
+    let suffix: String = groups[(best_start + best_len)..]
+        .iter()
+        .map(|g| format!("{:x}", g))
+        .collect::<Vec<_>>()
+        .join(":");
+
+    match (prefix.is_empty(), suffix.is_empty()) {
+        (true, true) => "::".to_string(),
+        (true, false) => format!("::{}", suffix),
+        (false, true) => format!("{}::", prefix),
+        (false, false) => format!("{}::{}", prefix, suffix),
+    }
 }
 
 /// Convert TCP state hex to human-readable name.
@@ -383,6 +446,48 @@ mod tests {
         // The actual IP depends on how the parsing handles the error
         // Just verify it doesn't panic and returns something
         assert!(!ip.is_empty());
+    }
+
+    #[test]
+    fn test_parse_address_ipv6_fe80() {
+        // fe80::1 in /proc/net/tcp6 on little-endian:
+        // Network bytes: FE:80:00:00:00:00:00:00:00:00:00:00:00:00:00:01
+        // s6_addr32[0] = 0x000080FE, s6_addr32[3] = 0x01000000
+        let (ip, port) = parse_address("000080FE000000000000000001000000:1F90");
+        assert_eq!(ip, "fe80::1");
+        assert_eq!(port, 0x1F90);
+    }
+
+    #[test]
+    fn test_parse_address_ipv6_mapped() {
+        // Test a non-compressible IPv6 address: 2001:db8:85a3::8a2e:370:7334
+        // Network bytes: 20:01:0d:b8:85:a3:00:00:00:00:8a:2e:03:70:73:34
+        // s6_addr32[0] = 0xb80d0120, s6_addr32[1] = 0x0000a385
+        // s6_addr32[2] = 0x2e8a0000, s6_addr32[3] = 0x34737003
+        let (ip, port) = parse_address("b80d01200000a3852e8a000034737003:0050");
+        // Groups: 2001:db8:85a3:0:0:8a2e:370:7334
+        assert_eq!(ip, "2001:db8:85a3::8a2e:370:7334");
+        assert_eq!(port, 0x0050);
+    }
+
+    #[test]
+    fn test_format_ipv6_no_compression() {
+        // All non-zero groups — no :: compression
+        let groups: [u16; 8] = [0x2001, 0xdb8, 0x85a3, 0x1, 0x2, 0x3, 0x4, 0x5];
+        assert_eq!(format_ipv6(&groups), "2001:db8:85a3:1:2:3:4:5");
+    }
+
+    #[test]
+    fn test_format_ipv6_trailing_zeros() {
+        let groups: [u16; 8] = [1, 0, 0, 0, 0, 0, 0, 0];
+        assert_eq!(format_ipv6(&groups), "1::");
+    }
+
+    #[test]
+    fn test_format_ipv6_single_zero_group() {
+        // Only 1 zero group — no compression (minimum is 2)
+        let groups: [u16; 8] = [1, 0, 2, 3, 4, 5, 6, 7];
+        assert_eq!(format_ipv6(&groups), "1:0:2:3:4:5:6:7");
     }
 
     #[test]

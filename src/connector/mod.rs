@@ -1,4 +1,5 @@
 pub mod circuit_breaker;
+pub mod rate_limiter;
 pub mod discord;
 pub mod teams;
 pub mod dingtalk;
