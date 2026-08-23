@@ -419,7 +419,7 @@ async fn api_connector_toggle(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let valid_connectors = [
         "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
-        "obsidian", "slack", "telegram", "discord", "teams", "teams",
+        "obsidian", "slack", "telegram", "discord", "teams",
     ];
 
     if !valid_connectors.contains(&name.as_str()) {
