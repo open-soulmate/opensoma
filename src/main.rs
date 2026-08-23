@@ -1014,6 +1014,12 @@ fn run_connectors_list(config_path: &str) -> i32 {
         "Telegram Bot API",
         "Long-poll"
     );
+    collect_connector!(
+        config.connector.discord,
+        "Discord",
+        "Discord Bot API",
+        "WebSocket"
+    );
 
     if connectors.is_empty() {
         println!("  No connectors configured.");
