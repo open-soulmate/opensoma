@@ -349,7 +349,7 @@ fn looks_like_base64(content: &str) -> bool {
     let trimmed = content.trim();
     // Base64 uses A-Z, a-z, 0-9, +, /, = for padding
     // Must have no spaces, no newlines in the core data
-    let single_line = trimmed.replace('\n', "").replace('\r', "");
+    let single_line = trimmed.replace(['\n', '\r'], "");
     if single_line.contains(' ') {
         return false;
     }
