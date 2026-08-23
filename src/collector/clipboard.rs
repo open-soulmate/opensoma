@@ -157,14 +157,50 @@ fn hash_content(content: &str) -> u64 {
 fn sniff_content_type(content: &str) -> &'static str {
     let trimmed = content.trim();
 
+    // URL
     if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         return "url";
     }
+
+    // JSON (must be checked before YAML since valid JSON is not YAML)
     if (trimmed.starts_with('{') || trimmed.starts_with('['))
         && serde_json::from_str::<serde_json::Value>(trimmed).is_ok()
     {
         return "json";
     }
+
+    // YAML (starts with document separator or has key: value patterns)
+    if trimmed.starts_with("---\n") || trimmed.starts_with("---\r\n") || trimmed.starts_with("%YAML") {
+        return "yaml";
+    }
+    if trimmed.contains('\n') && looks_like_yaml(trimmed) {
+        return "yaml";
+    }
+
+    // TOML (has [section] headers with key = value)
+    if trimmed.contains('\n') && looks_like_toml(trimmed) {
+        return "toml";
+    }
+
+    // CSV (comma/tab separated with consistent column counts)
+    if trimmed.contains('\n') && looks_like_csv(trimmed) {
+        return "csv";
+    }
+
+    // Markdown (starts with heading or has common markdown patterns)
+    if trimmed.starts_with('#') && trimmed.contains('\n') {
+        return "markdown";
+    }
+    if trimmed.contains('\n') && looks_like_markdown(trimmed) {
+        return "markdown";
+    }
+
+    // SQL
+    if looks_like_sql(trimmed) {
+        return "sql";
+    }
+
+    // Email address
     if trimmed.contains('@')
         && trimmed.contains('.')
         && !trimmed.contains(' ')
@@ -172,18 +208,160 @@ fn sniff_content_type(content: &str) -> &'static str {
     {
         return "email";
     }
+
+    // PEM certificate/key
     if trimmed.starts_with("-----BEGIN") {
         return "pem";
     }
-    // Check if it looks like a file path
+
+    // Base64 (long string of valid base64 characters, no spaces)
+    if trimmed.len() > 64 && looks_like_base64(trimmed) {
+        return "base64";
+    }
+
+    // File path
     if trimmed.starts_with('/') || (trimmed.len() > 2 && trimmed.as_bytes()[1] == b':') {
         return "filepath";
     }
+
+    // Multiline text (fallback for multi-line content)
     if trimmed.contains('\n') {
         return "multiline_text";
     }
 
     "text"
+}
+
+/// Check if content looks like YAML (key: value pairs, list items).
+fn looks_like_yaml(content: &str) -> bool {
+    let lines: Vec<&str> = content.lines().take(20).collect();
+    if lines.len() < 3 {
+        return false;
+    }
+    let kv_lines = lines
+        .iter()
+        .filter(|l| {
+            let l = l.trim();
+            // key: value pattern (but not URL-like or email-like)
+            l.contains(": ")
+                && !l.starts_with("//")
+                && !l.starts_with('#')
+                && !l.starts_with("http")
+        })
+        .count();
+    let list_lines = lines
+        .iter()
+        .filter(|l| {
+            let l = l.trim();
+            l.starts_with("- ")
+        })
+        .count();
+    // At least 40% of lines should be YAML-like (minimum 2 matches)
+    (kv_lines + list_lines) >= std::cmp::max(2, lines.len() * 2 / 5)
+}
+
+/// Check if content looks like TOML ([section] headers, key = value).
+fn looks_like_toml(content: &str) -> bool {
+    let lines: Vec<&str> = content.lines().take(20).collect();
+    if lines.len() < 2 {
+        return false;
+    }
+    let section_lines = lines
+        .iter()
+        .filter(|l| {
+            let l = l.trim();
+            l.starts_with('[') && l.ends_with(']') && l.len() > 2
+        })
+        .count();
+    let kv_lines = lines
+        .iter()
+        .filter(|l| {
+            let l = l.trim();
+            l.contains(" = ") && !l.starts_with('#')
+        })
+        .count();
+    section_lines > 0 && kv_lines > 0
+}
+
+/// Check if content looks like CSV (consistent column counts across lines).
+fn looks_like_csv(content: &str) -> bool {
+    let lines: Vec<&str> = content.lines().take(10).collect();
+    if lines.len() < 3 {
+        return false;
+    }
+    // Detect delimiter (comma or tab)
+    let comma_count = lines[0].matches(',').count();
+    let tab_count = lines[0].matches('\t').count();
+    if comma_count == 0 && tab_count == 0 {
+        return false;
+    }
+    let delimiter = if comma_count >= tab_count { ',' } else { '\t' };
+    let expected_cols = lines[0].split(delimiter).count();
+    if expected_cols < 2 {
+        return false;
+    }
+    // Check that most lines have the same column count
+    let consistent = lines
+        .iter()
+        .skip(1)
+        .filter(|l| l.split(delimiter).count() == expected_cols)
+        .count();
+    consistent >= lines.len() * 3 / 5
+}
+
+/// Check if content looks like Markdown.
+fn looks_like_markdown(content: &str) -> bool {
+    let lines: Vec<&str> = content.lines().take(20).collect();
+    let md_indicators = lines
+        .iter()
+        .filter(|l| {
+            let l = l.trim();
+            l.starts_with("# ")
+                || l.starts_with("## ")
+                || l.starts_with("- [ ] ")
+                || l.starts_with("- [x] ")
+                || l.starts_with("> ")
+                || l.starts_with("```")
+                || l.contains("](http")
+                || l.starts_with("---")
+                || l.starts_with("***")
+        })
+        .count();
+    md_indicators >= 2
+}
+
+/// Check if content looks like SQL.
+fn looks_like_sql(content: &str) -> bool {
+    let upper = content.to_uppercase();
+    let trimmed = upper.trim();
+    trimmed.starts_with("SELECT ")
+        || trimmed.starts_with("INSERT ")
+        || trimmed.starts_with("UPDATE ")
+        || trimmed.starts_with("DELETE ")
+        || trimmed.starts_with("CREATE ")
+        || trimmed.starts_with("ALTER ")
+        || trimmed.starts_with("DROP ")
+        || trimmed.starts_with("WITH ")
+}
+
+/// Check if content looks like base64 encoded data.
+fn looks_like_base64(content: &str) -> bool {
+    let trimmed = content.trim();
+    // Base64 uses A-Z, a-z, 0-9, +, /, = for padding
+    // Must have no spaces, no newlines in the core data
+    let single_line = trimmed.replace('\n', "").replace('\r', "");
+    if single_line.contains(' ') {
+        return false;
+    }
+    let valid_chars = single_line
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=');
+    if !valid_chars {
+        return false;
+    }
+    // Must be reasonably long and have valid base64 padding
+    let len = single_line.len();
+    len >= 64 && (len % 4 == 0 || single_line.ends_with('='))
 }
 
 #[derive(Debug)]
@@ -270,10 +448,10 @@ mod tests {
     }
 
     #[test]
-    fn test_sniff_content_type_long_base64_is_text() {
-        // Current implementation does not detect base64 encoding
+    fn test_sniff_content_type_base64_detected() {
+        // Now we detect base64 encoding
         let b64 = "SGVsbG8gV29ybGQhIFRoaXMgaXMgYSBsb25nIGJhc2U2NCBlbmNvZGVkIHN0cmluZyB0aGF0IGlzIGxvbmdlciB0aGFuIDUwIGNoYXJhY3RlcnM=";
-        assert_eq!(sniff_content_type(b64), "text");
+        assert_eq!(sniff_content_type(b64), "base64");
     }
 
     #[test]
@@ -317,5 +495,123 @@ mod tests {
         let h1 = hash_content(&long_text);
         let h2 = hash_content(&long_text);
         assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_sniff_content_type_yaml_document_separator() {
+        assert_eq!(
+            sniff_content_type("---\nname: test\nversion: 1.0"),
+            "yaml"
+        );
+    }
+
+    #[test]
+    fn test_sniff_content_type_yaml_key_value() {
+        let yaml = "name: OpenSoma\nversion: 1.0.0\nauthor: test\ndescription: A tool";
+        assert_eq!(sniff_content_type(yaml), "yaml");
+    }
+
+    #[test]
+    fn test_sniff_content_type_yaml_list() {
+        let yaml = "items:\n  - first\n  - second\n  - third\n  - fourth";
+        assert_eq!(sniff_content_type(yaml), "yaml");
+    }
+
+    #[test]
+    fn test_sniff_content_type_toml() {
+        let toml = "[package]\nname = \"opensoma\"\nversion = \"0.1.0\"\n\n[dependencies]\ntokio = \"1\"";
+        assert_eq!(sniff_content_type(toml), "toml");
+    }
+
+    #[test]
+    fn test_sniff_content_type_csv() {
+        let csv = "name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,Chicago";
+        assert_eq!(sniff_content_type(csv), "csv");
+    }
+
+    #[test]
+    fn test_sniff_content_type_csv_tab_delimited() {
+        let csv = "name\tage\tcity\nAlice\t30\tNYC\nBob\t25\tLA\nCharlie\t35\tChicago";
+        assert_eq!(sniff_content_type(csv), "csv");
+    }
+
+    #[test]
+    fn test_sniff_content_type_markdown_heading() {
+        let md = "# My Document\n\nSome content here.\n\n## Section 2\n\nMore content.";
+        assert_eq!(sniff_content_type(md), "markdown");
+    }
+
+    #[test]
+    fn test_sniff_content_type_markdown_blockquote() {
+        let md = "> This is a quote\n> with multiple lines\n\nAnd some regular text.";
+        assert_eq!(sniff_content_type(md), "markdown");
+    }
+
+    #[test]
+    fn test_sniff_content_type_sql_select() {
+        assert_eq!(
+            sniff_content_type("SELECT * FROM users WHERE id = 1"),
+            "sql"
+        );
+    }
+
+    #[test]
+    fn test_sniff_content_type_sql_create() {
+        let sql = "CREATE TABLE users (\n  id INTEGER PRIMARY KEY,\n  name TEXT NOT NULL\n);";
+        assert_eq!(sniff_content_type(sql), "sql");
+    }
+
+    #[test]
+    fn test_sniff_content_type_sql_insert() {
+        assert_eq!(
+            sniff_content_type("INSERT INTO users (name, age) VALUES ('Alice', 30)"),
+            "sql"
+        );
+    }
+
+    #[test]
+    fn test_sniff_content_type_base64_no_padding() {
+        // Short base64 without padding should still be text
+        assert_eq!(sniff_content_type("SGVsbG8gV29ybGQ"), "text");
+    }
+
+    #[test]
+    fn test_sniff_content_type_base64_with_spaces() {
+        // Base64 with spaces should not be detected as base64
+        let b64 = "SGVsbG8g V29ybGQh IFRoaXMg aXMgYSB sb25nIGJ hc2U2NCB lbmNvZGV kIHN0cml uZyB0aGF";
+        assert_eq!(sniff_content_type(b64), "text");
+    }
+
+    #[test]
+    fn test_sniff_content_type_yaml_not_json() {
+        // JSON should still be detected as json, not yaml
+        assert_eq!(sniff_content_type("{\"key\": \"value\"}"), "json");
+    }
+
+    #[test]
+    fn test_sniff_content_type_toml_not_yaml() {
+        // TOML with sections should be detected as toml, not yaml
+        let toml = "[section]\nkey = \"value\"\nother = 42";
+        assert_eq!(sniff_content_type(toml), "toml");
+    }
+
+    #[test]
+    fn test_sniff_content_type_csv_not_enough_lines() {
+        // Less than 3 lines should not be detected as CSV
+        assert_eq!(sniff_content_type("a,b,c\n1,2,3"), "multiline_text");
+    }
+
+    #[test]
+    fn test_sniff_content_type_markdown_single_heading() {
+        // Single heading without newline should be text
+        assert_eq!(sniff_content_type("# Just a heading"), "text");
+    }
+
+    #[test]
+    fn test_sniff_content_type_sql_case_insensitive() {
+        assert_eq!(
+            sniff_content_type("select * from users"),
+            "sql"
+        );
     }
 }
