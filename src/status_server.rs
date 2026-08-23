@@ -196,6 +196,7 @@ impl ConfigSnapshot {
         summarize_connector!("slack", config.connector.slack);
         summarize_connector!("telegram", config.connector.telegram);
         summarize_connector!("discord", config.connector.discord);
+        summarize_connector!("teams", config.connector.teams);
 
         Self {
             node_id: config.daemon.node_id.clone(),
@@ -357,6 +358,7 @@ async fn api_connectors_handler(
         ("slack", "Slack"),
         ("telegram", "Telegram"),
         ("discord", "Discord"),
+        ("teams", "Teams"),
     ];
 
     let list: Vec<ConnectorInfo> = all_connectors
@@ -417,7 +419,7 @@ async fn api_connector_toggle(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let valid_connectors = [
         "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
-        "obsidian", "slack", "telegram", "discord",
+        "obsidian", "slack", "telegram", "discord", "teams", "teams",
     ];
 
     if !valid_connectors.contains(&name.as_str()) {
@@ -606,7 +608,7 @@ async fn api_connectors_health_handler(
 
     let connectors = vec![
         "feishu", "dingtalk", "wecom", "rss", "email", "notion", "git", "obsidian", "webhook",
-        "github", "slack", "telegram", "discord",
+        "github", "slack", "telegram", "discord", "teams",
     ];
 
     let health: Vec<serde_json::Value> = connectors
@@ -782,7 +784,7 @@ async fn api_system_info_handler(
         "disks": disks,
         "networks": networks,
         "collectors": ["file", "process", "network", "clipboard"],
-        "connectors_count": 13,
+        "connectors_count": 14,
         "start_time": chrono::Utc::now().checked_sub_signed(chrono::Duration::seconds(uptime as i64)).map(|t| t.to_rfc3339()),
     }))
 }
@@ -1059,6 +1061,7 @@ async fn build_connectors_page(state: &StatusServerState) -> String {
         ("slack", "Slack", "Slack 频道消息和线程采集"),
         ("telegram", "Telegram", "Telegram Bot 消息采集"),
         ("discord", "Discord", "Discord 服务器消息和频道采集"),
+        ("teams", "Teams", "Microsoft Teams 团队消息和频道采集"),
     ];
 
     let cards: String = all_connectors.iter().map(|(id, name, desc)| {
@@ -1549,7 +1552,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_connectors_endpoint_lists_all_13() {
+    async fn test_connectors_endpoint_lists_all_14() {
         use tower::ServiceExt;
         let app = build_test_app();
 
@@ -1567,7 +1570,7 @@ mod tests {
             .to_bytes();
         let connectors: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
-        assert_eq!(connectors.len(), 13);
+        assert_eq!(connectors.len(), 14);
 
         // Verify all connector IDs are present
         let ids: Vec<&str> = connectors
@@ -1576,7 +1579,7 @@ mod tests {
             .collect();
         for expected in &[
             "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
-            "obsidian", "slack", "telegram", "discord",
+            "obsidian", "slack", "telegram", "discord", "teams",
         ] {
             assert!(ids.contains(expected), "Missing connector: {}", expected);
         }
@@ -1994,7 +1997,7 @@ mod tests {
         assert!(json["networks"].is_array());
         assert!(json["collectors"].is_array());
         assert_eq!(json["node_id"], "test-node");
-        assert_eq!(json["connectors_count"], 13);
+        assert_eq!(json["connectors_count"], 14);
     }
 
     #[tokio::test]
@@ -2021,11 +2024,11 @@ mod tests {
         assert!(json["summary"].is_object());
 
         let connectors = json["connectors"].as_array().unwrap();
-        assert_eq!(connectors.len(), 13);
+        assert_eq!(connectors.len(), 14);
 
         // Verify summary
         let summary = &json["summary"];
-        assert_eq!(summary["total"].as_u64().unwrap(), 13);
+        assert_eq!(summary["total"].as_u64().unwrap(), 14);
         assert!(summary["enabled"].as_u64().is_some());
         assert!(summary["disabled"].as_u64().is_some());
         assert!(summary["total_events"].as_u64().is_some());

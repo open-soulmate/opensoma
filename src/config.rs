@@ -86,6 +86,8 @@ pub struct ConnectorConfig {
     pub telegram: Option<TelegramConfig>,
     #[serde(default)]
     pub discord: Option<DiscordConfig>,
+    #[serde(default)]
+    pub teams: Option<TeamsConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -295,6 +297,29 @@ pub struct DiscordConfig {
     pub ignore_bots: bool,
     /// Polling interval in seconds (default 30)
     #[serde(default = "default_discord_interval")]
+    pub poll_interval_secs: u64,
+}
+
+/// Microsoft Teams connector configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TeamsConfig {
+    pub enabled: bool,
+    /// Azure AD tenant ID
+    pub tenant_id: String,
+    /// Azure AD application (client) ID
+    pub client_id: String,
+    /// Azure AD client secret
+    pub client_secret: String,
+    /// Team IDs to monitor (required — at least one)
+    pub team_ids: Vec<String>,
+    /// Specific channel IDs to monitor (empty = all channels in each team)
+    #[serde(default)]
+    pub channels: Vec<String>,
+    /// Ignore system event messages (default true)
+    #[serde(default = "default_true")]
+    pub ignore_system_events: bool,
+    /// Polling interval in seconds (default 60)
+    #[serde(default = "default_teams_interval")]
     pub poll_interval_secs: u64,
 }
 
@@ -938,6 +963,9 @@ fn default_telegram_interval() -> u64 {
 }
 fn default_discord_interval() -> u64 {
     30
+}
+fn default_teams_interval() -> u64 {
+    60
 }
 fn default_imap_port() -> u16 {
     993

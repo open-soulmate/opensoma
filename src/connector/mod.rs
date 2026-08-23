@@ -1,5 +1,6 @@
 pub mod circuit_breaker;
 pub mod discord;
+pub mod teams;
 pub mod dingtalk;
 pub mod email;
 pub mod feishu;
@@ -272,6 +273,19 @@ pub async fn start_all(
             }
         }
 
+        // Teams connector
+        if let Some(ref teams_cfg) = config.teams {
+            if teams_cfg.enabled {
+                match teams::start(teams_cfg.clone(), tx.clone(), get_cb("teams")).await {
+                    Ok(h) => {
+                        info!("Teams connector started.");
+                        handles.push(h);
+                    }
+                    Err(e) => tracing::error!("Failed to start Teams connector: {}", e),
+                }
+            }
+        }
+
         // Wait for all connector tasks
         for h in handles {
             let _ = h.await;
@@ -358,6 +372,9 @@ fn build_enabled_connector_names(config: &ConnectorConfig) -> Vec<String> {
     }
     if config.discord.as_ref().is_some_and(|c| c.enabled) {
         names.push("discord".to_string());
+    }
+    if config.teams.as_ref().is_some_and(|c| c.enabled) {
+        names.push("teams".to_string());
     }
     names
 }
@@ -447,6 +464,12 @@ pub async fn ping_connector_by_name(
         "discord" => {
             if let Some(ref cfg) = config.discord {
                 let c = discord::DiscordConnector::new(cfg.clone());
+                return c.ping().await;
+            }
+        }
+        "teams" => {
+            if let Some(ref cfg) = config.teams {
+                let c = teams::TeamsConnector::new(cfg.clone());
                 return c.ping().await;
             }
         }
@@ -570,6 +593,7 @@ mod tests {
             slack: None,
             telegram: None,
             discord: None,
+            teams: None,
         };
         let names = build_enabled_connector_names(&config);
         assert!(names.is_empty());
@@ -601,6 +625,7 @@ mod tests {
             slack: None,
             telegram: None,
             discord: None,
+            teams: None,
         };
         let names = build_enabled_connector_names(&config);
         assert_eq!(names.len(), 2);
@@ -630,6 +655,7 @@ mod tests {
             slack: None,
             telegram: None,
             discord: None,
+            teams: None,
         };
         let names = build_enabled_connector_names(&config);
         assert!(names.is_empty());
@@ -651,6 +677,7 @@ mod tests {
             slack: None,
             telegram: None,
             discord: None,
+            teams: None,
         };
         let result = ping_connector_by_name("nonexistent", &config).await;
         assert!(result.is_err());

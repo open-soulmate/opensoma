@@ -42,8 +42,8 @@ struct MetricsInner {
 
     // Connector counters (per-connector)
     // We use a simple approach: store counts in a Vec with known indices
-    pub connector_events: [AtomicU64; 13],
-    pub connector_errors: [AtomicU64; 13],
+    pub connector_events: [AtomicU64; 14],
+    pub connector_errors: [AtomicU64; 14],
 
     // Latency tracking (microseconds)
     pub process_latency_sum_us: AtomicU64,
@@ -119,6 +119,7 @@ const CONNECTOR_NAMES: &[&str] = &[
     "slack",    // 10
     "telegram", // 11
     "discord",  // 12
+    "teams",    // 13
 ];
 
 fn connector_index(name: &str) -> Option<usize> {
@@ -958,6 +959,6 @@ mod tests {
         }
         let snap = m.snapshot();
         let total: u64 = snap.connector_events.iter().map(|(_, c)| c).sum();
-        assert_eq!(total, 13);
+        assert_eq!(total, 14);
     }
 }
