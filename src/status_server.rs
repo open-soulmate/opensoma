@@ -184,6 +184,7 @@ impl ConfigSnapshot {
         summarize_connector!("github", config.connector.github);
         summarize_connector!("slack", config.connector.slack);
         summarize_connector!("telegram", config.connector.telegram);
+        summarize_connector!("discord", config.connector.discord);
 
         Self {
             node_id: config.daemon.node_id.clone(),
@@ -770,7 +771,7 @@ async fn api_system_info_handler(
         "disks": disks,
         "networks": networks,
         "collectors": ["file", "process", "network", "clipboard"],
-        "connectors_count": 12,
+        "connectors_count": 13,
         "start_time": chrono::Utc::now().checked_sub_signed(chrono::Duration::seconds(uptime as i64)).map(|t| t.to_rfc3339()),
     }))
 }
@@ -1046,6 +1047,7 @@ async fn build_connectors_page(state: &StatusServerState) -> String {
         ("obsidian", "Obsidian", "Obsidian Vault 文件监控"),
         ("slack", "Slack", "Slack 频道消息和线程采集"),
         ("telegram", "Telegram", "Telegram Bot 消息采集"),
+        ("discord", "Discord", "Discord 服务器消息和频道采集"),
     ];
 
     let cards: String = all_connectors.iter().map(|(id, name, desc)| {
@@ -1981,7 +1983,7 @@ mod tests {
         assert!(json["networks"].is_array());
         assert!(json["collectors"].is_array());
         assert_eq!(json["node_id"], "test-node");
-        assert_eq!(json["connectors_count"], 12);
+        assert_eq!(json["connectors_count"], 13);
     }
 
     #[tokio::test]
