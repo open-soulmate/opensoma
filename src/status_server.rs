@@ -594,7 +594,7 @@ async fn api_connectors_health_handler(
 
     let connectors = vec![
         "feishu", "dingtalk", "wecom", "rss", "email", "notion", "git", "obsidian", "webhook",
-        "github", "slack", "telegram",
+        "github", "slack", "telegram", "discord",
     ];
 
     let health: Vec<serde_json::Value> = connectors
@@ -1536,7 +1536,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_connectors_endpoint_lists_all_12() {
+    async fn test_connectors_endpoint_lists_all_13() {
         use tower::ServiceExt;
         let app = build_test_app();
 
@@ -2008,11 +2008,11 @@ mod tests {
         assert!(json["summary"].is_object());
 
         let connectors = json["connectors"].as_array().unwrap();
-        assert_eq!(connectors.len(), 12);
+        assert_eq!(connectors.len(), 13);
 
         // Verify summary
         let summary = &json["summary"];
-        assert_eq!(summary["total"].as_u64().unwrap(), 12);
+        assert_eq!(summary["total"].as_u64().unwrap(), 13);
         assert!(summary["enabled"].as_u64().is_some());
         assert!(summary["disabled"].as_u64().is_some());
         assert!(summary["total_events"].as_u64().is_some());
