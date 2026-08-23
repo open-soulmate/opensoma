@@ -776,4 +776,152 @@ mod tests {
         assert_eq!(ids, vec!["100", "150", "200", "50", "75"]); // lexicographic sort
         // Note: real Discord IDs are 64-bit integers, but string comparison works for same-length IDs
     }
+
+    #[test]
+    fn test_discord_connector_name() {
+        let connector = DiscordConnector::new(DiscordConfig {
+            enabled: true,
+            bot_token: "xoxb-test".to_string(),
+            guild_id: "guild_1".to_string(),
+            channels: vec![],
+            poll_interval_secs: 60,
+            ignore_bots: false,
+        });
+        assert_eq!(connector.name(), "discord");
+    }
+
+    #[test]
+    fn test_discord_attachment_no_content_type() {
+        let msg = DiscordMessage {
+            id: "att_no_ct".to_string(),
+            content: "File upload".to_string(),
+            channel_id: "ch_12".to_string(),
+            author: Some(DiscordUser {
+                id: "user_10".to_string(),
+                username: "fileuser".to_string(),
+                global_name: None,
+                bot: None,
+            }),
+            timestamp: None,
+            edited_timestamp: None,
+            attachments: vec![DiscordAttachment {
+                id: "att_4".to_string(),
+                filename: "mystery.bin".to_string(),
+                url: "https://cdn.discordapp.com/mystery.bin".to_string(),
+                content_type: None,
+                size: None,
+            }],
+            embeds: vec![],
+            r#type: Some(0),
+        };
+
+        let event = message_to_event(&msg, "guild_11");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        let att = payload["attachments"].as_array().unwrap();
+        assert_eq!(att.len(), 1);
+        assert_eq!(att[0]["filename"], "mystery.bin");
+        assert!(att[0]["content_type"].is_null());
+        assert!(att[0]["size"].is_null());
+    }
+
+    #[test]
+    fn test_discord_event_tags_no_bot_tag_for_human() {
+        let msg = DiscordMessage {
+            id: "human_msg".to_string(),
+            content: "I'm human".to_string(),
+            channel_id: "ch_13".to_string(),
+            author: Some(DiscordUser {
+                id: "human_1".to_string(),
+                username: "humanuser".to_string(),
+                global_name: Some("Human".to_string()),
+                bot: Some(false),
+            }),
+            timestamp: None,
+            edited_timestamp: None,
+            attachments: vec![],
+            embeds: vec![],
+            r#type: Some(0),
+        };
+
+        let event = message_to_event(&msg, "guild_12");
+        // Human messages should NOT have the "bot" tag
+        assert!(event.tags.get("bot").is_none());
+    }
+
+    #[test]
+    fn test_discord_message_empty_payload_serialization() {
+        let msg = DiscordMessage {
+            id: "empty_all".to_string(),
+            content: "".to_string(),
+            channel_id: "".to_string(),
+            author: None,
+            timestamp: None,
+            edited_timestamp: None,
+            attachments: vec![],
+            embeds: vec![],
+            r#type: None,
+        };
+
+        let event = message_to_event(&msg, "");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["content"], "");
+        assert_eq!(payload["channel_id"], "");
+        assert_eq!(payload["guild_id"], "");
+        assert_eq!(payload["author_name"], "unknown");
+        assert!(payload["attachments"].is_null());
+        assert!(payload["embeds"].is_null());
+    }
+
+    #[test]
+    fn test_discord_message_large_content() {
+        let large_content = "A".repeat(10_000);
+        let msg = DiscordMessage {
+            id: "large_msg".to_string(),
+            content: large_content.clone(),
+            channel_id: "ch_14".to_string(),
+            author: Some(DiscordUser {
+                id: "user_11".to_string(),
+                username: "verbose".to_string(),
+                global_name: None,
+                bot: None,
+            }),
+            timestamp: None,
+            edited_timestamp: None,
+            attachments: vec![],
+            embeds: vec![],
+            r#type: Some(0),
+        };
+
+        let event = message_to_event(&msg, "guild_13");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["content"].as_str().unwrap().len(), 10_000);
+        // Event payload should be serializable
+        assert!(!event.payload.is_empty());
+    }
+
+    #[test]
+    fn test_discord_user_global_name_fallback() {
+        // When global_name is None, should fall back to username
+        let user = DiscordUser {
+            id: "u1".to_string(),
+            username: "fallback_user".to_string(),
+            global_name: None,
+            bot: None,
+        };
+        let msg = DiscordMessage {
+            id: "fallback_test".to_string(),
+            content: "test".to_string(),
+            channel_id: "ch".to_string(),
+            author: Some(user),
+            timestamp: None,
+            edited_timestamp: None,
+            attachments: vec![],
+            embeds: vec![],
+            r#type: Some(0),
+        };
+
+        let event = message_to_event(&msg, "g");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["author_name"], "fallback_user");
+    }
 }

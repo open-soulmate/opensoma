@@ -885,4 +885,224 @@ mod tests {
             Some("unknown")
         );
     }
+
+    #[test]
+    fn test_teams_connector_name() {
+        let connector = TeamsConnector::new(make_teams_config());
+        assert_eq!(connector.name(), "teams");
+    }
+
+    #[test]
+    fn test_teams_message_unicode_content() {
+        let msg = ChatMessage {
+            id: "msg-unicode".to_string(),
+            message_type: Some("message".to_string()),
+            subject: None,
+            summary: None,
+            body: Some(MessageBody {
+                content_type: Some("text".to_string()),
+                content: "你好世界 🌍 مرحبا".to_string(),
+            }),
+            from: Some(MessageFrom {
+                user: Some(GraphUser {
+                    id: Some("user-u".to_string()),
+                    display_name: Some("Unicode User".to_string()),
+                    user_id: None,
+                }),
+            }),
+            created_date_time: None,
+            last_modified_date_time: None,
+            attachments: vec![],
+            mentions: vec![],
+        };
+
+        let event = message_to_event(&msg, "t1", "c1");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["content"], "你好世界 🌍 مرحبا");
+    }
+
+    #[test]
+    fn test_teams_message_serialization_roundtrip() {
+        let msg = ChatMessage {
+            id: "msg-roundtrip".to_string(),
+            message_type: Some("message".to_string()),
+            subject: Some("Test Subject".to_string()),
+            summary: None,
+            body: Some(MessageBody {
+                content_type: Some("html".to_string()),
+                content: "<p>Roundtrip test 🎉</p>".to_string(),
+            }),
+            from: Some(MessageFrom {
+                user: Some(GraphUser {
+                    id: Some("user-rt".to_string()),
+                    display_name: Some("Round Trip".to_string()),
+                    user_id: None,
+                }),
+            }),
+            created_date_time: Some("2024-08-01T15:30:00Z".to_string()),
+            last_modified_date_time: None,
+            attachments: vec![],
+            mentions: vec![],
+        };
+
+        let event = message_to_event(&msg, "t1", "c1");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        // Verify all fields are present and correct
+        assert_eq!(payload["message_id"], "msg-roundtrip");
+        assert_eq!(payload["author_name"], "Round Trip");
+        assert_eq!(event.source, "teams");
+        assert_eq!(event.event_type, "message");
+    }
+
+    #[test]
+    fn test_teams_message_multiple_attachments() {
+        let msg = ChatMessage {
+            id: "msg-multi-att".to_string(),
+            message_type: Some("message".to_string()),
+            subject: None,
+            summary: None,
+            body: Some(MessageBody {
+                content_type: Some("text".to_string()),
+                content: "Multiple files attached".to_string(),
+            }),
+            from: Some(MessageFrom {
+                user: Some(GraphUser {
+                    id: Some("user-ma".to_string()),
+                    display_name: Some("Multi Attach".to_string()),
+                    user_id: None,
+                }),
+            }),
+            created_date_time: None,
+            last_modified_date_time: None,
+            attachments: vec![
+                ChatMessageAttachment {
+                    id: Some("att-1".to_string()),
+                    content_type: Some("reference".to_string()),
+                    name: Some("report.xlsx".to_string()),
+                    content_url: Some("https://contoso.sharepoint.com/report.xlsx".to_string()),
+                },
+                ChatMessageAttachment {
+                    id: Some("att-2".to_string()),
+                    content_type: Some("reference".to_string()),
+                    name: Some("slides.pptx".to_string()),
+                    content_url: Some("https://contoso.sharepoint.com/slides.pptx".to_string()),
+                },
+            ],
+            mentions: vec![],
+        };
+
+        let event = message_to_event(&msg, "t1", "c1");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        let att = payload["attachments"].as_array().unwrap();
+        assert_eq!(att.len(), 2);
+        assert_eq!(att[0]["name"], "report.xlsx");
+        assert_eq!(att[1]["name"], "slides.pptx");
+    }
+
+    #[test]
+    fn test_teams_message_no_body() {
+        let msg = ChatMessage {
+            id: "msg-no-body".to_string(),
+            message_type: Some("message".to_string()),
+            subject: None,
+            summary: None,
+            body: None,
+            from: Some(MessageFrom {
+                user: Some(GraphUser {
+                    id: Some("user-nb".to_string()),
+                    display_name: Some("No Body".to_string()),
+                    user_id: None,
+                }),
+            }),
+            created_date_time: None,
+            last_modified_date_time: None,
+            attachments: vec![],
+            mentions: vec![],
+        };
+
+        let event = message_to_event(&msg, "t1", "c1");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["content"], "");
+    }
+
+    #[test]
+    fn test_teams_strip_html_script_tags() {
+        let result = strip_html("<script>alert('xss')</script>Hello");
+        assert!(!result.contains("script"));
+        assert!(result.contains("Hello"));
+    }
+
+    #[test]
+    fn test_teams_strip_html_multiple_entities() {
+        assert_eq!(strip_html("&amp; &lt; &gt;"), "& < >");
+        assert_eq!(strip_html("a&amp;b&lt;c&gt;d"), "a&b<c>d");
+    }
+
+    #[test]
+    fn test_teams_message_mentions_present() {
+        // Verify that a message with mentions is processed correctly.
+        // Note: mentions are currently stored on the struct but not serialized into the event payload.
+        let msg = ChatMessage {
+            id: "msg-mentions".to_string(),
+            message_type: Some("message".to_string()),
+            subject: None,
+            summary: None,
+            body: Some(MessageBody {
+                content_type: Some("text".to_string()),
+                content: "Hey @Alice, check this!".to_string(),
+            }),
+            from: Some(MessageFrom {
+                user: Some(GraphUser {
+                    id: Some("user-ment".to_string()),
+                    display_name: Some("Mentioner".to_string()),
+                    user_id: None,
+                }),
+            }),
+            created_date_time: None,
+            last_modified_date_time: None,
+            attachments: vec![],
+            mentions: vec![serde_json::json!({
+                "id": 1,
+                "mentionText": "Alice",
+                "mentioned": { "user": { "id": "user-alice", "displayName": "Alice" } }
+            })],
+        };
+
+        let event = message_to_event(&msg, "t1", "c1");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        // Content should include the mention text
+        assert!(payload["content"].as_str().unwrap().contains("@Alice"));
+        assert_eq!(event.event_type, "message");
+    }
+
+    #[test]
+    fn test_teams_message_large_content() {
+        let large_content = "B".repeat(10_000);
+        let msg = ChatMessage {
+            id: "msg-large".to_string(),
+            message_type: Some("message".to_string()),
+            subject: None,
+            summary: None,
+            body: Some(MessageBody {
+                content_type: Some("text".to_string()),
+                content: large_content.clone(),
+            }),
+            from: Some(MessageFrom {
+                user: Some(GraphUser {
+                    id: Some("user-lg".to_string()),
+                    display_name: Some("Verbose".to_string()),
+                    user_id: None,
+                }),
+            }),
+            created_date_time: None,
+            last_modified_date_time: None,
+            attachments: vec![],
+            mentions: vec![],
+        };
+
+        let event = message_to_event(&msg, "t1", "c1");
+        let payload: serde_json::Value = serde_json::from_slice(&event.payload).unwrap();
+        assert_eq!(payload["content"].as_str().unwrap().len(), 10_000);
+        assert!(!event.payload.is_empty());
+    }
 }
