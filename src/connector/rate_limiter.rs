@@ -300,6 +300,86 @@ impl RateLimiter {
     }
 }
 
+/// Registry of per-connector rate limiters.
+///
+/// Creates and stores rate limiters for each connector with appropriate
+/// presets. Cheaply cloneable (Arc-based).
+#[derive(Clone)]
+pub struct RateLimiterRegistry {
+    limiters: Arc<std::collections::HashMap<String, RateLimiter>>,
+}
+
+impl RateLimiterRegistry {
+    /// Create a new registry with rate limiters for all known connectors.
+    pub fn new() -> Self {
+        let mut map = std::collections::HashMap::new();
+
+        // Create rate limiters with API-appropriate presets
+        let entries: Vec<(&str, RateLimiterConfig)> = vec![
+            ("github", RateLimiterConfig::github()),
+            ("dingtalk", RateLimiterConfig::dingtalk()),
+            ("feishu", RateLimiterConfig::feishu()),
+            ("notion", RateLimiterConfig::notion()),
+            ("slack", RateLimiterConfig::slack()),
+            ("discord", RateLimiterConfig::discord()),
+            ("wecom", RateLimiterConfig::wecom()),
+            ("teams", RateLimiterConfig::teams()),
+            ("telegram", RateLimiterConfig::conservative()),
+            ("email", RateLimiterConfig::conservative()),
+            ("rss", RateLimiterConfig::conservative()),
+            ("webhook", RateLimiterConfig {
+                max_tokens: 100,
+                refill_rate: 100.0,
+                refill_interval: Duration::from_secs(1),
+            }),
+            ("git", RateLimiterConfig::conservative()),
+            ("obsidian", RateLimiterConfig {
+                max_tokens: 50,
+                refill_rate: 50.0,
+                refill_interval: Duration::from_secs(1),
+            }),
+        ];
+
+        for (name, config) in entries {
+            map.insert(name.to_string(), RateLimiter::new(name, config));
+        }
+
+        Self {
+            limiters: Arc::new(map),
+        }
+    }
+
+    /// Get a rate limiter for a connector by name.
+    pub fn get(&self, name: &str) -> Option<&RateLimiter> {
+        self.limiters.get(name)
+    }
+
+    /// Get snapshots of all rate limiters for monitoring.
+    pub async fn snapshots(&self) -> Vec<RateLimiterSnapshot> {
+        let mut snaps = Vec::with_capacity(self.limiters.len());
+        for limiter in self.limiters.values() {
+            snaps.push(limiter.snapshot().await);
+        }
+        snaps
+    }
+
+    /// Number of registered rate limiters.
+    pub fn len(&self) -> usize {
+        self.limiters.len()
+    }
+
+    /// Check if the registry is empty.
+    pub fn is_empty(&self) -> bool {
+        self.limiters.is_empty()
+    }
+}
+
+impl Default for RateLimiterRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -520,5 +600,89 @@ mod tests {
 
         let snap = limiter.snapshot().await;
         assert_eq!(snap.total_acquired, 5);
+    }
+
+    // ── RateLimiterRegistry tests ──────────────────────────────────
+
+    #[test]
+    fn test_registry_new_has_all_connectors() {
+        let registry = RateLimiterRegistry::new();
+        assert_eq!(registry.len(), 14);
+        assert!(!registry.is_empty());
+    }
+
+    #[test]
+    fn test_registry_get_known_connector() {
+        let registry = RateLimiterRegistry::new();
+        assert!(registry.get("github").is_some());
+        assert!(registry.get("dingtalk").is_some());
+        assert!(registry.get("feishu").is_some());
+        assert!(registry.get("notion").is_some());
+        assert!(registry.get("slack").is_some());
+        assert!(registry.get("discord").is_some());
+        assert!(registry.get("wecom").is_some());
+        assert!(registry.get("teams").is_some());
+        assert!(registry.get("telegram").is_some());
+        assert!(registry.get("email").is_some());
+        assert!(registry.get("rss").is_some());
+        assert!(registry.get("webhook").is_some());
+        assert!(registry.get("git").is_some());
+        assert!(registry.get("obsidian").is_some());
+    }
+
+    #[test]
+    fn test_registry_get_unknown_connector() {
+        let registry = RateLimiterRegistry::new();
+        assert!(registry.get("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_registry_clone_shares_state() {
+        let r1 = RateLimiterRegistry::new();
+        let r2 = r1.clone();
+        assert_eq!(r2.len(), 14);
+        assert!(r2.get("github").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_registry_snapshots() {
+        let registry = RateLimiterRegistry::new();
+        let snaps = registry.snapshots().await;
+        assert_eq!(snaps.len(), 14);
+
+        // Each snapshot should have valid fields
+        for snap in &snaps {
+            assert!(snap.max_tokens > 0);
+            assert_eq!(snap.total_acquired, 0);
+            assert_eq!(snap.total_rejected, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_registry_github_limiter_acquire() {
+        let registry = RateLimiterRegistry::new();
+        let gh = registry.get("github").unwrap();
+
+        // GitHub limiter should allow immediate acquire (starts full)
+        gh.acquire().await;
+        let snap = gh.snapshot().await;
+        assert_eq!(snap.total_acquired, 1);
+        assert_eq!(snap.connector, "github");
+    }
+
+    #[tokio::test]
+    async fn test_registry_notion_limiter_burst() {
+        let registry = RateLimiterRegistry::new();
+        let notion = registry.get("notion").unwrap();
+
+        // Notion has max_tokens=3, so 3 acquires then blocked
+        assert!(notion.try_acquire().await);
+        assert!(notion.try_acquire().await);
+        assert!(notion.try_acquire().await);
+        assert!(!notion.try_acquire().await);
+
+        let snap = notion.snapshot().await;
+        assert_eq!(snap.total_acquired, 3);
+        assert_eq!(snap.total_rejected, 1);
     }
 }

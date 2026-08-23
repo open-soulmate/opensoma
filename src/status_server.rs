@@ -71,6 +71,8 @@ pub struct StatusServerState {
     pub config_snapshot: Option<ConfigSnapshot>,
     /// Circuit breaker registry for connector resilience monitoring.
     pub circuit_breakers: Option<crate::connector::circuit_breaker::CircuitBreakerRegistry>,
+    /// Rate limiter registry for connector API rate monitoring.
+    pub rate_limiters: Option<crate::connector::rate_limiter::RateLimiterRegistry>,
 }
 
 /// Snapshot of cache statistics for the status API.
@@ -255,6 +257,7 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/api/pipeline/metrics", get(api_pipeline_metrics_handler))
         .route("/api/plugins", get(api_plugins_handler))
         .route("/api/circuit-breakers", get(api_circuit_breakers_handler))
+        .route("/api/rate-limiters", get(api_rate_limiters_handler))
         .route("/api/config", get(api_config_handler))
         .layer(middleware::from_fn(cors_layer))
         .with_state(state)
@@ -693,6 +696,25 @@ async fn api_circuit_breakers_handler(
         }))
     } else {
         Json(serde_json::json!({ "breakers": [], "total": 0, "tripped": 0 }))
+    }
+}
+
+/// /api/rate-limiters — returns per-connector rate limiter status.
+async fn api_rate_limiters_handler(
+    State(state): State<StatusServerState>,
+) -> Json<serde_json::Value> {
+    if let Some(ref registry) = state.rate_limiters {
+        let snapshots = registry.snapshots().await;
+        let total_acquired: u64 = snapshots.iter().map(|s| s.total_acquired).sum();
+        let total_rejected: u64 = snapshots.iter().map(|s| s.total_rejected).sum();
+        Json(serde_json::json!({
+            "limiters": snapshots,
+            "total": snapshots.len(),
+            "total_acquired": total_acquired,
+            "total_rejected": total_rejected,
+        }))
+    } else {
+        Json(serde_json::json!({ "limiters": [], "total": 0, "total_acquired": 0, "total_rejected": 0 }))
     }
 }
 
@@ -1498,6 +1520,7 @@ mod tests {
             plugin_registry: None,
             config_snapshot: None,
             circuit_breakers: None,
+            rate_limiters: None,
         };
 
         Router::new()
@@ -1895,6 +1918,7 @@ mod tests {
             plugin_registry: None,
             config_snapshot: None,
             circuit_breakers: None,
+            rate_limiters: None,
         };
 
         // Verify github is active before toggle
@@ -1941,6 +1965,7 @@ mod tests {
             plugin_registry: None,
             config_snapshot: None,
             circuit_breakers: None,
+            rate_limiters: None,
         };
 
         let app = build_test_app_with_state(state);
@@ -2061,6 +2086,7 @@ mod tests {
             plugin_registry: None,
             config_snapshot: None,
             circuit_breakers: None,
+            rate_limiters: None,
         };
         let app = build_router(state);
 
@@ -2100,6 +2126,7 @@ mod tests {
             plugin_registry: None,
             config_snapshot: None,
             circuit_breakers: None,
+            rate_limiters: None,
         };
         let app = build_router(state);
 

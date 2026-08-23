@@ -162,6 +162,7 @@ async fn main() -> Result<()> {
         plugin_registry: Some(plugin_registry),
         config_snapshot: Some(status_server::ConfigSnapshot::from_config(&config)),
         circuit_breakers: Some(circuit_breaker_registry),
+        rate_limiters: Some(crate::connector::rate_limiter::RateLimiterRegistry::new()),
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;

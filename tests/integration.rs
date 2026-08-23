@@ -437,6 +437,7 @@ async fn test_status_server_health_endpoint() {
         plugin_registry: None,
         config_snapshot: None,
         circuit_breakers: None,
+        rate_limiters: None,
     };
 
     let app = opensoma::status_server::build_router(state);
