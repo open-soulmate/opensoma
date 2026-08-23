@@ -568,6 +568,16 @@ impl AppConfig {
             }
         }
 
+        // Discord connector checks
+        if let Some(ref dc) = self.connector.discord {
+            if dc.enabled && dc.bot_token.is_empty() {
+                anyhow::bail!("discord connector is enabled but bot_token is empty");
+            }
+            if dc.enabled && dc.guild_id.is_empty() {
+                anyhow::bail!("discord connector is enabled but guild_id is empty");
+            }
+        }
+
         // Streaming check
         if self.sync.enable_streaming && self.sync.batch_size == 0 {
             warnings
