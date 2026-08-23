@@ -1690,4 +1690,130 @@ repos = ["org/project"]
         assert!(github.include_issues); // default true
         assert!(github.include_prs); // default true
     }
+
+    #[test]
+    fn test_discord_connector_config() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.discord]
+enabled = true
+bot_token = "MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.abc123.xyz"
+guild_id = "1234567890123456789"
+channels = ["111", "222"]
+ignore_bots = false
+poll_interval_secs = 45
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let discord = config.connector.discord.unwrap();
+        assert!(discord.enabled);
+        assert_eq!(discord.bot_token, "MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.abc123.xyz");
+        assert_eq!(discord.guild_id, "1234567890123456789");
+        assert_eq!(discord.channels, vec!["111", "222"]);
+        assert!(!discord.ignore_bots);
+        assert_eq!(discord.poll_interval_secs, 45);
+    }
+
+    #[test]
+    fn test_discord_connector_defaults() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.discord]
+enabled = true
+bot_token = "test-token"
+guild_id = "guild-1"
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let discord = config.connector.discord.unwrap();
+        assert!(discord.ignore_bots); // default true
+        assert_eq!(discord.poll_interval_secs, 30); // default
+        assert!(discord.channels.is_empty()); // default empty
+    }
+
+    #[test]
+    fn test_teams_connector_config() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.teams]
+enabled = true
+tenant_id = "tenant-abc"
+client_id = "client-xyz"
+client_secret = "secret-123"
+team_ids = ["team-1", "team-2"]
+channels = ["ch-general", "ch-random"]
+ignore_system_events = false
+poll_interval_secs = 120
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let teams = config.connector.teams.unwrap();
+        assert!(teams.enabled);
+        assert_eq!(teams.tenant_id, "tenant-abc");
+        assert_eq!(teams.client_id, "client-xyz");
+        assert_eq!(teams.client_secret, "secret-123");
+        assert_eq!(teams.team_ids, vec!["team-1", "team-2"]);
+        assert_eq!(teams.channels, vec!["ch-general", "ch-random"]);
+        assert!(!teams.ignore_system_events);
+        assert_eq!(teams.poll_interval_secs, 120);
+    }
+
+    #[test]
+    fn test_teams_connector_defaults() {
+        let toml = r#"
+[daemon]
+node_id = "test"
+
+[soul]
+endpoint = "http://localhost:8090"
+
+[collector]
+watch_dirs = []
+
+[processor]
+[sync]
+
+[connector.teams]
+enabled = true
+tenant_id = "t"
+client_id = "c"
+client_secret = "s"
+team_ids = ["team-1"]
+"#;
+        let config: AppConfig = toml::from_str(toml).unwrap();
+        let teams = config.connector.teams.unwrap();
+        assert!(teams.ignore_system_events); // default true
+        assert_eq!(teams.poll_interval_secs, 60); // default
+        assert!(teams.channels.is_empty()); // default empty
+    }
 }
