@@ -61,6 +61,7 @@ OpenSoma is a headless daemon that acts as your digital twin's sensory layer. It
 | **Slack**    | Slack API                | Poll         | Collects messages and thread replies from channels |
 | **Telegram** | Telegram Bot API         | Long-poll    | Receives messages via getUpdates with HMAC verify  |
 | **Discord**  | Discord Bot API          | WebSocket    | Receives messages, reactions, and thread events    |
+| **Teams**    | Microsoft Graph API      | Poll         | Collects Teams channel messages via Graph API      |
 
 ## Quick Start
 
@@ -190,7 +191,7 @@ To add a new plugin, create a module under `src/plugins/sense/` and register it 
 | Module       | Responsibility                                          |
 |-------------|--------------------------------------------------------|
 | `collector`  | File system watcher + process/network/clipboard monitors |
-| `connector`  | IM platform integrations — Feishu, DingTalk, WeCom, RSS, Email, Notion, Git, Obsidian, Webhook, GitHub, Slack, Telegram, Discord |
+| `connector`  | IM platform integrations — Feishu, DingTalk, WeCom, RSS, Email, Notion, Git, Obsidian, Webhook, GitHub, Slack, Telegram, Discord, Teams |
 | `processor`  | Normalize → Classify → Enrich → Dedup pipeline         |
 | `sync`       | Incremental upload with local sled cache + offline retry |
 | `grpc`       | Tonic client for Soul Agent API                         |
@@ -294,6 +295,7 @@ opensoma/
     │   ├── slack.rs      # Slack channel messages + threads
     │   ├── telegram.rs   # Telegram Bot API (long-polling)
     │   ├── discord.rs    # Discord Bot API (WebSocket)
+    │   ├── teams.rs      # Microsoft Teams (Graph API)
     │   └── circuit_breaker.rs  # Per-connector circuit breaker
     ├── grpc/             # HTTP client for Soul API
     ├── plugins/

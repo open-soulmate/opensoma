@@ -622,6 +622,7 @@ fn run_validate_with_path(config_path: &str) -> i32 {
             check_connector!(config.connector.slack);
             check_connector!(config.connector.telegram);
             check_connector!(config.connector.discord);
+            check_connector!(config.connector.teams);
 
             println!();
             println!("Summary:");
@@ -753,6 +754,16 @@ watch_dirs = []
 # channels = []  # empty = all text channels
 # ignore_bots = true
 # poll_interval_secs = 30
+#
+# [connector.teams]
+# enabled = true
+# tenant_id = "your-azure-tenant-id"
+# client_id = "your-azure-client-id"
+# client_secret = "your-azure-client-secret"
+# team_ids = ["team-id-1"]
+# channels = []  # empty = all channels
+# ignore_system_events = true
+# poll_interval_secs = 60
 
 [processor]
 # normalize_timestamps = true
@@ -1019,6 +1030,12 @@ fn run_connectors_list(config_path: &str) -> i32 {
         "Discord",
         "Discord Bot API",
         "WebSocket"
+    );
+    collect_connector!(
+        config.connector.teams,
+        "Teams",
+        "Microsoft Graph API",
+        "Poll"
     );
 
     if connectors.is_empty() {
@@ -1318,7 +1335,7 @@ fn run_test_connector(config_path: &str, connector_name: &str) -> i32 {
     // Validate connector name
     let known_connectors = [
         "feishu", "dingtalk", "wecom", "rss", "email", "webhook",
-        "github", "notion", "git", "obsidian", "slack", "telegram", "discord",
+        "github", "notion", "git", "obsidian", "slack", "telegram", "discord", "teams",
     ];
     if !known_connectors.contains(&connector_name) {
         eprintln!("❌ Unknown connector: '{}'", connector_name);
@@ -1341,6 +1358,7 @@ fn run_test_connector(config_path: &str, connector_name: &str) -> i32 {
         "slack" => config.connector.slack.as_ref().is_some_and(|c| c.enabled),
         "telegram" => config.connector.telegram.as_ref().is_some_and(|c| c.enabled),
         "discord" => config.connector.discord.as_ref().is_some_and(|c| c.enabled),
+        "teams" => config.connector.teams.as_ref().is_some_and(|c| c.enabled),
         _ => false,
     };
 
@@ -2714,9 +2732,9 @@ mod tests {
         // Verify the known connectors list matches the connector module
         let known = [
             "feishu", "dingtalk", "wecom", "rss", "email", "webhook",
-            "github", "notion", "git", "obsidian", "slack", "telegram", "discord",
+            "github", "notion", "git", "obsidian", "slack", "telegram", "discord", "teams",
         ];
-        assert_eq!(known.len(), 13);
+        assert_eq!(known.len(), 14);
         assert!(known.contains(&"feishu"));
         assert!(known.contains(&"github"));
         assert!(known.contains(&"discord"));

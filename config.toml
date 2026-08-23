@@ -215,6 +215,23 @@ ignore_bots = true
 # Polling interval in seconds (default: 30)
 poll_interval_secs = 30
 
+[connector.teams]
+enabled = false
+# Azure AD tenant ID
+tenant_id = ""
+# Azure AD application (client) ID
+client_id = ""
+# Azure AD client secret
+client_secret = ""
+# Team IDs to monitor (at least one required)
+team_ids = []
+# Specific channel IDs to monitor (empty = all channels in each team)
+channels = []
+# Ignore system event messages (default: true)
+ignore_system_events = true
+# Polling interval in seconds (default: 60)
+poll_interval_secs = 60
+
 # ---------------------------------------------------------------------------
 # Processor — normalization and deduplication
 # ---------------------------------------------------------------------------

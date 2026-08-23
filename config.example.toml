@@ -148,6 +148,16 @@ guild_id = ""         # Guild (server) ID to monitor
 ignore_bots = true
 poll_interval_secs = 30
 
+[connector.teams]
+enabled = false
+tenant_id = ""          # Azure AD tenant ID
+client_id = ""          # Azure AD application (client) ID
+client_secret = ""      # Azure AD client secret
+team_ids = []           # Team IDs to monitor (at least one required)
+# channels = []         # Optional: specific channel IDs to monitor (empty = all)
+ignore_system_events = true
+poll_interval_secs = 60
+
 # ---------------------------------------------------------------------------
 # Processor — normalization and deduplication
 # ---------------------------------------------------------------------------
