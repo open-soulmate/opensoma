@@ -194,6 +194,22 @@ include_edited = true
 poll_interval_secs = 30
 
 # ---------------------------------------------------------------------------
+# Discord — Discord Bot API
+# ---------------------------------------------------------------------------
+[connector.discord]
+enabled = false
+# Bot token from Discord Developer Portal
+bot_token = ""
+# Guild (server) ID to monitor
+guild_id = ""
+# Specific channel IDs to monitor (empty = all text channels)
+channels = []
+# Ignore bot messages (default: true)
+ignore_bots = true
+# Polling interval in seconds (default: 30)
+poll_interval_secs = 30
+
+# ---------------------------------------------------------------------------
 # Processor — normalization and deduplication
 # ---------------------------------------------------------------------------
 [processor]

@@ -134,6 +134,14 @@ bot_token = ""
 include_edited = true
 poll_interval_secs = 30
 
+[connector.discord]
+enabled = false
+bot_token = ""        # Discord Bot token (from Discord Developer Portal)
+guild_id = ""         # Guild (server) ID to monitor
+# channels = []       # Optional: specific channel IDs to monitor (empty = all)
+ignore_bots = true
+poll_interval_secs = 30
+
 # ---------------------------------------------------------------------------
 # Processor — normalization and deduplication
 # ---------------------------------------------------------------------------
