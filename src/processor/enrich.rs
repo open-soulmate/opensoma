@@ -67,14 +67,24 @@ pub fn enrich_event(event: &RawEvent) -> Enrichment {
 }
 
 /// Apply enrichment data to event tags.
+///
+/// When multiple entities of the same type exist, they are joined with commas
+/// (up to 5 values per type to keep tags compact).
 pub fn apply_enrichment(event: &mut RawEvent, enrichment: &Enrichment) {
-    // Add entity tags
+    // Add entity tags — collect multiple values per type
+    let mut entity_groups: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
     for entity in &enrichment.entities {
         let key = format!("entity_{:?}", entity.entity_type).to_lowercase();
-        event
-            .tags
+        entity_groups
             .entry(key)
-            .or_insert_with(|| entity.value.clone());
+            .or_default()
+            .push(entity.value.clone());
+    }
+    for (key, values) in entity_groups {
+        // Keep at most 5 values per entity type to avoid tag bloat
+        let joined = values.iter().take(5).cloned().collect::<Vec<_>>().join(",");
+        event.tags.entry(key).or_insert(joined);
     }
 
     // Add keywords
@@ -748,6 +758,51 @@ mod tests {
 
         assert!(event.tags.contains_key("word_count"));
         assert!(event.tags.contains_key("language"));
+    }
+
+    #[test]
+    fn test_apply_enrichment_multiple_urls() {
+        let mut event = RawEvent {
+            id: "test".into(),
+            source: "test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 1000,
+            payload: b"Links: https://a.com and https://b.com and https://c.com".to_vec(),
+            tags: HashMap::new(),
+        };
+        let enrichment = enrich_event(&event);
+        apply_enrichment(&mut event, &enrichment);
+
+        // All 3 URLs should be stored as comma-separated values
+        let urls = event.tags.get("entity_url").unwrap();
+        assert!(urls.contains("https://a.com"));
+        assert!(urls.contains("https://b.com"));
+        assert!(urls.contains("https://c.com"));
+        assert!(urls.contains(","));
+    }
+
+    #[test]
+    fn test_apply_enrichment_entity_limit() {
+        // Generate 10 URLs — only first 5 should be stored
+        let mut urls = Vec::new();
+        for i in 0..10 {
+            urls.push(format!("https://example{}.com/path", i));
+        }
+        let text = urls.join(" ");
+        let mut event = RawEvent {
+            id: "test".into(),
+            source: "test".into(),
+            event_type: "test".into(),
+            timestamp_ms: 1000,
+            payload: text.into_bytes(),
+            tags: HashMap::new(),
+        };
+        let enrichment = enrich_event(&event);
+        apply_enrichment(&mut event, &enrichment);
+
+        let stored = event.tags.get("entity_url").unwrap();
+        let count = stored.matches("https://").count();
+        assert!(count <= 5, "Should store at most 5 URLs, got {}", count);
     }
 
     #[test]
