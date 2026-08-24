@@ -154,8 +154,77 @@ fn detect_content_type(event: &RawEvent) -> ContentType {
             }
         }
 
-        _ => ContentType::Generic,
+        // ── Fallback: use source field when event_type is empty or unrecognized ──
+        _ => classify_by_source(event),
     }
+}
+
+/// Fall back to source-based classification when event_type is empty or unrecognized.
+/// Checks the source field for known connector/collector prefixes.
+fn classify_by_source(event: &RawEvent) -> ContentType {
+    let source = &event.source;
+
+    // Code / VCS connectors
+    if source.starts_with("connector:github")
+        || source.starts_with("connector:git")
+        || source.starts_with("git")
+        || source == "github"
+    {
+        return ContentType::Code;
+    }
+
+    // IM / chat connectors
+    if source.starts_with("connector:slack")
+        || source.starts_with("connector:discord")
+        || source.starts_with("connector:telegram")
+        || source.starts_with("connector:teams")
+        || source.starts_with("connector:feishu")
+        || source.starts_with("connector:dingtalk")
+        || source.starts_with("connector:wecom")
+        || matches!(
+            source.as_str(),
+            "slack" | "discord" | "telegram" | "teams" | "feishu" | "dingtalk" | "wecom"
+        )
+    {
+        return ContentType::Message;
+    }
+
+    // Document / data connectors
+    if source.starts_with("connector:notion")
+        || source.starts_with("connector:obsidian")
+        || matches!(source.as_str(), "notion" | "obsidian")
+    {
+        return ContentType::Data;
+    }
+
+    // Notification connectors
+    if source.starts_with("connector:email")
+        || source.starts_with("connector:rss")
+        || matches!(source.as_str(), "email" | "rss")
+    {
+        return ContentType::Notification;
+    }
+
+    // Webhook connector
+    if source.starts_with("connector:webhook") || source == "webhook" {
+        return ContentType::Notification;
+    }
+
+    // Collector sources
+    if source.starts_with("process") {
+        return ContentType::System;
+    }
+    if source.starts_with("network") {
+        return ContentType::Network;
+    }
+    if source.starts_with("clipboard") {
+        return ContentType::Clipboard;
+    }
+    if source.starts_with("file") {
+        return ContentType::Generic;
+    }
+
+    ContentType::Generic
 }
 
 /// Detect urgency level from event content.
@@ -1017,5 +1086,155 @@ mod tests {
         let event = make_event("document", "unknown", HashMap::new());
         let c = classify_event(&event);
         assert_eq!(c.content_type, ContentType::Notification);
+    }
+
+    // ── Source-based fallback classification (empty event_type) ───
+
+    #[test]
+    fn test_classify_empty_event_type_github_source() {
+        let event = make_event("", "connector:github:push", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Code);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_git_source() {
+        let event = make_event("", "connector:git:repo-abc", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Code);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_slack_source() {
+        let event = make_event("", "connector:slack:C123", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Message);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_discord_source() {
+        let event = make_event("", "connector:discord:ch1", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Message);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_telegram_source() {
+        let event = make_event("", "connector:telegram:100", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Message);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_teams_source() {
+        let event = make_event("", "connector:teams:team1", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Message);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_feishu_source() {
+        let event = make_event("", "connector:feishu:msg1", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Message);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_dingtalk_source() {
+        let event = make_event("", "connector:dingtalk:corp123", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Message);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_wecom_source() {
+        let event = make_event("", "connector:wecom:agent1", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Message);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_notion_source() {
+        let event = make_event("", "connector:notion:page1", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Data);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_obsidian_source() {
+        let event = make_event("", "connector:obsidian:vault1", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Data);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_email_source() {
+        let event = make_event("", "connector:email:inbox1", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Notification);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_rss_source() {
+        let event = make_event("", "connector:rss:feed1", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Notification);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_webhook_source() {
+        let event = make_event("", "connector:webhook:path1", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Notification);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_process_source() {
+        let event = make_event("", "process:1234", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::System);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_network_source() {
+        let event = make_event("", "network", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Network);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_clipboard_source() {
+        let event = make_event("", "clipboard", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Clipboard);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_file_source() {
+        let event = make_event("", "file:/tmp/test.txt", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Generic);
+    }
+
+    #[test]
+    fn test_classify_empty_event_type_unknown_source() {
+        let event = make_event("", "something:else", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Generic);
+    }
+
+    #[test]
+    fn test_classify_unknown_event_type_github_source_fallback() {
+        // Unrecognized event_type should fall back to source-based classification
+        let event = make_event("custom_event", "connector:github:issue", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Code);
+    }
+
+    #[test]
+    fn test_classify_unknown_event_type_slack_source_fallback() {
+        let event = make_event("custom_type", "connector:slack:C456", HashMap::new());
+        let c = classify_event(&event);
+        assert_eq!(c.content_type, ContentType::Message);
     }
 }
