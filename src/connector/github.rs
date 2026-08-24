@@ -13,6 +13,123 @@ use crate::config::GitHubConfig;
 use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
 
+/// Rate-limit state tracked between API calls.
+/// GitHub allows 60 requests/hour (unauthenticated) or 5000/hour (authenticated).
+/// When remaining hits 0, we sleep until the reset timestamp.
+struct RateLimitState {
+    remaining: u32,
+    reset_at: u64, // Unix timestamp in seconds
+}
+
+impl RateLimitState {
+    fn new() -> Self {
+        Self {
+            remaining: u32::MAX,
+            reset_at: 0,
+        }
+    }
+
+    /// Update rate limit state from response headers.
+    fn update_from_headers(&mut self, headers: &reqwest::header::HeaderMap) {
+        if let Some(remaining) = headers.get("x-ratelimit-remaining") {
+            if let Ok(val) = remaining.to_str().unwrap_or("").parse::<u32>() {
+                self.remaining = val;
+            }
+        }
+        if let Some(reset) = headers.get("x-ratelimit-reset") {
+            if let Ok(val) = reset.to_str().unwrap_or("").parse::<u64>() {
+                self.reset_at = val;
+            }
+        }
+    }
+
+    /// Wait if we've exhausted the rate limit. Returns Ok(()) once it's safe to proceed.
+    async fn wait_if_needed(&self) {
+        if self.remaining == 0 && self.reset_at > 0 {
+            let now = chrono::Utc::now().timestamp() as u64;
+            if self.reset_at > now {
+                let wait_secs = self.reset_at - now + 1; // +1s buffer
+                warn!(
+                    "GitHub rate limit exhausted — sleeping {}s until reset",
+                    wait_secs
+                );
+                tokio::time::sleep(Duration::from_secs(wait_secs)).await;
+            }
+        }
+    }
+}
+
+/// Make a GitHub API GET request with rate-limit awareness and one retry on 403/429.
+async fn github_get(
+    client: &reqwest::Client,
+    url: &str,
+    rate_limit: &mut RateLimitState,
+) -> Result<reqwest::Response> {
+    // Wait if we know the rate limit is exhausted
+    rate_limit.wait_if_needed().await;
+
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("GitHub API request failed: {}", url))?;
+
+    // Update rate limit state from response headers
+    rate_limit.update_from_headers(resp.headers());
+
+    let status = resp.status();
+
+    // Handle rate-limited responses (403 with rate limit or 429)
+    if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        // Check for Retry-After header first
+        let retry_after = resp
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok());
+
+        let wait_duration = if let Some(seconds) = retry_after {
+            Duration::from_secs(seconds)
+        } else if rate_limit.reset_at > 0 {
+            let now = chrono::Utc::now().timestamp() as u64;
+            let wait = rate_limit.reset_at.saturating_sub(now) + 1;
+            Duration::from_secs(wait.max(5)) // At least 5s
+        } else {
+            Duration::from_secs(60) // Default 60s backoff
+        };
+
+        warn!(
+            "GitHub rate limited ({}), retrying in {}s: {}",
+            status,
+            wait_duration.as_secs(),
+            url
+        );
+        tokio::time::sleep(wait_duration).await;
+
+        // Retry once after waiting
+        let resp2 = client
+            .get(url)
+            .send()
+            .await
+            .with_context(|| format!("GitHub API retry failed: {}", url))?;
+        rate_limit.update_from_headers(resp2.headers());
+
+        if !resp2.status().is_success() {
+            let s = resp2.status();
+            let body = resp2.text().await.unwrap_or_default();
+            anyhow::bail!("GitHub API error {} after retry: {}", s, body);
+        }
+        return Ok(resp2);
+    }
+
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("GitHub API error {}: {}", status, body);
+    }
+
+    Ok(resp)
+}
+
 /// GitHub connector implementing the unified Connector trait.
 pub struct GitHubConnector {
     config: GitHubConfig,
@@ -135,6 +252,7 @@ pub async fn start(config: GitHubConfig, tx: EventTx, circuit_breaker: Option<Ci
         let mut seen_commits: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut seen_review_comments: std::collections::HashSet<String> =
             std::collections::HashSet::new();
+        let mut rate_limit = RateLimitState::new();
 
         // Initial fetch (skip if circuit breaker is open)
         if let Some(ref cb) = circuit_breaker {
@@ -143,23 +261,23 @@ pub async fn start(config: GitHubConfig, tx: EventTx, circuit_breaker: Option<Ci
             } else {
                 let mut any_failed = false;
                 for repo in &config.repos {
-                    if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues).await {
+                    if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues, &mut rate_limit).await {
                         warn!("Initial GitHub issues fetch failed for {}: {}", repo, e);
                         any_failed = true;
                     }
                     if config.include_releases {
-                        if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases).await {
+                        if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases, &mut rate_limit).await {
                             warn!("Initial GitHub releases fetch failed for {}: {}", repo, e);
                             any_failed = true;
                         }
                     }
-                    if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
+                    if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits, &mut rate_limit).await {
                         warn!("Initial GitHub commits fetch failed for {}: {}", repo, e);
                         any_failed = true;
                     }
                     if config.include_review_comments {
                         if let Err(e) =
-                            fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await
+                            fetch_review_comments(&client, repo, &tx, &mut seen_review_comments, &mut rate_limit).await
                         {
                             warn!(
                                 "Initial GitHub review comments fetch failed for {}: {}",
@@ -174,20 +292,20 @@ pub async fn start(config: GitHubConfig, tx: EventTx, circuit_breaker: Option<Ci
         } else {
             // No circuit breaker — fetch unconditionally
             for repo in &config.repos {
-                if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues).await {
+                if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues, &mut rate_limit).await {
                     warn!("Initial GitHub issues fetch failed for {}: {}", repo, e);
                 }
                 if config.include_releases {
-                    if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases).await {
+                    if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases, &mut rate_limit).await {
                         warn!("Initial GitHub releases fetch failed for {}: {}", repo, e);
                     }
                 }
-                if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
+                if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits, &mut rate_limit).await {
                     warn!("Initial GitHub commits fetch failed for {}: {}", repo, e);
                 }
                 if config.include_review_comments {
                     if let Err(e) =
-                        fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await
+                        fetch_review_comments(&client, repo, &tx, &mut seen_review_comments, &mut rate_limit).await
                     {
                         warn!(
                             "Initial GitHub review comments fetch failed for {}: {}",
@@ -211,23 +329,23 @@ pub async fn start(config: GitHubConfig, tx: EventTx, circuit_breaker: Option<Ci
 
             let mut any_failed = false;
             for repo in &config.repos {
-                if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues).await {
+                if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues, &mut rate_limit).await {
                     warn!("GitHub issues fetch failed for {}: {}", repo, e);
                     any_failed = true;
                 }
                 if config.include_releases {
-                    if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases).await {
+                    if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases, &mut rate_limit).await {
                         warn!("GitHub releases fetch failed for {}: {}", repo, e);
                         any_failed = true;
                     }
                 }
-                if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits).await {
+                if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits, &mut rate_limit).await {
                     warn!("GitHub commits fetch failed for {}: {}", repo, e);
                     any_failed = true;
                 }
                 if config.include_review_comments {
                     if let Err(e) =
-                        fetch_review_comments(&client, repo, &tx, &mut seen_review_comments).await
+                        fetch_review_comments(&client, repo, &tx, &mut seen_review_comments, &mut rate_limit).await
                     {
                         warn!("GitHub review comments fetch failed for {}: {}", repo, e);
                         any_failed = true;
@@ -294,6 +412,7 @@ async fn fetch_issues(
     repo: &str,
     tx: &EventTx,
     seen: &mut std::collections::HashSet<String>,
+    rate_limit: &mut RateLimitState,
 ) -> Result<()> {
     let state = if config.include_closed { "all" } else { "open" };
     let per_page = config.max_items_per_fetch.min(100);
@@ -302,18 +421,7 @@ async fn fetch_issues(
         repo, state, per_page
     );
 
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .context("Failed to fetch GitHub issues")?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("GitHub API error {}: {}", status, body);
-    }
-
+    let resp = github_get(client, &url, rate_limit).await?;
     let issues: Vec<GitHubIssue> = resp.json().await.context("Failed to parse GitHub issues")?;
     let mut new_count = 0u32;
 
@@ -390,21 +498,11 @@ async fn fetch_releases(
     repo: &str,
     tx: &EventTx,
     seen: &mut std::collections::HashSet<String>,
+    rate_limit: &mut RateLimitState,
 ) -> Result<()> {
     let url = format!("https://api.github.com/repos/{}/releases?per_page=10", repo);
 
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .context("Failed to fetch GitHub releases")?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("GitHub releases API error {}: {}", status, body);
-    }
-
+    let resp = github_get(client, &url, rate_limit).await?;
     let releases: Vec<GitHubRelease> = resp
         .json()
         .await
@@ -465,21 +563,11 @@ async fn fetch_commits(
     repo: &str,
     tx: &EventTx,
     seen: &mut std::collections::HashSet<String>,
+    rate_limit: &mut RateLimitState,
 ) -> Result<()> {
     let url = format!("https://api.github.com/repos/{}/commits?per_page=20", repo);
 
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .context("Failed to fetch GitHub commits")?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("GitHub commits API error {}: {}", status, body);
-    }
-
+    let resp = github_get(client, &url, rate_limit).await?;
     let commits: Vec<GitHubCommit> = resp
         .json()
         .await
@@ -565,24 +653,14 @@ async fn fetch_review_comments(
     repo: &str,
     tx: &EventTx,
     seen: &mut std::collections::HashSet<String>,
+    rate_limit: &mut RateLimitState,
 ) -> Result<()> {
     let url = format!(
         "https://api.github.com/repos/{}/pulls/comments?per_page=30&sort=created&direction=desc",
         repo
     );
 
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .context("Failed to fetch GitHub review comments")?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("GitHub review comments API error {}: {}", status, body);
-    }
-
+    let resp = github_get(client, &url, rate_limit).await?;
     let comments: Vec<GitHubReviewComment> = resp
         .json()
         .await
@@ -1034,5 +1112,53 @@ mod tests {
         "#;
         let config: GitHubConfig = toml::from_str(toml).unwrap();
         assert!(config.include_review_comments);
+    }
+
+    #[test]
+    fn test_rate_limit_state_new() {
+        let rl = RateLimitState::new();
+        assert_eq!(rl.remaining, u32::MAX);
+        assert_eq!(rl.reset_at, 0);
+    }
+
+    #[test]
+    fn test_rate_limit_state_update_from_headers() {
+        let mut rl = RateLimitState::new();
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-ratelimit-remaining", "4500".parse().unwrap());
+        headers.insert("x-ratelimit-reset", "1700000000".parse().unwrap());
+
+        rl.update_from_headers(&headers);
+        assert_eq!(rl.remaining, 4500);
+        assert_eq!(rl.reset_at, 1700000000);
+    }
+
+    #[test]
+    fn test_rate_limit_state_update_ignores_invalid_headers() {
+        let mut rl = RateLimitState::new();
+        rl.remaining = 100;
+        rl.reset_at = 999;
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-ratelimit-remaining", "not-a-number".parse().unwrap());
+        headers.insert("x-ratelimit-reset", "also-bad".parse().unwrap());
+
+        rl.update_from_headers(&headers);
+        // Should keep old values since new ones are invalid
+        assert_eq!(rl.remaining, 100);
+        assert_eq!(rl.reset_at, 999);
+    }
+
+    #[test]
+    fn test_rate_limit_state_update_partial_headers() {
+        let mut rl = RateLimitState::new();
+
+        // Only remaining header, no reset
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-ratelimit-remaining", "10".parse().unwrap());
+
+        rl.update_from_headers(&headers);
+        assert_eq!(rl.remaining, 10);
+        assert_eq!(rl.reset_at, 0); // unchanged
     }
 }
