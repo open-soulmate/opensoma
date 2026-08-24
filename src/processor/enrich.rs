@@ -419,15 +419,25 @@ fn extract_keywords(text: &str) -> Vec<String> {
 }
 
 /// Generate a brief summary of the text.
+///
+/// Tries to extract the first sentence (supports Western `.!?` and CJK `。！？`),
+/// falling back to the first `max_chars` characters with an ellipsis.
 fn generate_summary(text: &str, max_chars: usize) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return String::new();
     }
 
-    // Try to get the first sentence
-    if let Some(end) = trimmed.find(['.', '!', '?']) {
-        let sentence = &trimmed[..=end];
+    // Try to get the first sentence (Western + CJK punctuation)
+    if let Some(end) = trimmed.find(['.', '!', '?', '。', '！', '？']) {
+        // For CJK punctuation, include the full-width character (3 bytes UTF-8)
+        let sentence_end = if matches!(&trimmed[end..].chars().next(), Some('。' | '！' | '？'))
+        {
+            end + '。'.len_utf8()
+        } else {
+            end + 1
+        };
+        let sentence = &trimmed[..sentence_end];
         if sentence.len() <= max_chars {
             return sentence.to_string();
         }
@@ -744,6 +754,24 @@ mod tests {
     fn test_generate_summary_no_sentence_end() {
         let summary = generate_summary("no ending sentence here", 200);
         assert_eq!(summary, "no ending sentence here");
+    }
+
+    #[test]
+    fn test_generate_summary_chinese_period() {
+        let summary = generate_summary("这是一个中文句子。后面还有更多内容。", 200);
+        assert_eq!(summary, "这是一个中文句子。");
+    }
+
+    #[test]
+    fn test_generate_summary_japanese_exclamation() {
+        let summary = generate_summary("すごい！さらに続きがあります。", 200);
+        assert_eq!(summary, "すごい！");
+    }
+
+    #[test]
+    fn test_generate_summary_chinese_question() {
+        let summary = generate_summary("你好吗？我很好。", 200);
+        assert_eq!(summary, "你好吗？");
     }
 
     #[test]
