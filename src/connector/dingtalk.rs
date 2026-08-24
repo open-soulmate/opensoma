@@ -382,6 +382,59 @@ async fn fetch_access_token(client: &Client, config: &DingtalkConfig) -> Result<
     Ok(resp.access_token)
 }
 
+/// Make a DingTalk API POST request with rate-limit awareness.
+/// Handles HTTP 429 Too Many Requests and DingTalk error code 88 (rate limited).
+/// Sleeps for the Retry-After duration or 1 second, then retries once.
+async fn dingtalk_api_post(
+    client: &Client,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<reqwest::Response> {
+    let resp = client
+        .post(url)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("DingTalk API request failed: {}", e))?;
+
+    // Handle HTTP 429 Too Many Requests
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        let retry_after = resp
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(1);
+        warn!(
+            "DingTalk rate limited (429), waiting {}s before retry",
+            retry_after
+        );
+        tokio::time::sleep(std::time::Duration::from_secs(retry_after)).await;
+
+        let resp2 = client
+            .post(url)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("DingTalk API retry failed: {}", e))?;
+
+        if !resp2.status().is_success() {
+            let status = resp2.status();
+            let body_text = resp2.text().await.unwrap_or_default();
+            anyhow::bail!("DingTalk API error {} after retry: {}", status, body_text);
+        }
+        return Ok(resp2);
+    }
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body_text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("DingTalk API error {}: {}", status, body_text);
+    }
+
+    Ok(resp)
+}
+
 /// Fetch approval process instances from DingTalk.
 /// Uses the topapi/processinstance/list API.
 async fn fetch_approval_list(client: &Client, token: &str) -> Result<Vec<ApprovalInstance>> {
@@ -401,10 +454,7 @@ async fn fetch_approval_list(client: &Client, token: &str) -> Result<Vec<Approva
         "cursor": 0,
     });
 
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
+    let resp = dingtalk_api_post(client, &url, &body)
         .await?
         .json::<ApprovalListResponse>()
         .await?;
@@ -438,10 +488,7 @@ async fn fetch_attendance_list(client: &Client, token: &str) -> Result<Vec<Atten
         "isI18n": false,
     });
 
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
+    let resp = dingtalk_api_post(client, &url, &body)
         .await?
         .json::<AttendanceListResponse>()
         .await?;
@@ -480,10 +527,7 @@ async fn fetch_work_reports(client: &Client, token: &str) -> Result<Vec<WorkRepo
         "end_time": now_ms,
     });
 
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
+    let resp = dingtalk_api_post(client, &url, &body)
         .await?
         .json::<WorkReportListResponse>()
         .await?;

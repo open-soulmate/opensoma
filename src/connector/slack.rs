@@ -214,6 +214,60 @@ pub async fn start(config: SlackConfig, tx: EventTx, circuit_breaker: Option<Cir
     Ok(handle)
 }
 
+/// Make a Slack API GET request with rate-limit awareness.
+/// Handles HTTP 429 Too Many Requests by sleeping for the Retry-After duration
+/// and retrying once. Slack's rate limit responses use the Retry-After header (seconds).
+async fn slack_api_get(
+    client: &Client,
+    url: &str,
+    bot_token: &str,
+) -> Result<reqwest::Response> {
+    let resp = client
+        .get(url)
+        .bearer_auth(bot_token)
+        .send()
+        .await
+        .with_context(|| format!("Slack API request failed: {}", url))?;
+
+    // Handle rate-limited responses (429 Too Many Requests)
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        let retry_after = resp
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(1);
+        warn!(
+            "Slack rate limited (429), waiting {}s before retry: {}",
+            retry_after, url
+        );
+        tokio::time::sleep(Duration::from_secs(retry_after)).await;
+
+        // Retry once after waiting
+        let resp2 = client
+            .get(url)
+            .bearer_auth(bot_token)
+            .send()
+            .await
+            .with_context(|| format!("Slack API retry failed: {}", url))?;
+
+        if !resp2.status().is_success() {
+            let status = resp2.status();
+            let body = resp2.text().await.unwrap_or_default();
+            anyhow::bail!("Slack API error {} after retry: {}", status, body);
+        }
+        return Ok(resp2);
+    }
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Slack API error {}: {}", status, body);
+    }
+
+    Ok(resp)
+}
+
 /// Auto-discover channels the bot has joined.
 async fn discover_channels(bot_token: &str) -> Result<Vec<String>> {
     let client = Client::new();
@@ -227,12 +281,7 @@ async fn discover_channels(bot_token: &str) -> Result<Vec<String>> {
         }
 
         let resp: ConversationsResponse = retry_async!("slack_conversations_list", 3, {
-            let r = client
-                .get(&url)
-                .bearer_auth(bot_token)
-                .send()
-                .await
-                .context("Failed to list Slack conversations")?;
+            let r = slack_api_get(&client, &url, bot_token).await?;
             r.json::<ConversationsResponse>()
                 .await
                 .context("Failed to parse Slack conversations response")
@@ -286,12 +335,7 @@ async fn poll_channel(
     }
 
     let resp: HistoryResponse = retry_async!("slack_conversations_history", 3, {
-        let r = client
-            .get(&url)
-            .bearer_auth(bot_token)
-            .send()
-            .await
-            .context("Failed to fetch Slack channel history")?;
+        let r = slack_api_get(client, &url, bot_token).await?;
         r.json::<HistoryResponse>()
             .await
             .context("Failed to parse Slack history response")
@@ -407,12 +451,7 @@ async fn poll_thread(
     );
 
     let resp: HistoryResponse = retry_async!("slack_conversations_replies", 3, {
-        let r = client
-            .get(&url)
-            .bearer_auth(bot_token)
-            .send()
-            .await
-            .context("Failed to fetch Slack thread replies")?;
+        let r = slack_api_get(client, &url, bot_token).await?;
         r.json::<HistoryResponse>()
             .await
             .context("Failed to parse Slack replies response")
@@ -478,7 +517,7 @@ async fn resolve_user(
     }
 
     let url = format!("https://slack.com/api/users.info?user={}", user_id);
-    match client.get(&url).bearer_auth(bot_token).send().await {
+    match slack_api_get(client, &url, bot_token).await {
         Ok(resp) => match resp.json::<UserInfoResponse>().await {
             Ok(info) if info.ok => {
                 let name = info

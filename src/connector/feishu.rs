@@ -170,6 +170,59 @@ pub async fn start(config: FeishuConfig, tx: EventTx, circuit_breaker: Option<Ci
     Ok(handle)
 }
 
+/// Make a Feishu API GET request with rate-limit awareness.
+/// Handles HTTP 429 Too Many Requests by sleeping for the Retry-After duration
+/// and retrying once. Feishu rate limits vary by API (typically 50-100 req/min).
+async fn feishu_api_get(
+    client: &Client,
+    url: &str,
+    token: &str,
+) -> Result<reqwest::Response> {
+    let resp = client
+        .get(url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Feishu API request failed: {}", e))?;
+
+    // Handle rate-limited responses (429 Too Many Requests)
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        let retry_after = resp
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(1);
+        warn!(
+            "Feishu rate limited (429), waiting {}s before retry: {}",
+            retry_after, url
+        );
+        tokio::time::sleep(std::time::Duration::from_secs(retry_after)).await;
+
+        let resp2 = client
+            .get(url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Feishu API retry failed: {}", e))?;
+
+        if !resp2.status().is_success() {
+            let status = resp2.status();
+            let body = resp2.text().await.unwrap_or_default();
+            anyhow::bail!("Feishu API error {} after retry: {}", status, body);
+        }
+        return Ok(resp2);
+    }
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Feishu API error {}: {}", status, body);
+    }
+
+    Ok(resp)
+}
+
 /// Fetch a tenant access token from Feishu.
 async fn fetch_tenant_token(client: &Client, config: &FeishuConfig) -> Result<String> {
     let url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal";
@@ -207,10 +260,7 @@ pub async fn fetch_document_list(
             url = format!("{}&page_token={}", url, pt);
         }
 
-        let resp = client
-            .get(&url)
-            .bearer_auth(token)
-            .send()
+        let resp = feishu_api_get(client, &url, token)
             .await?
             .json::<DocListResponse>()
             .await?;
@@ -238,10 +288,7 @@ pub async fn fetch_document_content(
         document_id
     );
 
-    let resp = client
-        .get(&url)
-        .bearer_auth(token)
-        .send()
+    let resp = feishu_api_get(client, &url, token)
         .await?
         .json::<DocContentResponse>()
         .await?;

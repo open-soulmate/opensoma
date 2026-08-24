@@ -147,6 +147,62 @@ async fn poll_updates(
         .await
         .context("Telegram getUpdates request failed")?;
 
+    // Handle rate-limited responses (429 Too Many Requests)
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        let retry_after = resp
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(1);
+        warn!(
+            "Telegram rate limited (429), waiting {}s before retry",
+            retry_after
+        );
+        tokio::time::sleep(Duration::from_secs(retry_after)).await;
+
+        // Retry once after waiting
+        let resp2 = client
+            .post(&url)
+            .json(&params)
+            .send()
+            .await
+            .context("Telegram getUpdates retry failed")?;
+
+        if !resp2.status().is_success() {
+            anyhow::bail!(
+                "Telegram getUpdates returned {} after retry",
+                resp2.status()
+            );
+        }
+
+        let data: serde_json::Value = resp2
+            .json()
+            .await
+            .context("Failed to parse Telegram getUpdates retry response")?;
+
+        if data["ok"] != true {
+            anyhow::bail!(
+                "Telegram getUpdates not ok after retry: {}",
+                data["description"].as_str().unwrap_or("unknown")
+            );
+        }
+
+        let updates = match data["result"].as_array() {
+            Some(arr) => arr,
+            None => return Ok(offset),
+        };
+
+        let mut max_offset = offset;
+        for update in updates {
+            let update_id = update["update_id"].as_i64().unwrap_or(0);
+            if update_id >= max_offset {
+                max_offset = update_id + 1;
+            }
+        }
+        return Ok(max_offset);
+    }
+
     if !resp.status().is_success() {
         anyhow::bail!("Telegram getUpdates returned {}", resp.status());
     }
