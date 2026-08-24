@@ -70,6 +70,10 @@
           <span class="shared-sidebar-icon">📡</span>
           <span class="shared-sidebar-label">采集器</span>
         </a>
+        <a href="#events" class="shared-sidebar-item" data-page="events">
+          <span class="shared-sidebar-icon">📋</span>
+          <span class="shared-sidebar-label">事件</span>
+        </a>
         <a href="#sync" class="shared-sidebar-item" data-page="sync">
           <span class="shared-sidebar-icon">🔄</span>
           <span class="shared-sidebar-label">同步</span>
@@ -472,6 +476,86 @@
     }
 
     // ─── Actions ────────────────────────────────────────────
+    async function renderEvents() {
+      const data = await apiFetch('/events/recent?limit=50');
+      const events = (data && data.events) ? data.events : [];
+
+      let rows = events.map(e => {
+        const ts = new Date(e.timestamp_ms).toLocaleString();
+        const sourceColor = e.source.startsWith('connector:') ? '#7c3aed' : e.source.startsWith('file') ? '#22c55e' : '#eab308';
+        return `<tr>
+          <td class="monospace" style="font-size:11px;">${ts}</td>
+          <td><span style="color:${sourceColor};" class="monospace">${e.source}</span></td>
+          <td class="monospace">${e.event_type}</td>
+          <td class="monospace">${formatBytes(e.payload_size)}</td>
+          <td class="monospace" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.id}">${e.id}</td>
+          <td>${Object.keys(e.tags || {}).length > 0 ? Object.entries(e.tags).map(([k,v]) => '<span class="badge badge-ok" style="margin-right:4px;">' + k + '=' + v + '</span>').join('') : '<span style="color:#71717a;">—</span>'}</td>
+        </tr>`;
+      }).join('');
+
+      if (events.length === 0) {
+        return `
+          <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">事件浏览器</h2>
+          <div class="empty-state"><div class="icon">📋</div><p>暂无缓存事件</p></div>
+        `;
+      }
+
+      return `
+        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">事件浏览器 <span style="font-weight:400;color:#71717a;">(${events.length} 条)</span></h2>
+        <div class="card" style="padding:12px;">
+          <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+            <input id="event-search" type="text" placeholder="搜索事件内容..." style="flex:1;padding:6px 12px;border-radius:6px;border:1px solid #27272a;background:#18181b;color:#e4e4e7;font-size:13px;" />
+            <button class="btn btn-primary btn-sm" onclick="searchEvents()">🔍 搜索</button>
+            <button class="btn btn-sm" onclick="navigateToPage('events')">↻ 刷新</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead><tr><th>时间</th><th>来源</th><th>类型</th><th>大小</th><th>ID</th><th>标签</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    async function searchEvents() {
+      const q = document.getElementById('event-search')?.value?.trim();
+      if (!q) { navigateToPage('events'); return; }
+      const data = await apiFetch('/events/search?q=' + encodeURIComponent(q) + '&limit=50');
+      const events = (data && data.events) ? data.events : [];
+      const tbody = document.querySelector('#page-content table tbody');
+      if (!tbody) return;
+
+      if (events.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#71717a;padding:24px;">未找到匹配事件</td></tr>';
+        return;
+      }
+      tbody.innerHTML = events.map(e => {
+        const ts = new Date(e.timestamp_ms).toLocaleString();
+        const sourceColor = e.source.startsWith('connector:') ? '#7c3aed' : e.source.startsWith('file') ? '#22c55e' : '#eab308';
+        return '<tr><td class="monospace" style="font-size:11px;">' + ts + '</td><td><span style="color:' + sourceColor + ';" class="monospace">' + e.source + '</span></td><td class="monospace">' + e.event_type + '</td><td class="monospace">' + formatBytes(e.payload_size) + '</td><td class="monospace" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + e.id + '">' + e.id + '</td><td>' + Object.keys(e.tags || {}).length + ' tags</td></tr>';
+      }).join('');
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+    }
+
+    async function renderDoctor() {
+      // Fetch server-rendered doctor page from the /api/page/doctor endpoint
+      try {
+        const resp = await fetch(API + '/page/doctor');
+        if (resp.ok) {
+          const data = await resp.json();
+          return data.html || '<div class="empty-state"><div class="icon">🩺</div><p>无法加载诊断页面</p></div>';
+        }
+      } catch (e) { /* fallback */ }
+      return '<div class="empty-state"><div class="icon">🩺</div><p>诊断页面加载失败</p></div>';
+    }
+
     async function toggleConnector(name, el) {
       const isEnabled = el.classList.contains('on');
       const newState = !isEnabled;
@@ -505,8 +589,10 @@
       'dashboard': { title: '仪表盘', render: renderDashboard },
       'connectors': { title: '连接器', render: renderConnectors },
       'collectors': { title: '采集器', render: renderCollectors },
+      'events': { title: '事件浏览器', render: renderEvents },
       'sync': { title: '同步', render: renderSync },
       'monitor': { title: '监控', render: renderMonitor },
+      'doctor': { title: '诊断', render: renderDoctor },
       'config': { title: '配置', render: renderConfig },
       'plugins': { title: '插件', render: renderPlugins },
     };

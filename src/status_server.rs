@@ -862,6 +862,7 @@ async fn api_page_handler(
         "config" => build_config_page().await,
         "plugins" => build_plugins_page(&state).await,
         "doctor" => build_doctor_page(&state).await,
+        "events" => build_events_page(&state).await,
         _ => format!(
             "<div class=\"text-center text-muted-foreground py-12\">页面未找到: {}</div>",
             page
@@ -1443,7 +1444,7 @@ async fn build_doctor_page(state: &StatusServerState) -> String {
     let mem = sysinfo::System::new_all();
     let used_mb = mem.used_memory() / (1024 * 1024);
     let total_mb = mem.total_memory() / (1024 * 1024);
-    let pct = if total_mb > 0 { used_mb * 100 / total_mb } else { 0 };
+    let pct = used_mb.saturating_mul(100).checked_div(total_mb).unwrap_or(0);
     let mem_badge: String = if pct < 80 { "badge-ok".into() } else if pct < 95 { "badge-warn".into() } else { "badge-error".into() };
     checks.push(("🧠".into(), "Memory".into(), format!("{}MB / {}MB ({}%)", used_mb, total_mb, pct), mem_badge));
 
@@ -1473,6 +1474,69 @@ async fn build_doctor_page(state: &StatusServerState) -> String {
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">{cards}</div>
 <script>setTimeout(() => location.reload(), 15000);</script>"#,
         cards = cards
+    )
+}
+
+
+/// Build the Events page HTML — lists recent cached events with search.
+async fn build_events_page(state: &StatusServerState) -> String {
+    let events_html = match &state.cache {
+        Some(cache) => match cache.get_recent(50) {
+            Ok(events) if !events.is_empty() => {
+                let rows: String = events.iter().map(|e| {
+                    let ts = chrono::DateTime::from_timestamp_millis(e.timestamp_ms)
+                        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                        .unwrap_or_else(|| "—".into());
+                    let source_badge = if e.source.starts_with("connector:") {
+                        "background:rgba(124,58,237,0.15);color:#a78bfa;"
+                    } else if e.source.starts_with("file") {
+                        "background:rgba(34,197,94,0.15);color:#22c55e;"
+                    } else {
+                        "background:rgba(234,179,8,0.15);color:#eab308;"
+                    };
+                    let tag_count = e.tags.len();
+                    format!(
+                        r#"<tr>
+                          <td class="monospace text-xs">{ts}</td>
+                          <td><span style="{source_badge}" class="inline-block px-2 py-0.5 rounded text-xs monospace">{source}</span></td>
+                          <td class="monospace">{event_type}</td>
+                          <td class="monospace">{size}</td>
+                          <td class="text-muted-foreground text-xs">{tags} tags</td>
+                        </tr>"#,
+                        ts = ts,
+                        source_badge = source_badge,
+                        source = e.source,
+                        event_type = e.event_type,
+                        size = format_bytes(e.payload.len() as u64),
+                        tags = tag_count,
+                    )
+                }).collect::<Vec<_>>().join("");
+                format!(
+                    r#"<div class="overflow-x-auto"><table class="w-full text-sm">
+                      <thead><tr class="border-b border-border">
+                        <th class="text-left p-2 text-muted-foreground font-medium">时间</th>
+                        <th class="text-left p-2 text-muted-foreground font-medium">来源</th>
+                        <th class="text-left p-2 text-muted-foreground font-medium">类型</th>
+                        <th class="text-left p-2 text-muted-foreground font-medium">大小</th>
+                        <th class="text-left p-2 text-muted-foreground font-medium">标签</th>
+                      </tr></thead><tbody>{rows}</tbody></table></div>"#,
+                    rows = rows
+                )
+            }
+            Ok(_) => r#"<div class="text-center py-12 text-muted-foreground">
+              <p class="text-4xl mb-3">📋</p><p>暂无缓存事件</p>
+            </div>"#.to_string(),
+            Err(e) => format!(r#"<div class="text-center py-12 text-destructive">加载失败: {e}</div>"#),
+        },
+        None => r#"<div class="text-center py-12 text-muted-foreground">缓存不可用</div>"#.to_string(),
+    };
+
+    format!(
+        r#"<div class="mb-4">
+  <h2 class="text-lg font-semibold text-foreground">📋 事件浏览器</h2>
+  <p class="text-sm text-muted-foreground">最近 50 条缓存事件</p>
+</div>
+{events_html}"#
     )
 }
 
