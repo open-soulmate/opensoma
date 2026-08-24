@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
 use axum::{http::StatusCode, routing::get, Router};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
@@ -7,6 +10,11 @@ use crate::collector::{EventTx, RawEvent};
 use crate::config::WebhookConfig;
 use crate::connector::circuit_breaker::CircuitBreaker;
 use crate::connector::Connector;
+
+/// Maximum requests per IP per minute before rate limiting kicks in.
+const RATE_LIMIT_PER_MINUTE: u32 = 60;
+/// Rate limit window duration.
+const RATE_LIMIT_WINDOW_SECS: u64 = 60;
 
 /// Webhook connector implementing the unified Connector trait.
 pub struct WebhookConnector {
@@ -42,6 +50,48 @@ struct WebhookState {
     tx: EventTx,
     secret: Option<String>,
     allowed_origins: Vec<String>,
+    rate_limiter: Arc<RwLock<IpRateLimiter>>,
+}
+
+/// Per-IP rate limiter using sliding window counters.
+struct IpRateLimiter {
+    /// IP address -> (request_count, window_start_timestamp_secs)
+    counters: HashMap<String, (u32, u64)>,
+}
+
+impl IpRateLimiter {
+    fn new() -> Self {
+        Self {
+            counters: HashMap::new(),
+        }
+    }
+
+    /// Check if the IP is within rate limits. Returns true if allowed, false if throttled.
+    fn check_and_record(&mut self, ip: &str) -> bool {
+        let now = chrono::Utc::now().timestamp() as u64;
+        let window_start = now.saturating_sub(RATE_LIMIT_WINDOW_SECS);
+
+        let entry = self
+            .counters
+            .entry(ip.to_string())
+            .or_insert((0, now));
+
+        // Reset if window expired
+        if entry.1 < window_start {
+            *entry = (1, now);
+            return true;
+        }
+
+        entry.0 += 1;
+        entry.0 <= RATE_LIMIT_PER_MINUTE
+    }
+
+    /// Remove stale entries older than 2 windows.
+    fn cleanup(&mut self) {
+        let now = chrono::Utc::now().timestamp() as u64;
+        let cutoff = now.saturating_sub(RATE_LIMIT_WINDOW_SECS * 2);
+        self.counters.retain(|_, (_, start)| *start >= cutoff);
+    }
 }
 
 /// Start the Webhook connector. Runs an HTTP server that receives webhook
@@ -52,6 +102,7 @@ pub async fn start(config: WebhookConfig, tx: EventTx, _circuit_breaker: Option<
         tx,
         secret: config.secret.clone(),
         allowed_origins: config.allowed_origins.clone(),
+        rate_limiter: Arc::new(RwLock::new(IpRateLimiter::new())),
     };
 
     info!("Webhook connector starting — listening on {}", listen);
@@ -76,11 +127,14 @@ async fn run_axum_server(listen: &str, state: WebhookState) -> Result<()> {
         .await
         .with_context(|| format!("Failed to bind webhook server to {}", listen))?;
 
-    info!("Webhook server listening on {}", listen);
+    info!("Webhook server listening on {} (rate limit: {} req/min/IP)", listen, RATE_LIMIT_PER_MINUTE);
 
-    axum::serve(listener, app)
-        .await
-        .context("Webhook server error")?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .context("Webhook server error")?;
 
     Ok(())
 }
@@ -101,8 +155,33 @@ async fn webhook_handler(
     axum::extract::State(state): axum::extract::State<WebhookState>,
     axum::extract::Path(path): axum::extract::Path<String>,
     headers: axum::http::HeaderMap,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
     body: String,
 ) -> Result<axum::response::Response, StatusCode> {
+    // Extract client IP (check X-Forwarded-For, then X-Real-IP, then socket addr)
+    let client_ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|s| s.trim().to_string())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| addr.ip().to_string());
+
+    // Rate limit check
+    {
+        let mut limiter = state.rate_limiter.write().await;
+        limiter.cleanup();
+        if !limiter.check_and_record(&client_ip) {
+            warn!("Webhook rate limited: IP {}", client_ip);
+            return Err(StatusCode::TOO_MANY_REQUESTS);
+        }
+    }
+
     // Check allowed origins
     if let Some(origin) = headers.get("origin").and_then(|v| v.to_str().ok()) {
         if !state.allowed_origins.is_empty()
@@ -322,6 +401,7 @@ mod tests {
             tx: tokio::sync::mpsc::channel(1).0,
             secret: Some("test".to_string()),
             allowed_origins: vec!["https://example.com".to_string()],
+            rate_limiter: Arc::new(RwLock::new(IpRateLimiter::new())),
         };
         let cloned = state.clone();
         assert_eq!(cloned.secret, Some("test".to_string()));
@@ -350,5 +430,51 @@ mod tests {
         let empty_origins: Vec<String> = vec![];
         let origin = "https://anything.com";
         assert!(empty_origins.is_empty() || empty_origins.iter().any(|o| origin.starts_with(o)));
+    }
+
+    #[test]
+    fn test_rate_limiter_allows_within_limit() {
+        let mut limiter = IpRateLimiter::new();
+        for _ in 0..RATE_LIMIT_PER_MINUTE {
+            assert!(limiter.check_and_record("192.168.1.1"));
+        }
+    }
+
+    #[test]
+    fn test_rate_limiter_blocks_over_limit() {
+        let mut limiter = IpRateLimiter::new();
+        for _ in 0..RATE_LIMIT_PER_MINUTE {
+            assert!(limiter.check_and_record("10.0.0.1"));
+        }
+        // Next request should be blocked
+        assert!(!limiter.check_and_record("10.0.0.1"));
+    }
+
+    #[test]
+    fn test_rate_limiter_per_ip_isolation() {
+        let mut limiter = IpRateLimiter::new();
+        // Exhaust limit for IP A
+        for _ in 0..RATE_LIMIT_PER_MINUTE {
+            assert!(limiter.check_and_record("10.0.0.1"));
+        }
+        assert!(!limiter.check_and_record("10.0.0.1"));
+        // IP B should still be allowed
+        assert!(limiter.check_and_record("10.0.0.2"));
+    }
+
+    #[test]
+    fn test_rate_limiter_cleanup() {
+        let mut limiter = IpRateLimiter::new();
+        limiter.check_and_record("192.168.1.1");
+        assert_eq!(limiter.counters.len(), 1);
+        limiter.cleanup();
+        // Entry is recent, should survive cleanup
+        assert_eq!(limiter.counters.len(), 1);
+    }
+
+    #[test]
+    fn test_rate_limiter_new_is_empty() {
+        let limiter = IpRateLimiter::new();
+        assert!(limiter.counters.is_empty());
     }
 }
