@@ -443,6 +443,12 @@ fn generate_summary(text: &str, max_chars: usize) -> String {
 }
 
 /// Simple language detection based on character ranges.
+///
+/// Detects: English (en), Chinese (zh), Japanese (ja), Korean (ko),
+/// Russian (ru), Arabic (ar), Hindi (hi), Thai (th).
+///
+/// Japanese is distinguished from Chinese by the presence of Hiragana/Katakana;
+/// Korean is detected via Hangul syllables/jamo.
 fn detect_language(text: &str) -> Option<String> {
     if text.is_empty() {
         return None;
@@ -450,24 +456,52 @@ fn detect_language(text: &str) -> Option<String> {
 
     let mut ascii = 0u32;
     let mut cjk = 0u32;
+    let mut hiragana_katakana = 0u32; // Japanese-specific
+    let mut hangul = 0u32; // Korean-specific
     let mut cyrillic = 0u32;
     let mut arabic = 0u32;
+    let mut devanagari = 0u32; // Hindi
+    let mut thai = 0u32;
     let total = text.chars().count() as f32;
 
     for ch in text.chars() {
         let cp = ch as u32;
         if cp < 128 {
             ascii += 1;
+        } else if (0x3040..=0x309F).contains(&cp) || (0x30A0..=0x30FF).contains(&cp) {
+            // Hiragana (ぁ-ん) or Katakana (ァ-ヶ) — uniquely Japanese
+            hiragana_katakana += 1;
+        } else if (0xAC00..=0xD7AF).contains(&cp) || (0x1100..=0x11FF).contains(&cp) {
+            // Hangul syllables or jamo — uniquely Korean
+            hangul += 1;
         } else if (0x4E00..=0x9FFF).contains(&cp) || (0x3400..=0x4DBF).contains(&cp) {
+            // CJK Unified Ideographs — shared by zh/ja/ko
             cjk += 1;
         } else if (0x0400..=0x04FF).contains(&cp) {
             cyrillic += 1;
         } else if (0x0600..=0x06FF).contains(&cp) {
             arabic += 1;
+        } else if (0x0900..=0x097F).contains(&cp) {
+            // Devanagari — Hindi, Sanskrit, Marathi
+            devanagari += 1;
+        } else if (0x0E00..=0x0E7F).contains(&cp) {
+            thai += 1;
         }
     }
 
     let threshold = total * 0.3;
+
+    // Japanese: any Hiragana/Katakana presence strongly indicates Japanese
+    if hiragana_katakana > 0 || (cjk > 0 && hiragana_katakana as f32 > total * 0.05) {
+        return Some("ja".to_string());
+    }
+
+    // Korean: Hangul presence strongly indicates Korean
+    if hangul > 0 || (cjk > 0 && hangul as f32 > total * 0.05) {
+        return Some("ko".to_string());
+    }
+
+    // Chinese: CJK ideographs without Japanese/Korean kana
     if cjk as f32 > threshold {
         return Some("zh".to_string());
     }
@@ -476,6 +510,12 @@ fn detect_language(text: &str) -> Option<String> {
     }
     if arabic as f32 > threshold {
         return Some("ar".to_string());
+    }
+    if devanagari as f32 > threshold {
+        return Some("hi".to_string());
+    }
+    if thai as f32 > threshold {
+        return Some("th".to_string());
     }
     if ascii as f32 > total * 0.8 {
         return Some("en".to_string());
@@ -548,6 +588,57 @@ mod tests {
         assert_eq!(
             detect_language("这是一个中文测试文档包含多个汉字"),
             Some("zh".to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_language_japanese_with_hiragana() {
+        // Japanese with Hiragana (の, は, す, etc.) should be "ja" not "zh"
+        assert_eq!(
+            detect_language("これは日本語のテストです"),
+            Some("ja".to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_language_japanese_with_katakana() {
+        // Katakana (カタカナ) is uniquely Japanese
+        assert_eq!(
+            detect_language("カタカナでテストを書いています"),
+            Some("ja".to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_language_japanese_mixed() {
+        // Mixed Kanji + Hiragana (typical Japanese)
+        assert_eq!(
+            detect_language("東京は日本の首都です"),
+            Some("ja".to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_language_korean() {
+        assert_eq!(
+            detect_language("이것은 한국어 테스트 문서입니다"),
+            Some("ko".to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_language_hindi() {
+        assert_eq!(
+            detect_language("यह एक हिंदी परीक्षण दस्तावेज़ है"),
+            Some("hi".to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_language_thai() {
+        assert_eq!(
+            detect_language("นี่คือเอกสารทดสอบภาษาไทย"),
+            Some("th".to_string())
         );
     }
 
