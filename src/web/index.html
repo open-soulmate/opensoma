@@ -231,6 +231,22 @@
     async function renderSync() {
       const cacheStats = await apiFetch('/cache/stats');
       const status = await apiFetch('/status');
+      const cfg = await apiFetch('/config');
+      const pipeline = await apiFetch('/pipeline/metrics');
+
+      const batchSize = cfg ? cfg.sync_batch_size : '-';
+      const uploadInterval = cfg ? cfg.sync_upload_interval : '-';
+      const maxRetries = cfg ? cfg.sync_max_retries : '-';
+      const retryBackoff = cfg ? cfg.sync_retry_backoff_ms : '-';
+      const cacheLimit = cfg ? cfg.sync_cache_size_mb : '-';
+      const conflictStrategy = cfg ? cfg.conflict_strategy || 'newest_wins' : '-';
+      const streaming = cfg ? cfg.sync_streaming : false;
+
+      const processed = pipeline ? (pipeline.events_processed || 0).toLocaleString() : '-';
+      const normalized = pipeline ? (pipeline.events_normalized || 0).toLocaleString() : '-';
+      const classified = pipeline ? (pipeline.events_classified || 0).toLocaleString() : '-';
+      const enriched = pipeline ? (pipeline.events_enriched || 0).toLocaleString() : '-';
+      const deduped = pipeline ? (pipeline.events_deduped || 0).toLocaleString() : '-';
 
       return `
         <div class="stats-grid">
@@ -256,9 +272,25 @@
           <table>
             <tbody>
               <tr><td style="color:#71717a;width:120px;">同步状态</td><td><span class="badge badge-ok">运行中</span></td></tr>
-              <tr><td style="color:#71717a;">批次大小</td><td class="monospace">50</td></tr>
-              <tr><td style="color:#71717a;">上传间隔</td><td class="monospace">10s</td></tr>
-              <tr><td style="color:#71717a;">最大重试</td><td class="monospace">5</td></tr>
+              <tr><td style="color:#71717a;">批次大小</td><td class="monospace">${batchSize}</td></tr>
+              <tr><td style="color:#71717a;">上传间隔</td><td class="monospace">${uploadInterval}s</td></tr>
+              <tr><td style="color:#71717a;">最大重试</td><td class="monospace">${maxRetries}</td></tr>
+              <tr><td style="color:#71717a;">退避间隔</td><td class="monospace">${retryBackoff}ms</td></tr>
+              <tr><td style="color:#71717a;">缓存上限</td><td class="monospace">${cacheLimit} MB</td></tr>
+              <tr><td style="color:#71717a;">冲突策略</td><td class="monospace">${conflictStrategy}</td></tr>
+              <tr><td style="color:#71717a;">实时流</td><td><span class="badge ${streaming ? 'badge-ok' : 'badge-disabled'}">${streaming ? '已启用' : '已禁用'}</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">处理管线</h3>
+          <table>
+            <tbody>
+              <tr><td style="color:#71717a;width:120px;">已处理</td><td class="monospace">${processed}</td></tr>
+              <tr><td style="color:#71717a;">已标准化</td><td class="monospace">${normalized}</td></tr>
+              <tr><td style="color:#71717a;">已分类</td><td class="monospace">${classified}</td></tr>
+              <tr><td style="color:#71717a;">已富化</td><td class="monospace">${enriched}</td></tr>
+              <tr><td style="color:#71717a;">已去重</td><td class="monospace">${deduped}</td></tr>
             </tbody>
           </table>
         </div>

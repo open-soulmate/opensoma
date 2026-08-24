@@ -145,6 +145,10 @@ pub struct ConfigSnapshot {
     pub sync_max_retries: u32,
     pub sync_retry_backoff_ms: u64,
     pub sync_cache_size_mb: u64,
+    #[serde(default)]
+    pub conflict_strategy: String,
+    #[serde(default)]
+    pub sync_streaming: bool,
     pub connectors: Vec<ConnectorConfigSummary>,
 }
 
@@ -220,6 +224,8 @@ impl ConfigSnapshot {
             sync_max_retries: config.sync.max_retries,
             sync_retry_backoff_ms: config.sync.retry_backoff_ms,
             sync_cache_size_mb: config.sync.cache_size_mb,
+            conflict_strategy: config.sync.conflict_strategy.clone(),
+            sync_streaming: config.sync.enable_streaming,
             connectors,
         }
     }
