@@ -861,6 +861,7 @@ async fn api_page_handler(
         "monitor" => build_monitor_page(&state).await,
         "config" => build_config_page().await,
         "plugins" => build_plugins_page(&state).await,
+        "doctor" => build_doctor_page(&state).await,
         _ => format!(
             "<div class=\"text-center text-muted-foreground py-12\">页面未找到: {}</div>",
             page
@@ -1380,6 +1381,101 @@ async fn build_plugins_page(state: &StatusServerState) -> String {
         rows = rows,
     )
 }
+
+/// Build the Doctor diagnostics page — runtime health checks rendered as dashboard cards.
+/// Mirrors the CLI `--doctor` output but in web-friendly HTML.
+async fn build_doctor_page(state: &StatusServerState) -> String {
+    let mut checks: Vec<(String, String, String, String)> = Vec::new();
+
+    // 1. Uptime & node
+    let uptime = state.start_time.elapsed().as_secs();
+    let node_id = state.node_id.clone();
+    checks.push(("🖥️".into(), "Node".into(), format!("{} — uptime {}s", node_id, uptime), "badge-ok".into()));
+
+    // 2. Events collected vs synced
+    let collected = *state.events_collected.read().await;
+    let synced = *state.events_synced.read().await;
+    let pending = collected.saturating_sub(synced);
+    let sync_badge: String = if pending == 0 { "badge-ok".into() } else { "badge-warn".into() };
+    checks.push(("📊".into(), "Events".into(), format!("collected={} synced={} pending={}", collected, synced, pending), sync_badge));
+
+    // 3. Cache health
+    if let Some(ref cache) = state.cache {
+        let stats = cache.stats();
+        let badge: String = if stats.pending == 0 { "badge-ok".into() } else { "badge-warn".into() };
+        checks.push(("💾".into(), "Cache".into(), format!("{} total, {} pending, {}", stats.total, stats.pending, format_bytes(stats.cache_size_bytes)), badge));
+    } else {
+        checks.push(("💾".into(), "Cache".into(), "not initialized".into(), "badge-disabled".into()));
+    }
+
+    // 4. Connector health
+    if let Some(ref checker) = state.health_checker {
+        let results = checker.get_all().await;
+        let healthy = results.iter().filter(|r| r.status == crate::health::HealthStatus::Healthy).count();
+        let total = results.len();
+        let badge: String = if healthy == total { "badge-ok".into() } else { "badge-warn".into() };
+        checks.push(("🔌".into(), "Connectors".into(), format!("{}/{} healthy", healthy, total), badge));
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        for r in &results {
+            let is_healthy = r.status == crate::health::HealthStatus::Healthy;
+            let icon = if is_healthy { "  ✅" } else { "  ❌" };
+            let age_secs = (now_ms - r.last_check_ms) / 1000;
+            let detail = match &r.error_message {
+                Some(err) => format!("last check {}s ago — {}", age_secs, err),
+                None => format!("last check {}s ago", age_secs),
+            };
+            let badge: String = if is_healthy { "badge-ok".into() } else { "badge-error".into() };
+            checks.push((icon.into(), r.name.clone(), detail, badge));
+        }
+    } else {
+        checks.push(("🔌".into(), "Connectors".into(), "health checker not active".into(), "badge-disabled".into()));
+    }
+
+    // 5. Plugin registry
+    if let Some(ref registry) = state.plugin_registry {
+        let total = registry.count().await;
+        let active = registry.active_count().await;
+        let badge: String = if active == total { "badge-ok".into() } else { "badge-warn".into() };
+        checks.push(("🧩".into(), "Plugins".into(), format!("{}/{} active", active, total), badge));
+    }
+
+    // 6. Memory usage
+    let mem = sysinfo::System::new_all();
+    let used_mb = mem.used_memory() / (1024 * 1024);
+    let total_mb = mem.total_memory() / (1024 * 1024);
+    let pct = if total_mb > 0 { used_mb * 100 / total_mb } else { 0 };
+    let mem_badge: String = if pct < 80 { "badge-ok".into() } else if pct < 95 { "badge-warn".into() } else { "badge-error".into() };
+    checks.push(("🧠".into(), "Memory".into(), format!("{}MB / {}MB ({}%)", used_mb, total_mb, pct), mem_badge));
+
+    // Build HTML
+    let cards: String = checks.iter().map(|(icon, label, detail, badge): &(String, String, String, String)| {
+        let badge_text = match badge.as_str() { "badge-ok" => "OK", "badge-warn" => "WARN", "badge-error" => "ERROR", _ => "N/A" };
+        format!(
+            r#"<div class="bg-card border border-border rounded-lg p-4 flex items-start gap-4">
+  <div class="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-lg">{icon}</div>
+  <div class="flex-1">
+    <div class="flex items-center gap-2 mb-1">
+      <span class="font-semibold text-foreground">{label}</span>
+      <span class="badge {badge}">{badge_text}</span>
+    </div>
+    <div class="text-sm text-muted-foreground font-mono">{detail}</div>
+  </div>
+</div>"#,
+            icon = icon, label = label, badge = badge, badge_text = badge_text, detail = detail,
+        )
+    }).collect::<Vec<_>>().join("");
+
+    format!(
+        r#"<div class="mb-4">
+  <h2 class="text-lg font-semibold text-foreground">🩺 系统诊断</h2>
+  <p class="text-sm text-muted-foreground">运行时健康检查 — 自动刷新</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">{cards}</div>
+<script>setTimeout(() => location.reload(), 15000);</script>"#,
+        cards = cards
+    )
+}
+
 
 fn format_bytes(bytes: u64) -> String {
     if bytes < 1024 {
