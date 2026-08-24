@@ -1230,6 +1230,29 @@ fn run_doctor(config_path: &str) -> i32 {
                 }
             }
 
+            // 3b. Disk space for data directory
+            if std::path::Path::new(data_dir).is_dir() {
+                let disks = sysinfo::Disks::new_with_refreshed_list();
+                for disk in disks.iter() {
+                    let mount = disk.mount_point().to_string_lossy();
+                    if data_dir.starts_with(mount.as_ref()) || mount == "/" {
+                        let avail_gb = disk.available_space() as f64 / (1024.0 * 1024.0 * 1024.0);
+                        let total_gb = disk.total_space() as f64 / (1024.0 * 1024.0 * 1024.0);
+                        let used_pct = ((total_gb - avail_gb) / total_gb * 100.0) as u32;
+                        if avail_gb < 1.0 {
+                            println!("  [data]    ❌ Disk space critically low: {:.1} GB free ({:.1} GB total, {}% used)", avail_gb, total_gb, used_pct);
+                            errors += 1;
+                        } else if avail_gb < 5.0 {
+                            println!("  [data]    ⚠️  Disk space low: {:.1} GB free ({:.1} GB total, {}% used)", avail_gb, total_gb, used_pct);
+                            warnings += 1;
+                        } else {
+                            println!("  [data]    Disk space: ✅ {:.1} GB free ({:.1} GB total, {}% used)", avail_gb, total_gb, used_pct);
+                        }
+                        break;
+                    }
+                }
+            }
+
             // 4. Watch directories
             for dir in &config.collector.watch_dirs {
                 print!("  [watch]   Checking {} ... ", dir);
