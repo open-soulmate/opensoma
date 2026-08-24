@@ -55,7 +55,7 @@ pub async fn start(config: ObsidianConfig, tx: EventTx, circuit_breaker: Option<
     }
 
     let handle = tokio::spawn(async move {
-        let _cb = circuit_breaker; // Circuit breaker integration point
+        let _cb = circuit_breaker; // Not applicable: Obsidian watches local filesystem
         // Track file hashes for change detection
         let mut known_hashes: HashMap<String, String> = HashMap::new();
 

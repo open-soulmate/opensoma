@@ -78,7 +78,7 @@ pub async fn start(config: TelegramConfig, tx: EventTx, circuit_breaker: Option<
     );
 
     let handle = tokio::spawn(async move {
-        let _cb = circuit_breaker; // Circuit breaker integration point
+        let cb = circuit_breaker;
         let mut offset: i64 = 0;
         let mut interval = tokio::time::interval(poll_interval);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -97,6 +97,15 @@ pub async fn start(config: TelegramConfig, tx: EventTx, circuit_breaker: Option<
 
         loop {
             interval.tick().await;
+
+            // Circuit breaker check
+            if let Some(ref c) = cb {
+                if c.allow_request().await.is_err() {
+                    debug!("Telegram circuit breaker open — skipping poll cycle");
+                    continue;
+                }
+            }
+
             match poll_updates(
                 &http_client,
                 &bot_token,
@@ -111,8 +120,12 @@ pub async fn start(config: TelegramConfig, tx: EventTx, circuit_breaker: Option<
                     if new_offset > 0 {
                         offset = new_offset;
                     }
+                    if let Some(ref c) = cb { c.record_success().await; }
                 }
-                Err(e) => warn!("Telegram poll failed: {}", e),
+                Err(e) => {
+                    warn!("Telegram poll failed: {}", e);
+                    if let Some(ref c) = cb { c.record_failure().await; }
+                }
             }
         }
     });

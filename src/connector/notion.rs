@@ -130,7 +130,7 @@ pub async fn start(config: NotionConfig, tx: EventTx, circuit_breaker: Option<Ci
     let http_client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
     let handle = tokio::spawn(async move {
-        let _cb = circuit_breaker; // Circuit breaker integration point
+        let cb = circuit_breaker;
         let mut poll_interval =
             tokio::time::interval(Duration::from_secs(config.poll_interval_secs));
         poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -143,9 +143,18 @@ pub async fn start(config: NotionConfig, tx: EventTx, circuit_breaker: Option<Ci
         loop {
             poll_interval.tick().await;
 
+            // Circuit breaker check
+            if let Some(ref c) = cb {
+                if c.allow_request().await.is_err() {
+                    debug!("Notion circuit breaker open — skipping poll cycle");
+                    continue;
+                }
+            }
+
             match query_database(&http_client, &config).await {
                 Ok(pages) => {
                     debug!("Fetched {} pages from Notion database", pages.len());
+                    if let Some(ref c) = cb { c.record_success().await; }
                     for page in pages {
                         let page_id = &page.id;
                         match fetch_page_blocks(&http_client, &config, page_id).await {
@@ -174,6 +183,7 @@ pub async fn start(config: NotionConfig, tx: EventTx, circuit_breaker: Option<Ci
                 }
                 Err(e) => {
                     warn!("Failed to query Notion database: {}", e);
+                    if let Some(ref c) = cb { c.record_failure().await; }
                 }
             }
         }

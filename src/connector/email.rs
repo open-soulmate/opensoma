@@ -22,7 +22,7 @@ pub async fn start(config: EmailConfig, tx: EventTx, circuit_breaker: Option<Cir
     );
 
     let handle = tokio::spawn(async move {
-        let _cb = circuit_breaker; // Circuit breaker integration point
+        let cb = circuit_breaker;
         let mut interval = tokio::time::interval(Duration::from_secs(poll_secs));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -30,7 +30,7 @@ pub async fn start(config: EmailConfig, tx: EventTx, circuit_breaker: Option<Cir
         let mut seen: std::collections::HashMap<String, std::collections::HashSet<u32>> =
             std::collections::HashMap::new();
 
-        // Initial poll
+        // Initial poll (circuit breaker not checked on first run)
         for account in &accounts {
             let key = format!("{}:{}", account.name, account.username);
             let seen_set = seen.entry(key).or_default();
@@ -41,11 +41,24 @@ pub async fn start(config: EmailConfig, tx: EventTx, circuit_breaker: Option<Cir
 
         loop {
             interval.tick().await;
+
+            // Circuit breaker check
+            if let Some(ref c) = cb {
+                if c.allow_request().await.is_err() {
+                    debug!("Email circuit breaker open — skipping poll cycle");
+                    continue;
+                }
+            }
+
             for account in &accounts {
                 let key = format!("{}:{}", account.name, account.username);
                 let seen_set = seen.entry(key).or_default();
-                if let Err(e) = poll_account(account, &tx, seen_set).await {
+                let poll_result = poll_account(account, &tx, seen_set).await;
+                if let Err(e) = poll_result {
                     warn!("Email poll failed for '{}': {}", account.name, e);
+                    if let Some(ref c) = cb { c.record_failure().await; }
+                } else {
+                    if let Some(ref c) = cb { c.record_success().await; }
                 }
             }
         }

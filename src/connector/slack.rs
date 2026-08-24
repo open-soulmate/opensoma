@@ -172,7 +172,7 @@ pub async fn start(config: SlackConfig, tx: EventTx, circuit_breaker: Option<Cir
     };
 
     let handle = tokio::spawn(async move {
-        let _cb = circuit_breaker; // Circuit breaker integration point
+        let cb = circuit_breaker;
         if resolved_channels.is_empty() {
             warn!("No Slack channels to monitor — connector idle");
             // Still run the loop in case channels are added later
@@ -193,8 +193,16 @@ pub async fn start(config: SlackConfig, tx: EventTx, circuit_breaker: Option<Cir
         loop {
             interval.tick().await;
 
+            // Circuit breaker check
+            if let Some(ref c) = cb {
+                if c.allow_request().await.is_err() {
+                    debug!("Slack circuit breaker open — skipping poll cycle");
+                    continue;
+                }
+            }
+
             for channel_id in &resolved_channels {
-                if let Err(e) = poll_channel(
+                let poll_result = poll_channel(
                     &client,
                     &bot_token,
                     channel_id,
@@ -203,9 +211,12 @@ pub async fn start(config: SlackConfig, tx: EventTx, circuit_breaker: Option<Cir
                     &mut user_cache,
                     include_threads,
                 )
-                .await
-                {
+                .await;
+                if let Err(e) = poll_result {
                     warn!("Slack poll failed for channel {}: {}", channel_id, e);
+                    if let Some(ref c) = cb { c.record_failure().await; }
+                } else {
+                    if let Some(ref c) = cb { c.record_success().await; }
                 }
             }
         }

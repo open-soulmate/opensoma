@@ -91,7 +91,7 @@ pub async fn start(config: FeishuConfig, tx: EventTx, circuit_breaker: Option<Ci
     info!("Feishu connector authenticated.");
 
     let handle = tokio::spawn(async move {
-        let _cb = circuit_breaker; // Circuit breaker integration point
+        let cb = circuit_breaker;
         let mut current_token = token;
         let mut token_refresh = tokio::time::interval(Duration::from_secs(7000));
         let mut poll_interval = tokio::time::interval(Duration::from_secs(60));
@@ -107,13 +107,22 @@ pub async fn start(config: FeishuConfig, tx: EventTx, circuit_breaker: Option<Ci
                         Ok(new_token) => {
                             current_token = new_token;
                             info!("Feishu access token refreshed.");
+                            if let Some(ref c) = cb { c.record_success().await; }
                         }
                         Err(e) => {
                             error!("Failed to refresh Feishu token: {}", e);
+                            if let Some(ref c) = cb { c.record_failure().await; }
                         }
                     }
                 }
                 _ = poll_interval.tick() => {
+                    // Circuit breaker check
+                    if let Some(ref c) = cb {
+                        if c.allow_request().await.is_err() {
+                            debug!("Feishu circuit breaker open — skipping poll cycle");
+                            continue;
+                        }
+                    }
                     if let Some(ref folder_token) = config.folder_token {
                         if folder_token.is_empty() {
                             continue;
@@ -121,6 +130,7 @@ pub async fn start(config: FeishuConfig, tx: EventTx, circuit_breaker: Option<Ci
                         match fetch_document_list(&http_client, &current_token, folder_token).await {
                             Ok(docs) => {
                                 debug!("Fetched {} documents from Feishu folder", docs.len());
+                                if let Some(ref c) = cb { c.record_success().await; }
                                 for doc in docs {
                                     // Dedup: skip already-seen documents
                                     if seen_docs.contains(&doc.document_id) {
@@ -150,6 +160,7 @@ pub async fn start(config: FeishuConfig, tx: EventTx, circuit_breaker: Option<Ci
                             }
                             Err(e) => {
                                 warn!("Failed to fetch Feishu document list: {}", e);
+                                if let Some(ref c) = cb { c.record_failure().await; }
                             }
                         }
                     }

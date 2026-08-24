@@ -107,7 +107,7 @@ pub async fn start(config: WecomConfig, tx: EventTx, circuit_breaker: Option<Cir
     let poll_secs = config.poll_interval_secs;
 
     let handle = tokio::spawn(async move {
-        let _cb = circuit_breaker; // Circuit breaker integration point
+        let cb = circuit_breaker;
         let mut current_token = token;
         let mut token_refresh = tokio::time::interval(std::time::Duration::from_secs(6000));
         let mut poll_interval = tokio::time::interval(std::time::Duration::from_secs(poll_secs));
@@ -123,17 +123,27 @@ pub async fn start(config: WecomConfig, tx: EventTx, circuit_breaker: Option<Cir
                         Ok(new_token) => {
                             current_token = new_token;
                             info!("WeCom access token refreshed.");
+                            if let Some(ref c) = cb { c.record_success().await; }
                         }
                         Err(e) => {
                             error!("Failed to refresh WeCom token: {}", e);
+                            if let Some(ref c) = cb { c.record_failure().await; }
                         }
                     }
                 }
                 _ = poll_interval.tick() => {
+                    // Circuit breaker check
+                    if let Some(ref c) = cb {
+                        if c.allow_request().await.is_err() {
+                            debug!("WeCom circuit breaker open — skipping poll cycle");
+                            continue;
+                        }
+                    }
                     // Poll received messages for the agent
                     match fetch_received_messages(&http_client, &current_token, &config.agent_id).await {
                         Ok(messages) => {
                             debug!("Fetched {} WeCom messages", messages.len());
+                            if let Some(ref c) = cb { c.record_success().await; }
                             for msg in messages {
                                 if seen_msgs.contains(&msg.msgid) {
                                     continue;
@@ -156,6 +166,7 @@ pub async fn start(config: WecomConfig, tx: EventTx, circuit_breaker: Option<Cir
                         }
                         Err(e) => {
                             warn!("Failed to fetch WeCom messages: {}", e);
+                            if let Some(ref c) = cb { c.record_failure().await; }
                         }
                     }
 

@@ -64,14 +64,14 @@ pub async fn start(config: RssConfig, tx: EventTx, circuit_breaker: Option<Circu
     );
 
     let handle = tokio::spawn(async move {
-        let _cb = circuit_breaker; // Circuit breaker integration point
+        let cb = circuit_breaker;
         let mut interval = tokio::time::interval(Duration::from_secs(poll_secs));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         // Track seen entry GUIDs/links to avoid duplicates across polls
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-        // Initial poll immediately
+        // Initial poll immediately (circuit breaker not checked on first run)
         for feed in &feeds {
             if let Err(e) = poll_feed(&http_client, feed, &tx, &mut seen).await {
                 error!("RSS initial poll failed for '{}': {}", feed.name, e);
@@ -80,9 +80,22 @@ pub async fn start(config: RssConfig, tx: EventTx, circuit_breaker: Option<Circu
 
         loop {
             interval.tick().await;
+
+            // Circuit breaker check
+            if let Some(ref c) = cb {
+                if c.allow_request().await.is_err() {
+                    debug!("RSS circuit breaker open — skipping poll cycle");
+                    continue;
+                }
+            }
+
             for feed in &feeds {
-                if let Err(e) = poll_feed(&http_client, feed, &tx, &mut seen).await {
+                let poll_result = poll_feed(&http_client, feed, &tx, &mut seen).await;
+                if let Err(e) = poll_result {
                     warn!("RSS poll failed for '{}': {}", feed.name, e);
+                    if let Some(ref c) = cb { c.record_failure().await; }
+                } else {
+                    if let Some(ref c) = cb { c.record_success().await; }
                 }
             }
         }
