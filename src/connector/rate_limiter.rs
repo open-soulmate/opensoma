@@ -127,6 +127,60 @@ impl RateLimiterConfig {
         }
     }
 
+    /// Telegram Bot API: ~30 requests/second to getUpdates, 1 msg/sec to same chat.
+    pub fn telegram() -> Self {
+        Self {
+            max_tokens: 20,
+            refill_rate: 30.0,
+            refill_interval: Duration::from_secs(1),
+        }
+    }
+
+    /// Email (IMAP): ~10 requests/second (conservative for mailbox servers).
+    pub fn email() -> Self {
+        Self {
+            max_tokens: 10,
+            refill_rate: 10.0,
+            refill_interval: Duration::from_secs(1),
+        }
+    }
+
+    /// RSS feeds: 2 requests/second (be polite to feed servers).
+    pub fn rss() -> Self {
+        Self {
+            max_tokens: 5,
+            refill_rate: 2.0,
+            refill_interval: Duration::from_secs(1),
+        }
+    }
+
+    /// Git repository polling: 1 request/second (local or remote).
+    pub fn git() -> Self {
+        Self {
+            max_tokens: 3,
+            refill_rate: 1.0,
+            refill_interval: Duration::from_secs(1),
+        }
+    }
+
+    /// Obsidian vault: file-system local, no network rate limit needed.
+    pub fn obsidian() -> Self {
+        Self {
+            max_tokens: 100,
+            refill_rate: 100.0,
+            refill_interval: Duration::from_secs(1),
+        }
+    }
+
+    /// Webhook receiver: inbound only, no outbound rate limit needed.
+    pub fn webhook() -> Self {
+        Self {
+            max_tokens: 100,
+            refill_rate: 100.0,
+            refill_interval: Duration::from_secs(1),
+        }
+    }
+
     /// Conservative rate limit for unknown APIs.
     pub fn conservative() -> Self {
         Self {
@@ -324,20 +378,12 @@ impl RateLimiterRegistry {
             ("discord", RateLimiterConfig::discord()),
             ("wecom", RateLimiterConfig::wecom()),
             ("teams", RateLimiterConfig::teams()),
-            ("telegram", RateLimiterConfig::conservative()),
-            ("email", RateLimiterConfig::conservative()),
-            ("rss", RateLimiterConfig::conservative()),
-            ("webhook", RateLimiterConfig {
-                max_tokens: 100,
-                refill_rate: 100.0,
-                refill_interval: Duration::from_secs(1),
-            }),
-            ("git", RateLimiterConfig::conservative()),
-            ("obsidian", RateLimiterConfig {
-                max_tokens: 50,
-                refill_rate: 50.0,
-                refill_interval: Duration::from_secs(1),
-            }),
+            ("telegram", RateLimiterConfig::telegram()),
+            ("email", RateLimiterConfig::email()),
+            ("rss", RateLimiterConfig::rss()),
+            ("webhook", RateLimiterConfig::webhook()),
+            ("git", RateLimiterConfig::git()),
+            ("obsidian", RateLimiterConfig::obsidian()),
         ];
 
         for (name, config) in entries {
@@ -684,5 +730,98 @@ mod tests {
         let snap = notion.snapshot().await;
         assert_eq!(snap.total_acquired, 3);
         assert_eq!(snap.total_rejected, 1);
+    }
+
+    #[test]
+    fn test_telegram_rate_config() {
+        let config = RateLimiterConfig::telegram();
+        assert_eq!(config.max_tokens, 20);
+        assert!((config.refill_rate - 30.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_email_rate_config() {
+        let config = RateLimiterConfig::email();
+        assert_eq!(config.max_tokens, 10);
+        assert!((config.refill_rate - 10.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_rss_rate_config() {
+        let config = RateLimiterConfig::rss();
+        assert_eq!(config.max_tokens, 5);
+        assert!((config.refill_rate - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_git_rate_config() {
+        let config = RateLimiterConfig::git();
+        assert_eq!(config.max_tokens, 3);
+        assert!((config.refill_rate - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_obsidian_rate_config() {
+        let config = RateLimiterConfig::obsidian();
+        assert_eq!(config.max_tokens, 100);
+    }
+
+    #[test]
+    fn test_webhook_rate_config() {
+        let config = RateLimiterConfig::webhook();
+        assert_eq!(config.max_tokens, 100);
+    }
+
+    #[test]
+    fn test_all_connectors_have_rate_configs() {
+        // Verify all 14 connectors have dedicated rate limiter configs
+        let configs: Vec<(&str, RateLimiterConfig)> = vec![
+            ("github", RateLimiterConfig::github()),
+            ("dingtalk", RateLimiterConfig::dingtalk()),
+            ("feishu", RateLimiterConfig::feishu()),
+            ("notion", RateLimiterConfig::notion()),
+            ("slack", RateLimiterConfig::slack()),
+            ("discord", RateLimiterConfig::discord()),
+            ("wecom", RateLimiterConfig::wecom()),
+            ("teams", RateLimiterConfig::teams()),
+            ("telegram", RateLimiterConfig::telegram()),
+            ("email", RateLimiterConfig::email()),
+            ("rss", RateLimiterConfig::rss()),
+            ("webhook", RateLimiterConfig::webhook()),
+            ("git", RateLimiterConfig::git()),
+            ("obsidian", RateLimiterConfig::obsidian()),
+        ];
+        assert_eq!(configs.len(), 14);
+        for (name, config) in &configs {
+            assert!(config.max_tokens > 0, "{} has zero max_tokens", name);
+            assert!(config.refill_rate > 0.0, "{} has zero refill_rate", name);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_registry_telegram_limiter() {
+        let registry = RateLimiterRegistry::new();
+        let telegram = registry.get("telegram").unwrap();
+        let snap = telegram.snapshot().await;
+        assert_eq!(snap.connector, "telegram");
+        assert_eq!(snap.max_tokens, 20);
+    }
+
+    #[tokio::test]
+    async fn test_registry_email_limiter() {
+        let registry = RateLimiterRegistry::new();
+        let email = registry.get("email").unwrap();
+        let snap = email.snapshot().await;
+        assert_eq!(snap.connector, "email");
+        assert_eq!(snap.max_tokens, 10);
+    }
+
+    #[tokio::test]
+    async fn test_registry_rss_limiter() {
+        let registry = RateLimiterRegistry::new();
+        let rss = registry.get("rss").unwrap();
+        let snap = rss.snapshot().await;
+        assert_eq!(snap.connector, "rss");
+        assert_eq!(snap.max_tokens, 5);
     }
 }
