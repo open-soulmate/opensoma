@@ -200,7 +200,7 @@ fn detect_and_resolve_local_conflicts(
 
     let mut output = Vec::with_capacity(batch.len());
 
-    for event in batch {
+    for mut event in batch {
         // Look up the cached snapshot for this event ID
         let cached_snapshot = match cache.get_snapshot(&event.id) {
             Ok(snap) => snap,
@@ -267,9 +267,16 @@ fn detect_and_resolve_local_conflicts(
                 );
                 // Don't add to output — skip this event
             }
-            Resolution::Merged => {
-                // For merge, keep the local version (it will be merged server-side)
-                tracing::debug!("Conflict resolved: merge for {}", event.id);
+            Resolution::Merged {
+                merged_tags, ..
+            } => {
+                // Apply merged tags to the event (union of local + server tags)
+                tracing::debug!(
+                    "Conflict resolved: merge for {} ({} merged tags)",
+                    event.id,
+                    merged_tags.len()
+                );
+                event.tags = merged_tags;
                 output.push(event);
             }
             Resolution::KeptBoth { new_local_id } => {

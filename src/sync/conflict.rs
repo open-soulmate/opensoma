@@ -48,8 +48,15 @@ pub enum Resolution {
     UsedServer,
     /// Used the version with the newest timestamp.
     UsedNewest { winner: String },
-    /// Merged both versions.
-    Merged,
+    /// Merged both versions — union of tags from local and server.
+    Merged {
+        /// Tags from local event.
+        local_tags: std::collections::HashMap<String, String>,
+        /// Tags from server event.
+        server_tags: std::collections::HashMap<String, String>,
+        /// Union of both tag sets (server wins on key collisions).
+        merged_tags: std::collections::HashMap<String, String>,
+    },
     /// Kept both versions.
     KeptBoth { new_local_id: String },
     /// Pending resolution.
@@ -137,8 +144,21 @@ impl ConflictResolver {
                 }
             }
             ConflictStrategy::Merge => {
-                debug!("Conflict resolved: merge for event {}", conflict.event_id);
-                Resolution::Merged
+                let mut merged_tags = conflict.local_event.tags.clone();
+                // Server tags overwrite local on key collision
+                for (k, v) in &conflict.server_event.tags {
+                    merged_tags.insert(k.clone(), v.clone());
+                }
+                debug!(
+                    "Conflict resolved: merge for event {} ({} tags merged)",
+                    conflict.event_id,
+                    merged_tags.len()
+                );
+                Resolution::Merged {
+                    local_tags: conflict.local_event.tags.clone(),
+                    server_tags: conflict.server_event.tags.clone(),
+                    merged_tags,
+                }
             }
             ConflictStrategy::KeepBoth => {
                 let new_id = uuid::Uuid::new_v4().to_string();
@@ -319,12 +339,33 @@ mod tests {
     #[test]
     fn test_resolve_merge() {
         let mut resolver = ConflictResolver::new(ConflictStrategy::Merge);
-        let event = make_event("1", b"local");
-        let snapshot = make_snapshot("1", "server_hash", 2000);
+        let mut event = make_event("1", b"local");
+        event.tags.insert("local_key".into(), "local_val".into());
+        event.tags.insert("shared".into(), "from_local".into());
+        let mut snapshot = make_snapshot("1", "server_hash", 2000);
+        snapshot
+            .tags
+            .insert("server_key".into(), "server_val".into());
+        snapshot.tags.insert("shared".into(), "from_server".into());
 
         let conflict = resolver.detect(&event, &snapshot).unwrap();
         let result = resolver.resolve(conflict);
-        assert!(matches!(result.resolution, Resolution::Merged));
+        if let Resolution::Merged {
+            local_tags,
+            server_tags,
+            merged_tags,
+        } = result.resolution
+        {
+            assert_eq!(local_tags.get("local_key").unwrap(), "local_val");
+            assert_eq!(server_tags.get("server_key").unwrap(), "server_val");
+            // merged_tags should have all keys
+            assert_eq!(merged_tags.get("local_key").unwrap(), "local_val");
+            assert_eq!(merged_tags.get("server_key").unwrap(), "server_val");
+            // server wins on collision
+            assert_eq!(merged_tags.get("shared").unwrap(), "from_server");
+        } else {
+            panic!("Expected Merged resolution");
+        }
     }
 
     #[test]
