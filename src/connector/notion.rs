@@ -204,9 +204,26 @@ async fn query_database(client: &Client, config: &NotionConfig) -> Result<Vec<No
             .header("Notion-Version", NOTION_API_VERSION)
             .json(&body)
             .send()
-            .await?
-            .json::<DatabaseQueryResponse>()
             .await?;
+
+        let status = resp.status();
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let retry_after = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(1);
+            warn!("Notion rate limited on database query, waiting {}s", retry_after);
+            tokio::time::sleep(Duration::from_secs(retry_after)).await;
+            continue; // Retry the same page
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Notion database query error {}: {}", status, body);
+        }
+
+        let resp = resp.json::<DatabaseQueryResponse>().await?;
 
         all_pages.extend(resp.results);
 
@@ -246,9 +263,26 @@ async fn fetch_page_blocks(
             )
             .header("Notion-Version", NOTION_API_VERSION)
             .send()
-            .await?
-            .json::<BlockChildrenResponse>()
             .await?;
+
+        let status = resp.status();
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let retry_after = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(1);
+            warn!("Notion rate limited on page blocks, waiting {}s", retry_after);
+            tokio::time::sleep(Duration::from_secs(retry_after)).await;
+            continue; // Retry the same page
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Notion blocks API error {}: {}", status, body);
+        }
+
+        let resp = resp.json::<BlockChildrenResponse>().await?;
 
         for block in &resp.results {
             if let Some(text) = extract_block_text(block) {
