@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════════════════
    OpenMate Design System — Shared Sidebar
-   三个软件(OpenMate/OpenSoul/OpenSoma)共用这套CSS
+   Shared CSS for OpenMate/OpenSoul/OpenSoma
    ══════════════════════════════════════════════════════════ */
 
 :root {
@@ -56,7 +56,7 @@ a:hover { color: var(--primary-hover); }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
 /* ══════════════════════════════════════════════════════════
-   SIDEBAR — 固定宽度56px(折叠)/240px(展开)
+   SIDEBAR — fixed width 56px (collapsed) / 240px (expanded)
    ══════════════════════════════════════════════════════════ */
 .sidebar {
   width: var(--sidebar-collapsed);
@@ -167,9 +167,9 @@ a:hover { color: var(--primary-hover); }
 }
 
 /* ══════════════════════════════════════════════════════════
-   NAV MENU — 核心菜单项样式
-   每个菜单项: 高32px, 字号13px, 图标32x32容器
-   active: 左边框3px紫色 + 紫色文字 + 紫色半透明背景
+   NAV MENU — core menu item styles
+   Each menu item: 32px height, 13px font, 32x32 icon container
+   active: 3px purple left border + purple text + semi-transparent purple bg
    ══════════════════════════════════════════════════════════ */
 .nav-menu {
   flex: 1;
@@ -210,7 +210,7 @@ a:hover { color: var(--primary-hover); }
   border-left-color: var(--primary);
 }
 
-/* 图标容器: 固定32x32, 折叠时居中 */
+/* Icon container: fixed 32x32, centered when collapsed */
 .nav-icon-wrap {
   width: 32px;
   min-width: 32px;
@@ -223,7 +223,7 @@ a:hover { color: var(--primary-hover); }
   flex-shrink: 0;
 }
 
-/* 文字: 折叠时隐藏 */
+/* Text: hidden when collapsed */
 .nav-label {
   opacity: 0;
   transition: opacity 0.2s ease 0.05s;

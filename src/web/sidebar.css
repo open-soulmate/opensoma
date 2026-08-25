@@ -1,10 +1,10 @@
 /* ══════════════════════════════════════════════════════════
    Shared Sidebar Component v1.0
-   三个软件共用这一套sidebar样式
-   所有尺寸、颜色、间距从OpenMate app-shell.tsx精确提取
+   Shared sidebar styles for all three apps
+   All dimensions, colors, spacing extracted from OpenMate app-shell.tsx
    ══════════════════════════════════════════════════════════ */
 
-/* Design Tokens — 与OpenMate globals.css完全一致 */
+/* Design Tokens — identical to OpenMate globals.css */
 :root {
   --sidebar-w-expanded: 240px;   /* w-60 */
   --sidebar-w-collapsed: 56px;   /* w-14 */
@@ -60,7 +60,7 @@
   border-bottom: 1px solid var(--sidebar-border);
 }
 
-/* Logo icon: 32x32 圆形紫色 */
+/* Logo icon: 32x32 circular purple */
 .shared-sidebar-logo {
   width: 32px; height: 32px; min-width: 32px;
   border-radius: 50%;
@@ -69,7 +69,7 @@
   font-size: 13px; font-weight: 700; color: #fff;
 }
 
-/* Logo text: 折叠时隐藏 */
+/* Logo text: hidden when collapsed */
 .shared-sidebar-brand {
   flex: 1; min-width: 0;
   margin-left: 12px;
@@ -89,7 +89,7 @@
   background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px;
 }
 
-/* Toggle button: 在header右侧 */
+/* Toggle button: right side of header */
 .shared-sidebar-toggle {
   width: 28px; height: 28px; min-width: 28px;
   display: flex; align-items: center; justify-content: center;
@@ -139,7 +139,7 @@
   display: none;
 }
 
-/* ── Nav Item — 与OpenMate app-shell.tsx完全一致 ──────── */
+/* ── Nav Item — identical to OpenMate app-shell.tsx ──────── */
 .shared-sidebar-item {
   display: flex;
   align-items: center;
@@ -156,7 +156,7 @@
   white-space: nowrap;
   overflow: hidden;
 }
-/* 折叠状态: 居中 */
+/* Collapsed state: centered */
 .shared-sidebar:not(.expanded) .shared-sidebar-item {
   padding: 0; justify-content: center;
 }
@@ -165,18 +165,18 @@
   background: var(--sidebar-hover-bg);
   color: var(--sidebar-text);
 }
-/* Active — 与OpenMate完全一致: 紫色文字+紫色半透明背景+左边框 */
+/* Active — identical to OpenMate: purple text + semi-transparent purple bg + left border */
 .shared-sidebar-item.active {
   color: var(--sidebar-active-color);
   background: var(--sidebar-active-bg);
   border-left-color: var(--sidebar-active-border);
 }
-/* 展开状态下active的padding补偿左边框 */
+/* Padding compensation for active state when expanded */
 .shared-sidebar.expanded .shared-sidebar-item.active {
   padding-left: 7px;
 }
 
-/* Icon container: 32x32, 居中 */
+/* Icon container: 32x32, centered */
 .shared-sidebar-icon {
   width: var(--sidebar-icon-container);
   min-width: var(--sidebar-icon-container);
@@ -186,7 +186,7 @@
   line-height: 1; flex-shrink: 0;
 }
 
-/* Label: 折叠时隐藏 */
+/* Label: hidden when collapsed */
 .shared-sidebar-label {
   opacity: 0;
   transition: opacity var(--sidebar-transition) 0.05s;
