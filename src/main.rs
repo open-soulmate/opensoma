@@ -13,7 +13,7 @@ async fn main() -> Result<()> {
     let config_path = parse_config_path();
 
     // Initialize logging (returns reload handle for runtime log level changes)
-    let filter_handle = init_logging();
+    let (filter_handle, log_buffer) = init_logging();
 
     info!("OpenSoma starting — Deploy Everywhere, Collect Everything.");
     info!("Loading config from: {}", config_path);
@@ -169,6 +169,7 @@ async fn main() -> Result<()> {
         collector_running: std::sync::Arc::new(tokio::sync::RwLock::new(
             std::collections::HashMap::new(),
         )),
+        log_buffer: Some(log_buffer),
     };
     let status_handle =
         status_server::start_status_server(config.daemon.status_port, status_state).await;
@@ -539,12 +540,20 @@ fn parse_config_path() -> String {
 
 /// Initialize tracing subscriber with env filter and return a reload handle
 /// for runtime log level changes via config hot-reload.
-fn init_logging() -> reload::Handle<EnvFilter, tracing_subscriber::Registry> {
+/// Also returns a LogBuffer that captures recent log entries for the dashboard.
+fn init_logging() -> (
+    reload::Handle<EnvFilter, tracing_subscriber::Registry>,
+    opensoma::log_buffer::LogBuffer,
+) {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let (filter_layer, filter_handle) = reload::Layer::new(filter);
 
+    let log_buffer = opensoma::log_buffer::LogBuffer::new();
+    let log_buffer_layer = opensoma::log_buffer::LogBufferLayer::new(log_buffer.clone());
+
     let subscriber = tracing_subscriber::Registry::default()
         .with(filter_layer)
+        .with(log_buffer_layer)
         .with(
             fmt::layer()
                 .with_target(true)
@@ -556,7 +565,7 @@ fn init_logging() -> reload::Handle<EnvFilter, tracing_subscriber::Registry> {
     tracing::subscriber::set_global_default(subscriber)
         .expect("Failed to set global default subscriber");
 
-    filter_handle
+    (filter_handle, log_buffer)
 }
 
 /// Wait for SIGINT or SIGTERM

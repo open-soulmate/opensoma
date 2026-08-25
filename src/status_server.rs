@@ -77,6 +77,8 @@ pub struct StatusServerState {
     pub collector_event_counts: Arc<RwLock<HashMap<String, u64>>>,
     /// Per-collector running status.
     pub collector_running: Arc<RwLock<HashMap<String, bool>>>,
+    /// In-memory ring buffer for recent log entries (viewable in dashboard).
+    pub log_buffer: Option<crate::log_buffer::LogBuffer>,
 }
 
 /// Snapshot of cache statistics for the status API.
@@ -269,6 +271,8 @@ pub fn build_router(state: StatusServerState) -> Router {
         .route("/api/circuit-breakers", get(api_circuit_breakers_handler))
         .route("/api/rate-limiters", get(api_rate_limiters_handler))
         .route("/api/config", get(api_config_handler))
+        .route("/api/logs", get(api_logs_handler))
+        .route("/api/logs/clear", post(api_logs_clear_handler))
         .layer(middleware::from_fn(cors_layer))
         .with_state(state)
 }
@@ -753,6 +757,46 @@ async fn api_config_handler(State(state): State<StatusServerState>) -> Json<serd
     }
 }
 
+/// Returns recent log entries from the in-memory ring buffer.
+/// Query params: `limit` (default 200), `level` (optional filter: trace/debug/info/warn/error).
+async fn api_logs_handler(
+    State(state): State<StatusServerState>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let limit = params
+        .get("limit")
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(200)
+        .min(2000);
+    let level_filter = params.get("level").map(|s| s.as_str());
+
+    let entries = if let Some(buffer) = &state.log_buffer {
+        match level_filter {
+            Some(level) => buffer.recent_filtered(limit, level),
+            None => buffer.recent(limit),
+        }
+    } else {
+        Vec::new()
+    };
+
+    Json(serde_json::json!({
+        "count": entries.len(),
+        "limit": limit,
+        "level_filter": level_filter,
+        "entries": entries
+    }))
+}
+
+/// Clears all log entries from the ring buffer.
+async fn api_logs_clear_handler(
+    State(state): State<StatusServerState>,
+) -> Json<serde_json::Value> {
+    if let Some(buffer) = &state.log_buffer {
+        buffer.clear();
+    }
+    Json(serde_json::json!({ "status": "ok", "message": "Log buffer cleared" }))
+}
+
 /// Returns OS, kernel, CPU cores, disk usage, network interfaces, and process info.
 async fn api_system_info_handler(
     State(state): State<StatusServerState>,
@@ -877,6 +921,7 @@ async fn api_page_handler(
         "plugins" => build_plugins_page(&state).await,
         "doctor" => build_doctor_page(&state).await,
         "events" => build_events_page(&state).await,
+        "logs" => build_logs_page(&state).await,
         _ => format!(
             "<div class=\"text-center text-muted-foreground py-12\">页面未找到: {}</div>",
             page
@@ -1567,6 +1612,139 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+/// Build the Logs viewer page with live log streaming.
+/// Build the Logs viewer page with live log streaming.
+async fn build_logs_page(state: &StatusServerState) -> String {
+    let buffer_size = state
+        .log_buffer
+        .as_ref()
+        .map(|b| b.len())
+        .unwrap_or(0);
+    let capacity = state
+        .log_buffer
+        .as_ref()
+        .map(|b| b.capacity())
+        .unwrap_or(0);
+
+    let header = format!(r#"
+<div class="card" style="margin-bottom:1rem">
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+    <h2 class="card-title">📋 Runtime Logs</h2>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <span class="text-muted-foreground" style="font-size:0.85rem">{} / {} entries</span>
+      <select id="log-level-filter" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);font-size:0.85rem">
+        <option value="">All Levels</option>
+        <option value="error">ERROR</option>
+        <option value="warn">WARN</option>
+        <option value="info">INFO</option>
+        <option value="debug">DEBUG</option>
+        <option value="trace">TRACE</option>
+      </select>
+      <input id="log-search" type="text" placeholder="Search logs..." style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);font-size:0.85rem;width:200px">
+      <button onclick="loadLogs()" style="padding:4px 12px;border-radius:4px;background:var(--primary);color:var(--primary-foreground);border:none;cursor:pointer;font-size:0.85rem">Refresh</button>
+      <button onclick="clearLogs()" style="padding:4px 12px;border-radius:4px;background:var(--destructive,#ef4444);color:white;border:none;cursor:pointer;font-size:0.85rem">Clear</button>
+      <label style="display:flex;align-items:center;gap:4px;font-size:0.85rem;cursor:pointer">
+        <input type="checkbox" id="log-autoscroll" checked> Auto-scroll
+      </label>
+    </div>
+  </div>
+  <div id="log-count-bar" style="display:flex;gap:8px;padding:0 1rem 0.5rem;font-size:0.8rem">
+    <span style="color:#ef4444">ERR: <b id="log-count-error">0</b></span>
+    <span style="color:#f59e0b">WRN: <b id="log-count-warn">0</b></span>
+    <span style="color:#3b82f6">INF: <b id="log-count-info">0</b></span>
+    <span style="color:#6b7280">DBG: <b id="log-count-debug">0</b></span>
+  </div>
+</div>
+<div class="card">
+  <div id="log-container" style="font-family:monospace;font-size:0.8rem;line-height:1.6;max-height:70vh;overflow-y:auto;padding:0.5rem;background:var(--bg,#111);border-radius:6px">
+    <div style="color:#6b7280;text-align:center;padding:2rem">Loading logs...</div>
+  </div>
+</div>
+"#, buffer_size, capacity);
+
+    // The CSS and JS must NOT go through format! to avoid brace escaping issues
+    let css_and_js = r#"
+<style>
+  .log-entry { padding:1px 8px;border-bottom:1px solid rgba(255,255,255,0.04);white-space:pre-wrap;word-break:break-all; }
+  .log-entry:hover { background:rgba(255,255,255,0.04); }
+  .log-ts { color:#6b7280;margin-right:8px; }
+  .log-level { display:inline-block;width:48px;text-align:center;margin-right:8px;font-weight:600;border-radius:3px;padding:0 4px; }
+  .log-level-ERROR { color:#ef4444;background:rgba(239,68,68,0.1); }
+  .log-level-WARN { color:#f59e0b;background:rgba(245,158,11,0.1); }
+  .log-level-INFO { color:#3b82f6;background:rgba(59,130,246,0.1); }
+  .log-level-DEBUG { color:#6b7280;background:rgba(107,114,128,0.1); }
+  .log-level-TRACE { color:#9ca3af;background:rgba(156,163,175,0.05); }
+  .log-target { color:#8b5cf6;margin-right:8px;opacity:0.7;font-size:0.75rem; }
+  .log-msg { color:#e5e7eb; }
+</style>
+<script>
+let allLogs = [];
+
+async function loadLogs() {
+  const level = document.getElementById("log-level-filter").value;
+  const search = document.getElementById("log-search").value.toLowerCase();
+  const url = level ? "/api/logs?limit=500&level=" + level : "/api/logs?limit=500";
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    allLogs = data.entries || [];
+    renderLogs(search);
+  } catch(e) {
+    document.getElementById("log-container").innerHTML =
+      '<div style="color:#ef4444;text-align:center;padding:2rem">Failed to load logs: ' + e.message + '</div>';
+  }
+}
+
+function renderLogs(search) {
+  const container = document.getElementById("log-container");
+  const filtered = search ? allLogs.filter(e => e.message.toLowerCase().includes(search) || e.target.toLowerCase().includes(search)) : allLogs;
+  const counts = { ERROR:0, WARN:0, INFO:0, DEBUG:0, TRACE:0 };
+  allLogs.forEach(e => { if(counts[e.level] !== undefined) counts[e.level]++; });
+  document.getElementById("log-count-error").textContent = counts.ERROR;
+  document.getElementById("log-count-warn").textContent = counts.WARN;
+  document.getElementById("log-count-info").textContent = counts.INFO;
+  document.getElementById("log-count-debug").textContent = counts.DEBUG;
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div style="color:#6b7280;text-align:center;padding:2rem">No log entries found</div>';
+    return;
+  }
+  container.innerHTML = filtered.map(e =>
+    '<div class="log-entry">' +
+    '<span class="log-ts">' + e.ts.split("T")[1].replace("Z","") + '</span>' +
+    '<span class="log-level log-level-' + e.level + '">' + e.level + '</span>' +
+    '<span class="log-target">' + e.target + '</span>' +
+    '<span class="log-msg">' + escapeHtml(e.message) + '</span>' +
+    '</div>'
+  ).join("");
+  if (document.getElementById("log-autoscroll").checked) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+function escapeHtml(text) {
+  const d = document.createElement("div");
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+async function clearLogs() {
+  await fetch("/api/logs/clear", { method: "POST" });
+  allLogs = [];
+  renderLogs("");
+}
+
+document.getElementById("log-level-filter").addEventListener("change", () => loadLogs());
+document.getElementById("log-search").addEventListener("input", (e) => renderLogs(e.target.value.toLowerCase()));
+
+loadLogs();
+setInterval(loadLogs, 5000);
+</script>"#;
+
+    header + css_and_js
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1703,6 +1881,7 @@ mod tests {
             rate_limiters: None,
             collector_event_counts: Arc::new(RwLock::new(HashMap::new())),
             collector_running: Arc::new(RwLock::new(HashMap::new())),
+            log_buffer: None,
         };
 
         Router::new()
@@ -2114,6 +2293,7 @@ mod tests {
             rate_limiters: None,
             collector_event_counts: Arc::new(RwLock::new(collector_counts)),
             collector_running: Arc::new(RwLock::new(collector_running)),
+            log_buffer: None,
         };
 
         let app = build_router(state);
@@ -2175,6 +2355,7 @@ mod tests {
             rate_limiters: None,
             collector_event_counts: Arc::new(RwLock::new(HashMap::new())),
             collector_running: Arc::new(RwLock::new(HashMap::new())),
+            log_buffer: None,
         };
 
         // Verify github is active before toggle
@@ -2224,6 +2405,7 @@ mod tests {
             rate_limiters: None,
             collector_event_counts: Arc::new(RwLock::new(HashMap::new())),
             collector_running: Arc::new(RwLock::new(HashMap::new())),
+            log_buffer: None,
         };
 
         let app = build_test_app_with_state(state);
@@ -2347,6 +2529,7 @@ mod tests {
             rate_limiters: None,
             collector_event_counts: Arc::new(RwLock::new(HashMap::new())),
             collector_running: Arc::new(RwLock::new(HashMap::new())),
+            log_buffer: None,
         };
         let app = build_router(state);
 
@@ -2389,6 +2572,7 @@ mod tests {
             rate_limiters: None,
             collector_event_counts: Arc::new(RwLock::new(HashMap::new())),
             collector_running: Arc::new(RwLock::new(HashMap::new())),
+            log_buffer: None,
         };
         let app = build_router(state);
 

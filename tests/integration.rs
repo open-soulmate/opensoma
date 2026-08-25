@@ -440,6 +440,7 @@ async fn test_status_server_health_endpoint() {
         rate_limiters: None,
         collector_event_counts: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         collector_running: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        log_buffer: None,
     };
 
     let app = opensoma::status_server::build_router(state);

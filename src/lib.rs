@@ -12,6 +12,7 @@ pub mod heartbeat;
 pub mod metrics;
 pub mod plugins;
 pub mod processor;
+pub mod log_buffer;
 pub mod status_server;
 pub mod sync;
 pub mod web;
