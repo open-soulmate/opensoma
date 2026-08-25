@@ -149,22 +149,18 @@ struct MessageVisitor(String);
 
 impl tracing::field::Visit for MessageVisitor {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
-        if field.name() == "message" {
-            if self.0.is_empty() {
-                self.0 = format!("{:?}", value);
-                // Remove surrounding quotes added by Debug for &str
-                if self.0.starts_with('"') && self.0.ends_with('"') {
-                    self.0 = self.0[1..self.0.len() - 1].to_string();
-                }
+        if field.name() == "message" && self.0.is_empty() {
+            self.0 = format!("{:?}", value);
+            // Remove surrounding quotes added by Debug for &str
+            if self.0.starts_with('"') && self.0.ends_with('"') {
+                self.0 = self.0[1..self.0.len() - 1].to_string();
             }
         }
     }
 
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        if field.name() == "message" {
-            if self.0.is_empty() {
-                self.0 = value.to_string();
-            }
+        if field.name() == "message" && self.0.is_empty() {
+            self.0 = value.to_string();
         }
     }
 }
