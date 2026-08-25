@@ -1314,6 +1314,29 @@ fn run_doctor(config_path: &str) -> i32 {
                     warnings += 1;
                 }
             }
+            // 7. Running daemon circuit breaker check
+            let status_url = format!("http://127.0.0.1:{}/api/circuit-breakers", config.daemon.status_port);
+            print!("  [daemon]  Checking circuit breakers at {} ... ", status_url);
+            match blocking_http_get(&status_url) {
+                Ok(body) => {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                        let total = json["total"].as_u64().unwrap_or(0);
+                        let tripped = json["tripped"].as_u64().unwrap_or(0);
+                        if tripped > 0 {
+                            println!("⚠️  {}/{} breakers tripped", tripped, total);
+                            warnings += 1;
+                        } else {
+                            println!("✅ all {} breakers healthy", total);
+                        }
+                    } else {
+                        println!("⚠️  unexpected response format");
+                        warnings += 1;
+                    }
+                }
+                Err(_) => {
+                    println!("⏭  daemon not running (skip)");
+                }
+            }
         }
         Err(e) => {
             println!("❌ Failed: {:#}", e);
@@ -1321,7 +1344,7 @@ fn run_doctor(config_path: &str) -> i32 {
         }
     }
 
-    // 7. System info
+    // 8. System info
     println!();
     println!("  [system]  OS:        {}", std::env::consts::OS);
     println!("  [system]  Arch:      {}", std::env::consts::ARCH);
