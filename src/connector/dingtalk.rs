@@ -508,7 +508,7 @@ async fn fetch_attendance_list(client: &Client, token: &str) -> Result<Vec<Atten
     Ok(resp.result.check_record_list)
 }
 
-/// Fetch work reports (工作报告) from DingTalk.
+/// Fetch work reports from DingTalk.
 /// Uses the /topapi/report/list API.
 async fn fetch_work_reports(client: &Client, token: &str) -> Result<Vec<WorkReport>> {
     let url = format!(
