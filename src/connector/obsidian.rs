@@ -48,7 +48,11 @@ impl Connector for ObsidianConnector {
 
 /// Start the Obsidian connector. Watches the vault directory for file changes
 /// and parses Markdown files with WikiLink resolution.
-pub async fn start(config: ObsidianConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: ObsidianConfig,
+    tx: EventTx,
+    circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let vault_path = Path::new(&config.vault_path).to_path_buf();
     if !vault_path.is_dir() {
         anyhow::bail!("Obsidian vault path does not exist: {}", config.vault_path);
@@ -56,7 +60,7 @@ pub async fn start(config: ObsidianConfig, tx: EventTx, circuit_breaker: Option<
 
     let handle = tokio::spawn(async move {
         let _cb = circuit_breaker; // Not applicable: Obsidian watches local filesystem
-        // Track file hashes for change detection
+                                   // Track file hashes for change detection
         let mut known_hashes: HashMap<String, String> = HashMap::new();
 
         // Initial full scan

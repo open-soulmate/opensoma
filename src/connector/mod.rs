@@ -1,16 +1,16 @@
 pub mod circuit_breaker;
-pub mod rate_limiter;
-pub mod discord;
-pub mod teams;
 pub mod dingtalk;
+pub mod discord;
 pub mod email;
 pub mod feishu;
 pub mod git;
 pub mod github;
 pub mod notion;
 pub mod obsidian;
+pub mod rate_limiter;
 pub mod rss;
 pub mod slack;
+pub mod teams;
 pub mod telegram;
 pub mod webhook;
 pub mod wecom;
@@ -306,22 +306,16 @@ pub async fn start_all(
                     names.len()
                 );
 
-                let mut interval =
-                    tokio::time::interval(std::time::Duration::from_secs(60));
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
                 loop {
                     interval.tick().await;
                     for name in &names {
-                        let result =
-                            ping_connector_by_name(name, &cfg).await;
+                        let result = ping_connector_by_name(name, &cfg).await;
                         match result {
                             Ok(()) => checker.record_healthy(name).await,
-                            Err(e) => {
-                                checker
-                                    .record_unhealthy(name, &e.to_string())
-                                    .await
-                            }
+                            Err(e) => checker.record_unhealthy(name, &e.to_string()).await,
                         }
                     }
                 }
@@ -384,10 +378,7 @@ fn build_enabled_connector_names(config: &ConnectorConfig) -> Vec<String> {
 ///
 /// This instantiates a temporary connector object purely for the health probe
 /// so we don't need to hold references to the running connector instances.
-pub async fn ping_connector_by_name(
-    name: &str,
-    config: &ConnectorConfig,
-) -> Result<()> {
+pub async fn ping_connector_by_name(name: &str, config: &ConnectorConfig) -> Result<()> {
     match name {
         "feishu" => {
             if let Some(ref cfg) = config.feishu {

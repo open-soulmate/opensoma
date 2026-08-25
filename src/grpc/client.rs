@@ -195,10 +195,8 @@ impl SoulClient {
                     );
                     // Fallback: send individually
                     for event in chunk {
-                        let individual_url =
-                            format!("{}/api/nerve/publish", self.base_url);
-                        let payload_str =
-                            String::from_utf8_lossy(&event.payload).to_string();
+                        let individual_url = format!("{}/api/nerve/publish", self.base_url);
+                        let payload_str = String::from_utf8_lossy(&event.payload).to_string();
                         let individual_body = serde_json::json!({
                             "topic": format!("soma.{}", event.event_type),
                             "data": {
@@ -236,13 +234,14 @@ impl SoulClient {
                     }
                 }
                 Err(e) => {
-                    warn!("Batch upload network error: {} — falling back to individual publish", e);
+                    warn!(
+                        "Batch upload network error: {} — falling back to individual publish",
+                        e
+                    );
                     // Fallback: send individually
                     for event in chunk {
-                        let individual_url =
-                            format!("{}/api/nerve/publish", self.base_url);
-                        let payload_str =
-                            String::from_utf8_lossy(&event.payload).to_string();
+                        let individual_url = format!("{}/api/nerve/publish", self.base_url);
+                        let payload_str = String::from_utf8_lossy(&event.payload).to_string();
                         let individual_body = serde_json::json!({
                             "topic": format!("soma.{}", event.event_type),
                             "data": {

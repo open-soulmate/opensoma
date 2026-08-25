@@ -71,10 +71,7 @@ impl IpRateLimiter {
         let now = chrono::Utc::now().timestamp() as u64;
         let window_start = now.saturating_sub(RATE_LIMIT_WINDOW_SECS);
 
-        let entry = self
-            .counters
-            .entry(ip.to_string())
-            .or_insert((0, now));
+        let entry = self.counters.entry(ip.to_string()).or_insert((0, now));
 
         // Reset if window expired
         if entry.1 < window_start {
@@ -96,7 +93,11 @@ impl IpRateLimiter {
 
 /// Start the Webhook connector. Runs an HTTP server that receives webhook
 /// payloads and forwards them into the collector pipeline.
-pub async fn start(config: WebhookConfig, tx: EventTx, _circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: WebhookConfig,
+    tx: EventTx,
+    _circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let listen = config.listen.clone();
     let state = WebhookState {
         tx,
@@ -127,7 +128,10 @@ async fn run_axum_server(listen: &str, state: WebhookState) -> Result<()> {
         .await
         .with_context(|| format!("Failed to bind webhook server to {}", listen))?;
 
-    info!("Webhook server listening on {} (rate limit: {} req/min/IP)", listen, RATE_LIMIT_PER_MINUTE);
+    info!(
+        "Webhook server listening on {} (rate limit: {} req/min/IP)",
+        listen, RATE_LIMIT_PER_MINUTE
+    );
 
     axum::serve(
         listener,

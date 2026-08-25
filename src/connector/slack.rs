@@ -143,7 +143,11 @@ struct ChannelInfo {
 }
 
 /// Start the Slack connector. Polls configured channels for new messages.
-pub async fn start(config: SlackConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: SlackConfig,
+    tx: EventTx,
+    circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let poll_secs = config.poll_interval_secs;
     let channels = config.channels.clone();
     let bot_token = config.bot_token.clone();
@@ -214,9 +218,13 @@ pub async fn start(config: SlackConfig, tx: EventTx, circuit_breaker: Option<Cir
                 .await;
                 if let Err(e) = poll_result {
                     warn!("Slack poll failed for channel {}: {}", channel_id, e);
-                    if let Some(ref c) = cb { c.record_failure().await; }
+                    if let Some(ref c) = cb {
+                        c.record_failure().await;
+                    }
                 } else {
-                    if let Some(ref c) = cb { c.record_success().await; }
+                    if let Some(ref c) = cb {
+                        c.record_success().await;
+                    }
                 }
             }
         }
@@ -228,11 +236,7 @@ pub async fn start(config: SlackConfig, tx: EventTx, circuit_breaker: Option<Cir
 /// Make a Slack API GET request with rate-limit awareness.
 /// Handles HTTP 429 Too Many Requests by sleeping for the Retry-After duration
 /// and retrying once. Slack's rate limit responses use the Retry-After header (seconds).
-async fn slack_api_get(
-    client: &Client,
-    url: &str,
-    bot_token: &str,
-) -> Result<reqwest::Response> {
+async fn slack_api_get(client: &Client, url: &str, bot_token: &str) -> Result<reqwest::Response> {
     let resp = client
         .get(url)
         .bearer_auth(bot_token)

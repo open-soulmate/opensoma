@@ -50,7 +50,11 @@ impl Connector for GitConnector {
 
 /// Start the Git connector. Clones (or pulls) a repo periodically, parses
 /// Markdown files, and forwards new/changed content into the collector pipeline.
-pub async fn start(config: GitConfig, tx: EventTx, _circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: GitConfig,
+    tx: EventTx,
+    _circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let local_path = config.local_path.clone();
 
     // Ensure the local path parent exists
@@ -165,7 +169,12 @@ async fn scan_and_forward(
         if config.max_file_size_bytes > 0 {
             if let Ok(meta) = std::fs::metadata(&file_path) {
                 if meta.len() > config.max_file_size_bytes {
-                    debug!("Skipping {} ({} bytes exceeds max {})", relative, meta.len(), config.max_file_size_bytes);
+                    debug!(
+                        "Skipping {} ({} bytes exceeds max {})",
+                        relative,
+                        meta.len(),
+                        config.max_file_size_bytes
+                    );
                     current_files.insert(relative.clone());
                     continue;
                 }
@@ -363,7 +372,13 @@ mod tests {
     use super::*;
 
     fn default_extensions() -> Vec<String> {
-        vec!["md".into(), "txt".into(), "rst".into(), "org".into(), "adoc".into()]
+        vec![
+            "md".into(),
+            "txt".into(),
+            "rst".into(),
+            "org".into(),
+            "adoc".into(),
+        ]
     }
 
     #[test]

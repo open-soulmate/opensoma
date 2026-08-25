@@ -181,7 +181,11 @@ struct WorkReportResult {
 
 /// Start the DingTalk connector. Authenticates via OAuth, then polls
 /// approval process instances, attendance records, and work reports.
-pub async fn start(config: DingtalkConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: DingtalkConfig,
+    tx: EventTx,
+    circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;

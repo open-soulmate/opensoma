@@ -22,10 +22,7 @@ async fn cors_layer(req: axum::extract::Request, next: Next) -> Response {
         next.run(req).await
     };
     let headers = resp.headers_mut();
-    headers.insert(
-        "access-control-allow-origin",
-        HeaderValue::from_static("*"),
-    );
+    headers.insert("access-control-allow-origin", HeaderValue::from_static("*"));
     headers.insert(
         "access-control-allow-methods",
         HeaderValue::from_static("GET, POST, PUT, DELETE, OPTIONS"),
@@ -34,10 +31,7 @@ async fn cors_layer(req: axum::extract::Request, next: Next) -> Response {
         "access-control-allow-headers",
         HeaderValue::from_static("content-type, authorization"),
     );
-    headers.insert(
-        "access-control-max-age",
-        HeaderValue::from_static("86400"),
-    );
+    headers.insert("access-control-max-age", HeaderValue::from_static("86400"));
     if is_options {
         *resp.status_mut() = StatusCode::NO_CONTENT;
     }
@@ -195,7 +189,10 @@ impl ConfigSnapshot {
             extra.insert("repo_url".to_string(), c.repo_url.clone());
             extra.insert("branch".to_string(), c.branch.clone());
             extra.insert("file_extensions".to_string(), c.file_extensions.join(", "));
-            extra.insert("detect_deletions".to_string(), c.detect_deletions.to_string());
+            extra.insert(
+                "detect_deletions".to_string(),
+                c.detect_deletions.to_string(),
+            );
             connectors.push(ConnectorConfigSummary {
                 name: "git".to_string(),
                 enabled: c.enabled,
@@ -738,7 +735,9 @@ async fn api_rate_limiters_handler(
             "total_rejected": total_rejected,
         }))
     } else {
-        Json(serde_json::json!({ "limiters": [], "total": 0, "total_acquired": 0, "total_rejected": 0 }))
+        Json(
+            serde_json::json!({ "limiters": [], "total": 0, "total_acquired": 0, "total_rejected": 0 }),
+        )
     }
 }
 
@@ -788,9 +787,7 @@ async fn api_logs_handler(
 }
 
 /// Clears all log entries from the ring buffer.
-async fn api_logs_clear_handler(
-    State(state): State<StatusServerState>,
-) -> Json<serde_json::Value> {
+async fn api_logs_clear_handler(State(state): State<StatusServerState>) -> Json<serde_json::Value> {
     if let Some(buffer) = &state.log_buffer {
         buffer.clear();
     }
@@ -1137,8 +1134,16 @@ async fn build_connectors_page(state: &StatusServerState) -> String {
     let active = state.connectors_active.read().await.clone();
     let event_counts = state.connector_event_counts.read().await.clone();
     let all_connectors = [
-        ("feishu", "Feishu", "Receive Feishu bot messages and document changes"),
-        ("dingtalk", "DingTalk", "DingTalk approvals, attendance, and group messages"),
+        (
+            "feishu",
+            "Feishu",
+            "Receive Feishu bot messages and document changes",
+        ),
+        (
+            "dingtalk",
+            "DingTalk",
+            "DingTalk approvals, attendance, and group messages",
+        ),
         ("wecom", "WeCom", "WeCom application messages and contacts"),
         ("rss", "RSS", "RSS/Atom feed polling"),
         ("email", "Email", "IMAP email polling"),
@@ -1450,31 +1455,79 @@ async fn build_doctor_page(state: &StatusServerState) -> String {
     // 1. Uptime & node
     let uptime = state.start_time.elapsed().as_secs();
     let node_id = state.node_id.clone();
-    checks.push(("🖥️".into(), "Node".into(), format!("{} — uptime {}s", node_id, uptime), "badge-ok".into()));
+    checks.push((
+        "🖥️".into(),
+        "Node".into(),
+        format!("{} — uptime {}s", node_id, uptime),
+        "badge-ok".into(),
+    ));
 
     // 2. Events collected vs synced
     let collected = *state.events_collected.read().await;
     let synced = *state.events_synced.read().await;
     let pending = collected.saturating_sub(synced);
-    let sync_badge: String = if pending == 0 { "badge-ok".into() } else { "badge-warn".into() };
-    checks.push(("📊".into(), "Events".into(), format!("collected={} synced={} pending={}", collected, synced, pending), sync_badge));
+    let sync_badge: String = if pending == 0 {
+        "badge-ok".into()
+    } else {
+        "badge-warn".into()
+    };
+    checks.push((
+        "📊".into(),
+        "Events".into(),
+        format!(
+            "collected={} synced={} pending={}",
+            collected, synced, pending
+        ),
+        sync_badge,
+    ));
 
     // 3. Cache health
     if let Some(ref cache) = state.cache {
         let stats = cache.stats();
-        let badge: String = if stats.pending == 0 { "badge-ok".into() } else { "badge-warn".into() };
-        checks.push(("💾".into(), "Cache".into(), format!("{} total, {} pending, {}", stats.total, stats.pending, format_bytes(stats.cache_size_bytes)), badge));
+        let badge: String = if stats.pending == 0 {
+            "badge-ok".into()
+        } else {
+            "badge-warn".into()
+        };
+        checks.push((
+            "💾".into(),
+            "Cache".into(),
+            format!(
+                "{} total, {} pending, {}",
+                stats.total,
+                stats.pending,
+                format_bytes(stats.cache_size_bytes)
+            ),
+            badge,
+        ));
     } else {
-        checks.push(("💾".into(), "Cache".into(), "not initialized".into(), "badge-disabled".into()));
+        checks.push((
+            "💾".into(),
+            "Cache".into(),
+            "not initialized".into(),
+            "badge-disabled".into(),
+        ));
     }
 
     // 4. Connector health
     if let Some(ref checker) = state.health_checker {
         let results = checker.get_all().await;
-        let healthy = results.iter().filter(|r| r.status == crate::health::HealthStatus::Healthy).count();
+        let healthy = results
+            .iter()
+            .filter(|r| r.status == crate::health::HealthStatus::Healthy)
+            .count();
         let total = results.len();
-        let badge: String = if healthy == total { "badge-ok".into() } else { "badge-warn".into() };
-        checks.push(("🔌".into(), "Connectors".into(), format!("{}/{} healthy", healthy, total), badge));
+        let badge: String = if healthy == total {
+            "badge-ok".into()
+        } else {
+            "badge-warn".into()
+        };
+        checks.push((
+            "🔌".into(),
+            "Connectors".into(),
+            format!("{}/{} healthy", healthy, total),
+            badge,
+        ));
         let now_ms = chrono::Utc::now().timestamp_millis();
         for r in &results {
             let is_healthy = r.status == crate::health::HealthStatus::Healthy;
@@ -1484,28 +1537,60 @@ async fn build_doctor_page(state: &StatusServerState) -> String {
                 Some(err) => format!("last check {}s ago — {}", age_secs, err),
                 None => format!("last check {}s ago", age_secs),
             };
-            let badge: String = if is_healthy { "badge-ok".into() } else { "badge-error".into() };
+            let badge: String = if is_healthy {
+                "badge-ok".into()
+            } else {
+                "badge-error".into()
+            };
             checks.push((icon.into(), r.name.clone(), detail, badge));
         }
     } else {
-        checks.push(("🔌".into(), "Connectors".into(), "health checker not active".into(), "badge-disabled".into()));
+        checks.push((
+            "🔌".into(),
+            "Connectors".into(),
+            "health checker not active".into(),
+            "badge-disabled".into(),
+        ));
     }
 
     // 5. Plugin registry
     if let Some(ref registry) = state.plugin_registry {
         let total = registry.count().await;
         let active = registry.active_count().await;
-        let badge: String = if active == total { "badge-ok".into() } else { "badge-warn".into() };
-        checks.push(("🧩".into(), "Plugins".into(), format!("{}/{} active", active, total), badge));
+        let badge: String = if active == total {
+            "badge-ok".into()
+        } else {
+            "badge-warn".into()
+        };
+        checks.push((
+            "🧩".into(),
+            "Plugins".into(),
+            format!("{}/{} active", active, total),
+            badge,
+        ));
     }
 
     // 6. Memory usage
     let mem = sysinfo::System::new_all();
     let used_mb = mem.used_memory() / (1024 * 1024);
     let total_mb = mem.total_memory() / (1024 * 1024);
-    let pct = used_mb.saturating_mul(100).checked_div(total_mb).unwrap_or(0);
-    let mem_badge: String = if pct < 80 { "badge-ok".into() } else if pct < 95 { "badge-warn".into() } else { "badge-error".into() };
-    checks.push(("🧠".into(), "Memory".into(), format!("{}MB / {}MB ({}%)", used_mb, total_mb, pct), mem_badge));
+    let pct = used_mb
+        .saturating_mul(100)
+        .checked_div(total_mb)
+        .unwrap_or(0);
+    let mem_badge: String = if pct < 80 {
+        "badge-ok".into()
+    } else if pct < 95 {
+        "badge-warn".into()
+    } else {
+        "badge-error".into()
+    };
+    checks.push((
+        "🧠".into(),
+        "Memory".into(),
+        format!("{}MB / {}MB ({}%)", used_mb, total_mb, pct),
+        mem_badge,
+    ));
 
     // Build HTML
     let cards: String = checks.iter().map(|(icon, label, detail, badge): &(String, String, String, String)| {
@@ -1535,7 +1620,6 @@ async fn build_doctor_page(state: &StatusServerState) -> String {
         cards = cards
     )
 }
-
 
 /// Build the Events page HTML — lists recent cached events with search.
 async fn build_events_page(state: &StatusServerState) -> String {
@@ -1584,10 +1668,14 @@ async fn build_events_page(state: &StatusServerState) -> String {
             }
             Ok(_) => r#"<div class="text-center py-12 text-muted-foreground">
               <p class="text-4xl mb-3">📋</p><p>No cached events</p>
-            </div>"#.to_string(),
-            Err(e) => format!(r#"<div class="text-center py-12 text-destructive">Failed to load: {e}</div>"#),
+            </div>"#
+                .to_string(),
+            Err(e) => format!(
+                r#"<div class="text-center py-12 text-destructive">Failed to load: {e}</div>"#
+            ),
         },
-        None => r#"<div class="text-center py-12 text-muted-foreground">Cache unavailable</div>"#.to_string(),
+        None => r#"<div class="text-center py-12 text-muted-foreground">Cache unavailable</div>"#
+            .to_string(),
     };
 
     format!(
@@ -1598,7 +1686,6 @@ async fn build_events_page(state: &StatusServerState) -> String {
 {events_html}"#
     )
 }
-
 
 fn format_bytes(bytes: u64) -> String {
     if bytes < 1024 {
@@ -1615,18 +1702,11 @@ fn format_bytes(bytes: u64) -> String {
 /// Build the Logs viewer page with live log streaming.
 /// Build the Logs viewer page with live log streaming.
 async fn build_logs_page(state: &StatusServerState) -> String {
-    let buffer_size = state
-        .log_buffer
-        .as_ref()
-        .map(|b| b.len())
-        .unwrap_or(0);
-    let capacity = state
-        .log_buffer
-        .as_ref()
-        .map(|b| b.capacity())
-        .unwrap_or(0);
+    let buffer_size = state.log_buffer.as_ref().map(|b| b.len()).unwrap_or(0);
+    let capacity = state.log_buffer.as_ref().map(|b| b.capacity()).unwrap_or(0);
 
-    let header = format!(r#"
+    let header = format!(
+        r#"
 <div class="card" style="margin-bottom:1rem">
   <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
     <h2 class="card-title">📋 Runtime Logs</h2>
@@ -1660,7 +1740,9 @@ async fn build_logs_page(state: &StatusServerState) -> String {
     <div style="color:#6b7280;text-align:center;padding:2rem">Loading logs...</div>
   </div>
 </div>
-"#, buffer_size, capacity);
+"#,
+        buffer_size, capacity
+    );
 
     // The CSS and JS must NOT go through format! to avoid brace escaping issues
     let css_and_js = r#"
@@ -1743,7 +1825,6 @@ setInterval(loadLogs, 5000);
 
     header + css_and_js
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -2542,10 +2623,7 @@ mod tests {
         assert_eq!(resp.status(), axum::http::StatusCode::OK);
 
         let headers = resp.headers();
-        assert_eq!(
-            headers.get("access-control-allow-origin").unwrap(),
-            "*"
-        );
+        assert_eq!(headers.get("access-control-allow-origin").unwrap(), "*");
         assert!(headers.get("access-control-allow-methods").is_some());
         assert!(headers.get("access-control-allow-headers").is_some());
     }
@@ -2588,13 +2666,7 @@ mod tests {
         assert_eq!(resp.status(), axum::http::StatusCode::NO_CONTENT);
 
         let headers = resp.headers();
-        assert_eq!(
-            headers.get("access-control-allow-origin").unwrap(),
-            "*"
-        );
-        assert_eq!(
-            headers.get("access-control-max-age").unwrap(),
-            "86400"
-        );
+        assert_eq!(headers.get("access-control-allow-origin").unwrap(), "*");
+        assert_eq!(headers.get("access-control-max-age").unwrap(), "86400");
     }
 }

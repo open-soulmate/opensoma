@@ -126,7 +126,11 @@ struct RichText {
 
 /// Start the Notion connector. Polls a configured database for pages,
 /// fetches page content, and forwards events into the collector pipeline.
-pub async fn start(config: NotionConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: NotionConfig,
+    tx: EventTx,
+    circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let http_client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
     let handle = tokio::spawn(async move {
@@ -154,7 +158,9 @@ pub async fn start(config: NotionConfig, tx: EventTx, circuit_breaker: Option<Ci
             match query_database(&http_client, &config).await {
                 Ok(pages) => {
                     debug!("Fetched {} pages from Notion database", pages.len());
-                    if let Some(ref c) = cb { c.record_success().await; }
+                    if let Some(ref c) = cb {
+                        c.record_success().await;
+                    }
                     for page in pages {
                         let page_id = &page.id;
                         match fetch_page_blocks(&http_client, &config, page_id).await {
@@ -183,7 +189,9 @@ pub async fn start(config: NotionConfig, tx: EventTx, circuit_breaker: Option<Ci
                 }
                 Err(e) => {
                     warn!("Failed to query Notion database: {}", e);
-                    if let Some(ref c) = cb { c.record_failure().await; }
+                    if let Some(ref c) = cb {
+                        c.record_failure().await;
+                    }
                 }
             }
         }
@@ -224,7 +232,10 @@ async fn query_database(client: &Client, config: &NotionConfig) -> Result<Vec<No
                 .and_then(|v| v.to_str().ok())
                 .and_then(|v| v.parse::<u64>().ok())
                 .unwrap_or(1);
-            warn!("Notion rate limited on database query, waiting {}s", retry_after);
+            warn!(
+                "Notion rate limited on database query, waiting {}s",
+                retry_after
+            );
             tokio::time::sleep(Duration::from_secs(retry_after)).await;
             continue; // Retry the same page
         }
@@ -283,7 +294,10 @@ async fn fetch_page_blocks(
                 .and_then(|v| v.to_str().ok())
                 .and_then(|v| v.parse::<u64>().ok())
                 .unwrap_or(1);
-            warn!("Notion rate limited on page blocks, waiting {}s", retry_after);
+            warn!(
+                "Notion rate limited on page blocks, waiting {}s",
+                retry_after
+            );
             tokio::time::sleep(Duration::from_secs(retry_after)).await;
             continue; // Retry the same page
         }

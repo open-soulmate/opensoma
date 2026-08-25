@@ -81,7 +81,11 @@ struct DocContentResponse {
 /// Start the Feishu connector. Authenticates with Feishu API, then periodically
 /// polls a configured folder for documents and forwards new/updated content
 /// into the collector pipeline.
-pub async fn start(config: FeishuConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: FeishuConfig,
+    tx: EventTx,
+    circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let http_client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
     // Fetch initial access token with retry
@@ -184,11 +188,7 @@ pub async fn start(config: FeishuConfig, tx: EventTx, circuit_breaker: Option<Ci
 /// Make a Feishu API GET request with rate-limit awareness.
 /// Handles HTTP 429 Too Many Requests by sleeping for the Retry-After duration
 /// and retrying once. Feishu rate limits vary by API (typically 50-100 req/min).
-async fn feishu_api_get(
-    client: &Client,
-    url: &str,
-    token: &str,
-) -> Result<reqwest::Response> {
+async fn feishu_api_get(client: &Client, url: &str, token: &str) -> Result<reqwest::Response> {
     let resp = client
         .get(url)
         .bearer_auth(token)

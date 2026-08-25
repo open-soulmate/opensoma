@@ -170,7 +170,10 @@ fn sniff_content_type(content: &str) -> &'static str {
     }
 
     // YAML (starts with document separator or has key: value patterns)
-    if trimmed.starts_with("---\n") || trimmed.starts_with("---\r\n") || trimmed.starts_with("%YAML") {
+    if trimmed.starts_with("---\n")
+        || trimmed.starts_with("---\r\n")
+        || trimmed.starts_with("%YAML")
+    {
         return "yaml";
     }
     if trimmed.contains('\n') && looks_like_yaml(trimmed) {
@@ -478,7 +481,10 @@ mod tests {
     #[test]
     fn test_sniff_content_type_env_var_is_text() {
         // Env vars are detected as plain text in current implementation
-        assert_eq!(sniff_content_type("DATABASE_URL=postgres://localhost/db"), "text");
+        assert_eq!(
+            sniff_content_type("DATABASE_URL=postgres://localhost/db"),
+            "text"
+        );
         assert_eq!(sniff_content_type("API_KEY=sk-1234567890"), "text");
     }
 
@@ -499,10 +505,7 @@ mod tests {
 
     #[test]
     fn test_sniff_content_type_yaml_document_separator() {
-        assert_eq!(
-            sniff_content_type("---\nname: test\nversion: 1.0"),
-            "yaml"
-        );
+        assert_eq!(sniff_content_type("---\nname: test\nversion: 1.0"), "yaml");
     }
 
     #[test]
@@ -519,7 +522,8 @@ mod tests {
 
     #[test]
     fn test_sniff_content_type_toml() {
-        let toml = "[package]\nname = \"opensoma\"\nversion = \"0.1.0\"\n\n[dependencies]\ntokio = \"1\"";
+        let toml =
+            "[package]\nname = \"opensoma\"\nversion = \"0.1.0\"\n\n[dependencies]\ntokio = \"1\"";
         assert_eq!(sniff_content_type(toml), "toml");
     }
 
@@ -609,9 +613,6 @@ mod tests {
 
     #[test]
     fn test_sniff_content_type_sql_case_insensitive() {
-        assert_eq!(
-            sniff_content_type("select * from users"),
-            "sql"
-        );
+        assert_eq!(sniff_content_type("select * from users"), "sql");
     }
 }

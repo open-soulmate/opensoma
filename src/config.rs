@@ -598,7 +598,9 @@ impl AppConfig {
                 anyhow::bail!("telegram connector is enabled but bot_token is empty");
             }
             if tc.enabled && !tc.bot_token.contains(':') {
-                warnings.push("telegram bot_token does not contain ':' separator — may be invalid".into());
+                warnings.push(
+                    "telegram bot_token does not contain ':' separator — may be invalid".into(),
+                );
             }
         }
 
@@ -1545,7 +1547,10 @@ include_edited = false
         let config: AppConfig = toml::from_str(toml).unwrap();
         let telegram = config.connector.telegram.unwrap();
         assert!(telegram.enabled);
-        assert_eq!(telegram.bot_token, "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11");
+        assert_eq!(
+            telegram.bot_token,
+            "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+        );
         assert_eq!(telegram.allowed_chats.unwrap(), vec![123456789, -100987654]);
         assert_eq!(telegram.poll_interval_secs, 15);
         assert!(!telegram.include_edited);
@@ -1573,7 +1578,10 @@ bot_token = ""
         let config: AppConfig = toml::from_str(toml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("bot_token is empty"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("bot_token is empty"));
     }
 
     #[test]

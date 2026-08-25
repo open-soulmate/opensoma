@@ -29,9 +29,7 @@ impl Connector for TelegramConnector {
     }
 
     async fn ping(&self) -> Result<()> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()?;
+        let client = Client::builder().timeout(Duration::from_secs(10)).build()?;
         let url = format!(
             "https://api.telegram.org/bot{}/getMe",
             self.config.bot_token
@@ -57,7 +55,11 @@ impl Connector for TelegramConnector {
 
 /// Start the Telegram connector. Uses long-polling (getUpdates) to receive
 /// updates from the Bot API and forwards them into the collector pipeline.
-pub async fn start(config: TelegramConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: TelegramConfig,
+    tx: EventTx,
+    circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(Duration::from_secs(65)) // slightly > long-poll timeout
         .build()?;
@@ -84,8 +86,15 @@ pub async fn start(config: TelegramConfig, tx: EventTx, circuit_breaker: Option<
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         // Initial poll immediately
-        match poll_updates(&http_client, &bot_token, offset, &allowed_chats, include_edited, &tx)
-            .await
+        match poll_updates(
+            &http_client,
+            &bot_token,
+            offset,
+            &allowed_chats,
+            include_edited,
+            &tx,
+        )
+        .await
         {
             Ok(new_offset) => {
                 if new_offset > 0 {
@@ -120,11 +129,15 @@ pub async fn start(config: TelegramConfig, tx: EventTx, circuit_breaker: Option<
                     if new_offset > 0 {
                         offset = new_offset;
                     }
-                    if let Some(ref c) = cb { c.record_success().await; }
+                    if let Some(ref c) = cb {
+                        c.record_success().await;
+                    }
                 }
                 Err(e) => {
                     warn!("Telegram poll failed: {}", e);
-                    if let Some(ref c) = cb { c.record_failure().await; }
+                    if let Some(ref c) = cb {
+                        c.record_failure().await;
+                    }
                 }
             }
         }
@@ -298,12 +311,8 @@ async fn poll_updates(
 
         // Extract chat info
         let chat_id = msg_value["chat"]["id"].as_i64().unwrap_or(0);
-        let chat_type = msg_value["chat"]["type"]
-            .as_str()
-            .unwrap_or("unknown");
-        let chat_title = msg_value["chat"]["title"]
-            .as_str()
-            .unwrap_or("");
+        let chat_type = msg_value["chat"]["type"].as_str().unwrap_or("unknown");
+        let chat_title = msg_value["chat"]["title"].as_str().unwrap_or("");
         let from_user = msg_value["from"]["username"]
             .as_str()
             .or_else(|| msg_value["from"]["first_name"].as_str())

@@ -2,3 +2,41 @@ target/
 *.log
 .env
 .env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+*~
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build artifacts
+*.o
+*.d
+*.pdb
+
+# Profiling
+perf.data
+perf.data.old
+flamegraph.svg
+cachegrind.out.*
+callgrind.out.*
+
+# Test artifacts
+*.profraw
+*.profdata
+lcov.info
+tarpaulin-report.html
+tarpaulin-report.xml
+
+# Config with secrets
+config.local.toml
+config.prod.toml
+
+# Cache directories
+/cache/
+/data/

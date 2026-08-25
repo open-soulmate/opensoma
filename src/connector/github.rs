@@ -80,7 +80,8 @@ async fn github_get(
     let status = resp.status();
 
     // Handle rate-limited responses (403 with rate limit or 429)
-    if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+    if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+    {
         // Check for Retry-After header first
         let retry_after = resp
             .headers()
@@ -235,7 +236,11 @@ struct GitHubReviewComment {
 }
 
 /// Start the GitHub connector. Polls the GitHub API for issues, PRs, and releases.
-pub async fn start(config: GitHubConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: GitHubConfig,
+    tx: EventTx,
+    circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let handle = tokio::spawn(async move {
         let poll_interval = Duration::from_secs(config.poll_interval_secs);
         let client = build_client(&config);
@@ -261,23 +266,43 @@ pub async fn start(config: GitHubConfig, tx: EventTx, circuit_breaker: Option<Ci
             } else {
                 let mut any_failed = false;
                 for repo in &config.repos {
-                    if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues, &mut rate_limit).await {
+                    if let Err(e) = fetch_issues(
+                        &client,
+                        &config,
+                        repo,
+                        &tx,
+                        &mut seen_issues,
+                        &mut rate_limit,
+                    )
+                    .await
+                    {
                         warn!("Initial GitHub issues fetch failed for {}: {}", repo, e);
                         any_failed = true;
                     }
                     if config.include_releases {
-                        if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases, &mut rate_limit).await {
+                        if let Err(e) =
+                            fetch_releases(&client, repo, &tx, &mut seen_releases, &mut rate_limit)
+                                .await
+                        {
                             warn!("Initial GitHub releases fetch failed for {}: {}", repo, e);
                             any_failed = true;
                         }
                     }
-                    if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits, &mut rate_limit).await {
+                    if let Err(e) =
+                        fetch_commits(&client, repo, &tx, &mut seen_commits, &mut rate_limit).await
+                    {
                         warn!("Initial GitHub commits fetch failed for {}: {}", repo, e);
                         any_failed = true;
                     }
                     if config.include_review_comments {
-                        if let Err(e) =
-                            fetch_review_comments(&client, repo, &tx, &mut seen_review_comments, &mut rate_limit).await
+                        if let Err(e) = fetch_review_comments(
+                            &client,
+                            repo,
+                            &tx,
+                            &mut seen_review_comments,
+                            &mut rate_limit,
+                        )
+                        .await
                         {
                             warn!(
                                 "Initial GitHub review comments fetch failed for {}: {}",
@@ -287,25 +312,49 @@ pub async fn start(config: GitHubConfig, tx: EventTx, circuit_breaker: Option<Ci
                         }
                     }
                 }
-                if any_failed { cb.record_failure().await; } else { cb.record_success().await; }
+                if any_failed {
+                    cb.record_failure().await;
+                } else {
+                    cb.record_success().await;
+                }
             }
         } else {
             // No circuit breaker — fetch unconditionally
             for repo in &config.repos {
-                if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues, &mut rate_limit).await {
+                if let Err(e) = fetch_issues(
+                    &client,
+                    &config,
+                    repo,
+                    &tx,
+                    &mut seen_issues,
+                    &mut rate_limit,
+                )
+                .await
+                {
                     warn!("Initial GitHub issues fetch failed for {}: {}", repo, e);
                 }
                 if config.include_releases {
-                    if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases, &mut rate_limit).await {
+                    if let Err(e) =
+                        fetch_releases(&client, repo, &tx, &mut seen_releases, &mut rate_limit)
+                            .await
+                    {
                         warn!("Initial GitHub releases fetch failed for {}: {}", repo, e);
                     }
                 }
-                if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits, &mut rate_limit).await {
+                if let Err(e) =
+                    fetch_commits(&client, repo, &tx, &mut seen_commits, &mut rate_limit).await
+                {
                     warn!("Initial GitHub commits fetch failed for {}: {}", repo, e);
                 }
                 if config.include_review_comments {
-                    if let Err(e) =
-                        fetch_review_comments(&client, repo, &tx, &mut seen_review_comments, &mut rate_limit).await
+                    if let Err(e) = fetch_review_comments(
+                        &client,
+                        repo,
+                        &tx,
+                        &mut seen_review_comments,
+                        &mut rate_limit,
+                    )
+                    .await
                     {
                         warn!(
                             "Initial GitHub review comments fetch failed for {}: {}",
@@ -329,23 +378,43 @@ pub async fn start(config: GitHubConfig, tx: EventTx, circuit_breaker: Option<Ci
 
             let mut any_failed = false;
             for repo in &config.repos {
-                if let Err(e) = fetch_issues(&client, &config, repo, &tx, &mut seen_issues, &mut rate_limit).await {
+                if let Err(e) = fetch_issues(
+                    &client,
+                    &config,
+                    repo,
+                    &tx,
+                    &mut seen_issues,
+                    &mut rate_limit,
+                )
+                .await
+                {
                     warn!("GitHub issues fetch failed for {}: {}", repo, e);
                     any_failed = true;
                 }
                 if config.include_releases {
-                    if let Err(e) = fetch_releases(&client, repo, &tx, &mut seen_releases, &mut rate_limit).await {
+                    if let Err(e) =
+                        fetch_releases(&client, repo, &tx, &mut seen_releases, &mut rate_limit)
+                            .await
+                    {
                         warn!("GitHub releases fetch failed for {}: {}", repo, e);
                         any_failed = true;
                     }
                 }
-                if let Err(e) = fetch_commits(&client, repo, &tx, &mut seen_commits, &mut rate_limit).await {
+                if let Err(e) =
+                    fetch_commits(&client, repo, &tx, &mut seen_commits, &mut rate_limit).await
+                {
                     warn!("GitHub commits fetch failed for {}: {}", repo, e);
                     any_failed = true;
                 }
                 if config.include_review_comments {
-                    if let Err(e) =
-                        fetch_review_comments(&client, repo, &tx, &mut seen_review_comments, &mut rate_limit).await
+                    if let Err(e) = fetch_review_comments(
+                        &client,
+                        repo,
+                        &tx,
+                        &mut seen_review_comments,
+                        &mut rate_limit,
+                    )
+                    .await
                     {
                         warn!("GitHub review comments fetch failed for {}: {}", repo, e);
                         any_failed = true;
@@ -371,7 +440,11 @@ pub async fn start(config: GitHubConfig, tx: EventTx, circuit_breaker: Option<Ci
 
             // Record circuit breaker result
             if let Some(ref cb) = circuit_breaker {
-                if any_failed { cb.record_failure().await; } else { cb.record_success().await; }
+                if any_failed {
+                    cb.record_failure().await;
+                } else {
+                    cb.record_success().await;
+                }
             }
         }
     });

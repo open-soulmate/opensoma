@@ -99,12 +99,17 @@ async fn main() -> Result<()> {
     let health_checker = health::HealthChecker::new();
 
     // Create the shared circuit breaker registry (used by connectors + status server)
-    let circuit_breaker_registry = opensoma::connector::circuit_breaker::CircuitBreakerRegistry::new();
+    let circuit_breaker_registry =
+        opensoma::connector::circuit_breaker::CircuitBreakerRegistry::new();
 
     // Start connectors (feishu, dingtalk, wecom, …) with health checking + circuit breakers
-    let connector_handle =
-        connector::start_all(&config.connector, raw_tx.clone(), Some(health_checker.clone()), Some(circuit_breaker_registry.clone()))
-            .await?;
+    let connector_handle = connector::start_all(
+        &config.connector,
+        raw_tx.clone(),
+        Some(health_checker.clone()),
+        Some(circuit_breaker_registry.clone()),
+    )
+    .await?;
 
     // Start processor pipeline: raw_rx → normalize → classify → enrich → dedup → processed_tx
     let pipeline_metrics = metrics::PipelineMetrics::new();
@@ -1315,8 +1320,14 @@ fn run_doctor(config_path: &str) -> i32 {
                 }
             }
             // 7. Running daemon circuit breaker check
-            let status_url = format!("http://127.0.0.1:{}/api/circuit-breakers", config.daemon.status_port);
-            print!("  [daemon]  Checking circuit breakers at {} ... ", status_url);
+            let status_url = format!(
+                "http://127.0.0.1:{}/api/circuit-breakers",
+                config.daemon.status_port
+            );
+            print!(
+                "  [daemon]  Checking circuit breakers at {} ... ",
+                status_url
+            );
             match blocking_http_get(&status_url) {
                 Ok(body) => {
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
@@ -1396,8 +1407,8 @@ fn run_test_connector(config_path: &str, connector_name: &str) -> i32 {
 
     // Validate connector name
     let known_connectors = [
-        "feishu", "dingtalk", "wecom", "rss", "email", "webhook",
-        "github", "notion", "git", "obsidian", "slack", "telegram", "discord", "teams",
+        "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
+        "obsidian", "slack", "telegram", "discord", "teams",
     ];
     if !known_connectors.contains(&connector_name) {
         eprintln!("❌ Unknown connector: '{}'", connector_name);
@@ -1408,7 +1419,11 @@ fn run_test_connector(config_path: &str, connector_name: &str) -> i32 {
     // Check if connector is enabled in config
     let is_enabled = match connector_name {
         "feishu" => config.connector.feishu.as_ref().is_some_and(|c| c.enabled),
-        "dingtalk" => config.connector.dingtalk.as_ref().is_some_and(|c| c.enabled),
+        "dingtalk" => config
+            .connector
+            .dingtalk
+            .as_ref()
+            .is_some_and(|c| c.enabled),
         "wecom" => config.connector.wecom.as_ref().is_some_and(|c| c.enabled),
         "rss" => config.connector.rss.as_ref().is_some_and(|c| c.enabled),
         "email" => config.connector.email.as_ref().is_some_and(|c| c.enabled),
@@ -1416,17 +1431,31 @@ fn run_test_connector(config_path: &str, connector_name: &str) -> i32 {
         "github" => config.connector.github.as_ref().is_some_and(|c| c.enabled),
         "notion" => config.connector.notion.as_ref().is_some_and(|c| c.enabled),
         "git" => config.connector.git.as_ref().is_some_and(|c| c.enabled),
-        "obsidian" => config.connector.obsidian.as_ref().is_some_and(|c| c.enabled),
+        "obsidian" => config
+            .connector
+            .obsidian
+            .as_ref()
+            .is_some_and(|c| c.enabled),
         "slack" => config.connector.slack.as_ref().is_some_and(|c| c.enabled),
-        "telegram" => config.connector.telegram.as_ref().is_some_and(|c| c.enabled),
+        "telegram" => config
+            .connector
+            .telegram
+            .as_ref()
+            .is_some_and(|c| c.enabled),
         "discord" => config.connector.discord.as_ref().is_some_and(|c| c.enabled),
         "teams" => config.connector.teams.as_ref().is_some_and(|c| c.enabled),
         _ => false,
     };
 
     if !is_enabled {
-        println!("  ⚠️  Connector '{}' is not enabled in config.toml", connector_name);
-        println!("     Enable it by setting [connector.{}].enabled = true", connector_name);
+        println!(
+            "  ⚠️  Connector '{}' is not enabled in config.toml",
+            connector_name
+        );
+        println!(
+            "     Enable it by setting [connector.{}].enabled = true",
+            connector_name
+        );
         return 0;
     }
 
@@ -1438,7 +1467,10 @@ fn run_test_connector(config_path: &str, connector_name: &str) -> i32 {
 
     match result {
         Ok(()) => {
-            println!("  ✅ Connector '{}' is healthy — connectivity OK!", connector_name);
+            println!(
+                "  ✅ Connector '{}' is healthy — connectivity OK!",
+                connector_name
+            );
             0
         }
         Err(e) => {
@@ -1933,8 +1965,10 @@ fn run_stats(config_path: &str) -> i32 {
     println!("║            OpenSoma — Event Statistics               ║");
     println!("╚══════════════════════════════════════════════════════╝");
     println!();
-    println!("  Cache: {} total events, {} pending upload, {} bytes",
-        stats.total, stats.pending, stats.cache_size_bytes);
+    println!(
+        "  Cache: {} total events, {} pending upload, {} bytes",
+        stats.total, stats.pending, stats.cache_size_bytes
+    );
     if let Some(first) = events.last() {
         if let Some(dt) = chrono::DateTime::from_timestamp_millis(first.timestamp_ms) {
             println!("  Oldest event: {}", dt.format("%Y-%m-%d %H:%M:%S"));
@@ -1989,14 +2023,16 @@ fn run_stats(config_path: &str) -> i32 {
     let mut day_vec: Vec<_> = by_day.iter().collect();
     day_vec.sort_by(|a, b| a.0.cmp(b.0));
     let max_day_count = day_vec.iter().map(|e| *e.1).max().unwrap_or(1);
-    for (day, count) in day_vec.iter().rev().take(14).collect::<Vec<_>>().iter().rev() {
+    for (day, count) in day_vec
+        .iter()
+        .rev()
+        .take(14)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         let bar_width = (**count as f64 / max_day_count as f64 * 30.0) as usize;
-        println!(
-            "  │ {:<12} {:>8} {}",
-            day,
-            count,
-            "█".repeat(bar_width)
-        );
+        println!("  │ {:<12} {:>8} {}", day, count, "█".repeat(bar_width));
     }
     println!("  └────────────────────────────────────────────────┘");
     println!();
@@ -2136,7 +2172,10 @@ fn run_prune(config_path: &str, days: i64) -> i32 {
 
     println!("Pruning events older than {} days...", days);
     if let Some(cutoff_dt) = chrono::DateTime::from_timestamp_millis(cutoff_ms) {
-        println!("  Cutoff timestamp:      {}", cutoff_dt.format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "  Cutoff timestamp:      {}",
+            cutoff_dt.format("%Y-%m-%d %H:%M:%S")
+        );
     }
 
     match cache.evict_before(cutoff_ms) {
@@ -2273,15 +2312,9 @@ fn run_top(port: u16) -> i32 {
                 if parts.len() >= 2 {
                     if let Ok(val) = parts[1].parse::<f64>() {
                         match parts[0] {
-                            "opensoma_pipeline_events_processed_total" => {
-                                processed = val as u64
-                            }
-                            "opensoma_pipeline_events_normalized_total" => {
-                                normalized = val as u64
-                            }
-                            "opensoma_pipeline_events_classified_total" => {
-                                classified = val as u64
-                            }
+                            "opensoma_pipeline_events_processed_total" => processed = val as u64,
+                            "opensoma_pipeline_events_normalized_total" => normalized = val as u64,
+                            "opensoma_pipeline_events_classified_total" => classified = val as u64,
                             "opensoma_pipeline_events_enriched_total" => enriched = val as u64,
                             "opensoma_pipeline_events_deduped_total" => deduped = val as u64,
                             _ => {}
@@ -2291,8 +2324,10 @@ fn run_top(port: u16) -> i32 {
             }
             if processed > 0 {
                 println!();
-                println!("  Pipeline: processed={} normalized={} classified={} enriched={} deduped={}",
-                    processed, normalized, classified, enriched, deduped);
+                println!(
+                    "  Pipeline: processed={} normalized={} classified={} enriched={} deduped={}",
+                    processed, normalized, classified, enriched, deduped
+                );
             }
         }
 
@@ -2428,7 +2463,10 @@ fn run_self_test() -> i32 {
     };
     processor::normalize::normalize_event(&mut norm_event, &proc_config);
     if norm_event.timestamp_ms > 0 {
-        println!("  ✅ Normalize: zero timestamp fixed to {}", norm_event.timestamp_ms);
+        println!(
+            "  ✅ Normalize: zero timestamp fixed to {}",
+            norm_event.timestamp_ms
+        );
         passed += 1;
     } else {
         println!("  ❌ Normalize: timestamp still zero");
@@ -2449,7 +2487,10 @@ fn run_self_test() -> i32 {
     };
     let classify_result = processor::classify::classify_event(&classify_event);
     if !classify_result.source_category.is_empty() {
-        println!("  ✅ Classify: source_category='{}', content_type={:?}", classify_result.source_category, classify_result.content_type);
+        println!(
+            "  ✅ Classify: source_category='{}', content_type={:?}",
+            classify_result.source_category, classify_result.content_type
+        );
         passed += 1;
     } else {
         println!("  ⚠️  Classify: empty result (best-effort)");
@@ -2466,7 +2507,11 @@ fn run_self_test() -> i32 {
     };
     let enrich_result = processor::enrich::enrich_event(&enrich_event);
     if !enrich_result.entities.is_empty() || !enrich_result.keywords.is_empty() {
-        println!("  ✅ Enrich: {} entities, {} keywords", enrich_result.entities.len(), enrich_result.keywords.len());
+        println!(
+            "  ✅ Enrich: {} entities, {} keywords",
+            enrich_result.entities.len(),
+            enrich_result.keywords.len()
+        );
         passed += 1;
     } else {
         println!("  ⚠️  Enrich: no entities extracted (non-critical)");
@@ -2483,7 +2528,10 @@ fn run_self_test() -> i32 {
                 println!("  ✅ Dedup: first seen=new, second seen=duplicate");
                 passed += 1;
             } else {
-                println!("  ❌ Dedup: unexpected results (first={}, second={})", is_dup_first, is_dup_same);
+                println!(
+                    "  ❌ Dedup: unexpected results (first={}, second={})",
+                    is_dup_first, is_dup_same
+                );
                 failed += 1;
             }
         })
@@ -2626,7 +2674,10 @@ fn run_self_test() -> i32 {
     println!();
     println!("────────────────────────────────────────────────");
     if failed == 0 {
-        println!("  Result: ✅ All {} checks passed — pipeline is healthy!", passed);
+        println!(
+            "  Result: ✅ All {} checks passed — pipeline is healthy!",
+            passed
+        );
         0
     } else {
         println!("  Result: ❌ {} passed, {} failed", passed, failed);
@@ -2793,8 +2844,8 @@ mod tests {
     fn test_known_connectors_list() {
         // Verify the known connectors list matches the connector module
         let known = [
-            "feishu", "dingtalk", "wecom", "rss", "email", "webhook",
-            "github", "notion", "git", "obsidian", "slack", "telegram", "discord", "teams",
+            "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
+            "obsidian", "slack", "telegram", "discord", "teams",
         ];
         assert_eq!(known.len(), 14);
         assert!(known.contains(&"feishu"));

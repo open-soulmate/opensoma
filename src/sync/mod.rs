@@ -267,9 +267,7 @@ fn detect_and_resolve_local_conflicts(
                 );
                 // Don't add to output — skip this event
             }
-            Resolution::Merged {
-                merged_tags, ..
-            } => {
+            Resolution::Merged { merged_tags, .. } => {
                 // Apply merged tags to the event (union of local + server tags)
                 tracing::debug!(
                     "Conflict resolved: merge for {} ({} merged tags)",

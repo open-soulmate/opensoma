@@ -203,11 +203,7 @@ fn message_to_event(msg: &DiscordMessage, guild_id: &str) -> RawEvent {
     let author_name = msg
         .author
         .as_ref()
-        .map(|a| {
-            a.global_name
-                .clone()
-                .unwrap_or_else(|| a.username.clone())
-        })
+        .map(|a| a.global_name.clone().unwrap_or_else(|| a.username.clone()))
         .unwrap_or_else(|| "unknown".to_string());
 
     let author_id = msg
@@ -231,19 +227,18 @@ fn message_to_event(msg: &DiscordMessage, guild_id: &str) -> RawEvent {
 
     // Include attachment info
     if !msg.attachments.is_empty() {
-        payload["attachments"] = serde_json::json!(
-            msg.attachments
-                .iter()
-                .map(|a| {
-                    serde_json::json!({
-                        "filename": a.filename,
-                        "url": a.url,
-                        "content_type": a.content_type,
-                        "size": a.size,
-                    })
+        payload["attachments"] = serde_json::json!(msg
+            .attachments
+            .iter()
+            .map(|a| {
+                serde_json::json!({
+                    "filename": a.filename,
+                    "url": a.url,
+                    "content_type": a.content_type,
+                    "size": a.size,
                 })
-                .collect::<Vec<_>>()
-        );
+            })
+            .collect::<Vec<_>>());
     }
 
     // Include embeds
@@ -309,7 +304,11 @@ pub async fn start(
             match fetch_channels(&client, &bot_token, &guild_id).await {
                 Ok(ch) => {
                     let ids: Vec<String> = ch.iter().map(|c| c.id.clone()).collect();
-                    info!("Discovered {} text channels in guild {}", ids.len(), guild_id);
+                    info!(
+                        "Discovered {} text channels in guild {}",
+                        ids.len(),
+                        guild_id
+                    );
                     ids
                 }
                 Err(e) => {
@@ -362,11 +361,7 @@ pub async fn start(
                         for msg in &sorted {
                             // Skip bot messages if configured
                             if config.ignore_bots
-                                && msg
-                                    .author
-                                    .as_ref()
-                                    .and_then(|a| a.bot)
-                                    .unwrap_or(false)
+                                && msg.author.as_ref().and_then(|a| a.bot).unwrap_or(false)
                             {
                                 continue;
                             }
@@ -582,10 +577,7 @@ mod tests {
             payload["edited_timestamp"],
             "2024-06-01T12:05:00.000000+00:00"
         );
-        assert_eq!(
-            payload["timestamp"],
-            "2024-06-01T12:00:00.000000+00:00"
-        );
+        assert_eq!(payload["timestamp"], "2024-06-01T12:00:00.000000+00:00");
     }
 
     #[test]
@@ -750,12 +742,36 @@ mod tests {
     fn test_discord_channel_type_filtering() {
         // Verify channel type filtering logic: only type 0 (GUILD_TEXT) and 5 (GUILD_ANNOUNCEMENT) pass
         let channels = [
-            DiscordChannel { id: "1".to_string(), name: Some("general".to_string()), r#type: Some(0) },
-            DiscordChannel { id: "2".to_string(), name: Some("voice-room".to_string()), r#type: Some(2) },
-            DiscordChannel { id: "3".to_string(), name: Some("announcements".to_string()), r#type: Some(5) },
-            DiscordChannel { id: "4".to_string(), name: Some("stage".to_string()), r#type: Some(13) },
-            DiscordChannel { id: "5".to_string(), name: Some("forum".to_string()), r#type: Some(15) },
-            DiscordChannel { id: "6".to_string(), name: Some("unknown".to_string()), r#type: None },
+            DiscordChannel {
+                id: "1".to_string(),
+                name: Some("general".to_string()),
+                r#type: Some(0),
+            },
+            DiscordChannel {
+                id: "2".to_string(),
+                name: Some("voice-room".to_string()),
+                r#type: Some(2),
+            },
+            DiscordChannel {
+                id: "3".to_string(),
+                name: Some("announcements".to_string()),
+                r#type: Some(5),
+            },
+            DiscordChannel {
+                id: "4".to_string(),
+                name: Some("stage".to_string()),
+                r#type: Some(13),
+            },
+            DiscordChannel {
+                id: "5".to_string(),
+                name: Some("forum".to_string()),
+                r#type: Some(15),
+            },
+            DiscordChannel {
+                id: "6".to_string(),
+                name: Some("unknown".to_string()),
+                r#type: None,
+            },
         ];
 
         let text_channels: Vec<&DiscordChannel> = channels
@@ -774,7 +790,7 @@ mod tests {
         let mut ids = vec!["100", "50", "200", "150", "75"];
         ids.sort();
         assert_eq!(ids, vec!["100", "150", "200", "50", "75"]); // lexicographic sort
-        // Note: real Discord IDs are 64-bit integers, but string comparison works for same-length IDs
+                                                                // Note: real Discord IDs are 64-bit integers, but string comparison works for same-length IDs
     }
 
     #[test]

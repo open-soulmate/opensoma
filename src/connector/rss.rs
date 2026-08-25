@@ -48,7 +48,11 @@ impl Connector for RssConnector {
 
 /// Start the RSS connector. Polls configured RSS/Atom feeds at regular intervals
 /// and forwards new entries into the collector pipeline.
-pub async fn start(config: RssConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: RssConfig,
+    tx: EventTx,
+    circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(Duration::from_secs(30))
         .user_agent("OpenSoma/0.1 RSS Connector")
@@ -93,9 +97,13 @@ pub async fn start(config: RssConfig, tx: EventTx, circuit_breaker: Option<Circu
                 let poll_result = poll_feed(&http_client, feed, &tx, &mut seen).await;
                 if let Err(e) = poll_result {
                     warn!("RSS poll failed for '{}': {}", feed.name, e);
-                    if let Some(ref c) = cb { c.record_failure().await; }
+                    if let Some(ref c) = cb {
+                        c.record_failure().await;
+                    }
                 } else {
-                    if let Some(ref c) = cb { c.record_success().await; }
+                    if let Some(ref c) = cb {
+                        c.record_success().await;
+                    }
                 }
             }
         }

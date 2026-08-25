@@ -234,9 +234,9 @@ impl RateLimiter {
     /// Create a new rate limiter for a connector.
     pub fn new(connector: impl Into<String>, config: RateLimiterConfig) -> Self {
         let max_tokens_fp = (config.max_tokens as f64 * FP_MULTIPLIER as f64) as u64;
-        let refill_amount_fp =
-            (config.refill_rate * config.refill_interval.as_secs_f64() * FP_MULTIPLIER as f64)
-                as u64;
+        let refill_amount_fp = (config.refill_rate
+            * config.refill_interval.as_secs_f64()
+            * FP_MULTIPLIER as f64) as u64;
 
         Self {
             connector: connector.into(),
@@ -273,8 +273,7 @@ impl RateLimiter {
                 } else {
                     // Calculate how long until the next token is available
                     let deficit_fp = FP_MULTIPLIER - inner.tokens_fp;
-                    let intervals_needed =
-                        deficit_fp as f64 / self.refill_amount_fp.max(1) as f64;
+                    let intervals_needed = deficit_fp as f64 / self.refill_amount_fp.max(1) as f64;
                     let wait_duration = self
                         .config
                         .refill_interval
@@ -432,11 +431,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_with_full_bucket() {
-        let limiter = RateLimiter::new("test", RateLimiterConfig {
-            max_tokens: 5,
-            refill_rate: 10.0,
-            refill_interval: Duration::from_secs(1),
-        });
+        let limiter = RateLimiter::new(
+            "test",
+            RateLimiterConfig {
+                max_tokens: 5,
+                refill_rate: 10.0,
+                refill_interval: Duration::from_secs(1),
+            },
+        );
 
         // Should acquire immediately since bucket starts full
         limiter.acquire().await;
@@ -447,11 +449,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_try_acquire_success() {
-        let limiter = RateLimiter::new("test", RateLimiterConfig {
-            max_tokens: 3,
-            refill_rate: 1.0,
-            refill_interval: Duration::from_secs(1),
-        });
+        let limiter = RateLimiter::new(
+            "test",
+            RateLimiterConfig {
+                max_tokens: 3,
+                refill_rate: 1.0,
+                refill_interval: Duration::from_secs(1),
+            },
+        );
 
         assert!(limiter.try_acquire().await);
         assert!(limiter.try_acquire().await);
@@ -466,11 +471,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_refill_over_time() {
-        let limiter = RateLimiter::new("test", RateLimiterConfig {
-            max_tokens: 5,
-            refill_rate: 100.0, // Very fast refill for testing
-            refill_interval: Duration::from_millis(10),
-        });
+        let limiter = RateLimiter::new(
+            "test",
+            RateLimiterConfig {
+                max_tokens: 5,
+                refill_rate: 100.0, // Very fast refill for testing
+                refill_interval: Duration::from_millis(10),
+            },
+        );
 
         // Drain all tokens
         for _ in 0..5 {
@@ -487,11 +495,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_max_tokens_cap() {
-        let limiter = RateLimiter::new("test", RateLimiterConfig {
-            max_tokens: 3,
-            refill_rate: 100.0,
-            refill_interval: Duration::from_millis(10),
-        });
+        let limiter = RateLimiter::new(
+            "test",
+            RateLimiterConfig {
+                max_tokens: 3,
+                refill_rate: 100.0,
+                refill_interval: Duration::from_millis(10),
+            },
+        );
 
         // Wait a long time to accumulate tokens
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -503,11 +514,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_waits_for_refill() {
-        let limiter = RateLimiter::new("test", RateLimiterConfig {
-            max_tokens: 1,
-            refill_rate: 100.0, // Fast refill
-            refill_interval: Duration::from_millis(10),
-        });
+        let limiter = RateLimiter::new(
+            "test",
+            RateLimiterConfig {
+                max_tokens: 1,
+                refill_rate: 100.0, // Fast refill
+                refill_interval: Duration::from_millis(10),
+            },
+        );
 
         // Drain the single token
         limiter.acquire().await;
@@ -556,11 +570,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_snapshot_fields() {
-        let limiter = RateLimiter::new("test", RateLimiterConfig {
-            max_tokens: 10,
-            refill_rate: 5.0,
-            refill_interval: Duration::from_secs(1),
-        });
+        let limiter = RateLimiter::new(
+            "test",
+            RateLimiterConfig {
+                max_tokens: 10,
+                refill_rate: 5.0,
+                refill_interval: Duration::from_secs(1),
+            },
+        );
 
         limiter.acquire().await;
         let snap = limiter.snapshot().await;
@@ -573,11 +590,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_clone_shares_state() {
-        let limiter = RateLimiter::new("test", RateLimiterConfig {
-            max_tokens: 5,
-            refill_rate: 1.0,
-            refill_interval: Duration::from_secs(1),
-        });
+        let limiter = RateLimiter::new(
+            "test",
+            RateLimiterConfig {
+                max_tokens: 5,
+                refill_rate: 1.0,
+                refill_interval: Duration::from_secs(1),
+            },
+        );
 
         let limiter2 = limiter.clone();
 
@@ -608,11 +628,14 @@ mod tests {
     #[tokio::test]
     async fn test_sub_integer_rate() {
         // Test with a rate less than 1 token/sec (like Slack's 0.83/s)
-        let limiter = RateLimiter::new("slack", RateLimiterConfig {
-            max_tokens: 2,
-            refill_rate: 0.5, // 0.5 tokens/sec
-            refill_interval: Duration::from_secs(1),
-        });
+        let limiter = RateLimiter::new(
+            "slack",
+            RateLimiterConfig {
+                max_tokens: 2,
+                refill_rate: 0.5, // 0.5 tokens/sec
+                refill_interval: Duration::from_secs(1),
+            },
+        );
 
         // Drain 2 tokens
         assert!(limiter.try_acquire().await);
@@ -626,11 +649,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_acquire() {
-        let limiter = RateLimiter::new("test", RateLimiterConfig {
-            max_tokens: 5,
-            refill_rate: 100.0,
-            refill_interval: Duration::from_millis(10),
-        });
+        let limiter = RateLimiter::new(
+            "test",
+            RateLimiterConfig {
+                max_tokens: 5,
+                refill_rate: 100.0,
+                refill_interval: Duration::from_millis(10),
+            },
+        );
 
         let mut handles = Vec::new();
         for _ in 0..5 {

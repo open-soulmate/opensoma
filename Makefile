@@ -7,7 +7,7 @@ CARGO := cargo
 DOCKER_IMAGE := opensoma
 DOCKER_TAG ?= latest
 
-.PHONY: all build release test check clippy fmt clean install docker docker-push help
+.PHONY: all build release test check clippy fmt clean install docker docker-push ci audit self-test doctor help
 
 all: check test build
 
@@ -105,6 +105,22 @@ cross-build:
 version:
 	@./target/release/$(BINARY_NAME) --version 2>/dev/null || $(CARGO) metadata --format-version 1 2>/dev/null | grep '"version"' | head -1
 
+## Full CI pipeline: fmt-check + clippy + test + release build + self-test
+ci: fmt-check clippy test release self-test
+	@echo "✅ CI pipeline passed"
+
+## Run cargo audit for security vulnerabilities (requires cargo-audit)
+audit:
+	$(CARGO) audit 2>/dev/null || echo "Install cargo-audit: cargo install cargo-audit"
+
+## Run the built-in self-test (no running daemon needed)
+self-test: release
+	./target/release/$(BINARY_NAME) --self-test
+
+## Run the built-in doctor diagnostics
+doctor: release
+	./target/release/$(BINARY_NAME) --doctor
+
 ## Show this help
 help:
 	@echo "OpenSoma Build System"
@@ -128,6 +144,10 @@ help:
 	@echo "  metrics       - print Prometheus metrics"
 	@echo "  docker        - build Docker image"
 	@echo "  docker-push   - push Docker image"
+	@echo "  ci            - full CI pipeline (fmt+clippy+test+release+self-test)"
+	@echo "  audit         - security vulnerability audit"
+	@echo "  self-test     - run built-in pipeline self-test"
+	@echo "  doctor        - run diagnostics"
 	@echo "  loc           - count lines of code"
 	@echo "  version       - print version"
 	@echo "  help          - show this help"

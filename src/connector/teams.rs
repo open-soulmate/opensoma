@@ -211,7 +211,11 @@ async fn fetch_access_token(client: &Client, config: &TeamsConfig) -> Result<Str
             .context("Failed to parse Teams token response")?;
 
         if let Some(err) = &token_resp.error {
-            anyhow::bail!("Teams token error: {} - {}", err, token_resp.error_description.as_deref().unwrap_or(""));
+            anyhow::bail!(
+                "Teams token error: {} - {}",
+                err,
+                token_resp.error_description.as_deref().unwrap_or("")
+            );
         }
 
         Ok::<String, anyhow::Error>(token_resp.access_token)
@@ -221,11 +225,7 @@ async fn fetch_access_token(client: &Client, config: &TeamsConfig) -> Result<Str
 }
 
 /// Fetch channels for a specific team.
-async fn fetch_channels(
-    client: &Client,
-    token: &str,
-    team_id: &str,
-) -> Result<Vec<Channel>> {
+async fn fetch_channels(client: &Client, token: &str, team_id: &str) -> Result<Vec<Channel>> {
     let url = format!(
         "https://graph.microsoft.com/v1.0/teams/{}/channels",
         team_id
@@ -272,10 +272,7 @@ async fn fetch_messages(
 
     // Filter for messages after a specific time if we have a last-seen timestamp
     if let Some(after_dt) = after {
-        url = format!(
-            "{}&$filter=createdDateTime gt {}",
-            url, after_dt
-        );
+        url = format!("{}&$filter=createdDateTime gt {}", url, after_dt);
     }
 
     let resp = retry_async!("teams_messages", 3, {
@@ -350,19 +347,18 @@ fn message_to_event(msg: &ChatMessage, team_id: &str, channel_id: &str) -> RawEv
 
     // Include attachments info
     if !msg.attachments.is_empty() {
-        payload["attachments"] = serde_json::json!(
-            msg.attachments
-                .iter()
-                .map(|a| {
-                    serde_json::json!({
-                        "id": a.id,
-                        "name": a.name,
-                        "content_type": a.content_type,
-                        "content_url": a.content_url,
-                    })
+        payload["attachments"] = serde_json::json!(msg
+            .attachments
+            .iter()
+            .map(|a| {
+                serde_json::json!({
+                    "id": a.id,
+                    "name": a.name,
+                    "content_type": a.content_type,
+                    "content_url": a.content_url,
                 })
-                .collect::<Vec<_>>()
-        );
+            })
+            .collect::<Vec<_>>());
     }
 
     // Build tags
@@ -439,7 +435,8 @@ fn strip_html(html: &str) -> String {
         result.push_str(&entity_buf);
     }
 
-    let collapsed: String = result.split_whitespace().collect::<Vec<_>>().join(" "); collapsed
+    let collapsed: String = result.split_whitespace().collect::<Vec<_>>().join(" ");
+    collapsed
 }
 
 /// Start the Microsoft Teams connector — spawns a background task that polls
@@ -514,7 +511,10 @@ pub async fn start(
                             ids
                         }
                         Err(e) => {
-                            warn!("Failed to discover Teams channels for team {}: {}", team_id, e);
+                            warn!(
+                                "Failed to discover Teams channels for team {}: {}",
+                                team_id, e
+                            );
                             continue;
                         }
                     }
@@ -526,8 +526,7 @@ pub async fn start(
                     let cache_key = format!("{}:{}", team_id, channel_id);
                     let after_ts = last_seen.get(&cache_key).map(|s| s.as_str());
 
-                    match fetch_messages(&client, &token, team_id, channel_id, after_ts, 50).await
-                    {
+                    match fetch_messages(&client, &token, team_id, channel_id, after_ts, 50).await {
                         Ok(messages) => {
                             if messages.is_empty() {
                                 debug!(
@@ -653,7 +652,10 @@ mod tests {
         assert_eq!(event.event_type, "message");
         assert_eq!(event.tags.get("source").map(|s| s.as_str()), Some("teams"));
         assert_eq!(event.tags.get("team").map(|s| s.as_str()), Some("team-1"));
-        assert_eq!(event.tags.get("channel").map(|s| s.as_str()), Some("channel-1"));
+        assert_eq!(
+            event.tags.get("channel").map(|s| s.as_str()),
+            Some("channel-1")
+        );
         assert_eq!(event.tags.get("author").map(|s| s.as_str()), Some("user-1"));
         assert_eq!(event.tags.get("sender").map(|s| s.as_str()), Some("Alice"));
 

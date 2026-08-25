@@ -11,7 +11,11 @@ use crate::connector::Connector;
 
 /// Start the Email connector. Polls IMAP accounts at regular intervals
 /// and forwards new emails into the collector pipeline.
-pub async fn start(config: EmailConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: EmailConfig,
+    tx: EventTx,
+    circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let poll_secs = config.poll_interval_secs;
     let accounts = config.accounts.clone();
 
@@ -56,9 +60,13 @@ pub async fn start(config: EmailConfig, tx: EventTx, circuit_breaker: Option<Cir
                 let poll_result = poll_account(account, &tx, seen_set).await;
                 if let Err(e) = poll_result {
                     warn!("Email poll failed for '{}': {}", account.name, e);
-                    if let Some(ref c) = cb { c.record_failure().await; }
+                    if let Some(ref c) = cb {
+                        c.record_failure().await;
+                    }
                 } else {
-                    if let Some(ref c) = cb { c.record_success().await; }
+                    if let Some(ref c) = cb {
+                        c.record_success().await;
+                    }
                 }
             }
         }

@@ -276,7 +276,7 @@ mod tests {
         let curr = ProcessSnapshot {
             pid: 300,
             name: "stable".into(),
-            cpu_usage: 15.0, // delta = 5.0 < 20.0
+            cpu_usage: 15.0,                 // delta = 5.0 < 20.0
             memory_bytes: 102 * 1024 * 1024, // delta = 2MB < 10MB
         };
         let cpu_delta = (curr.cpu_usage - prev.cpu_usage).abs();
@@ -289,16 +289,60 @@ mod tests {
     fn test_new_process_detection_logic() {
         // Simulate: prev has {1, 2}, current has {1, 2, 3} -> pid 3 is new
         let mut prev: HashMap<i32, ProcessSnapshot> = HashMap::new();
-        prev.insert(1, ProcessSnapshot { pid: 1, name: "a".into(), cpu_usage: 0.0, memory_bytes: 0 });
-        prev.insert(2, ProcessSnapshot { pid: 2, name: "b".into(), cpu_usage: 0.0, memory_bytes: 0 });
+        prev.insert(
+            1,
+            ProcessSnapshot {
+                pid: 1,
+                name: "a".into(),
+                cpu_usage: 0.0,
+                memory_bytes: 0,
+            },
+        );
+        prev.insert(
+            2,
+            ProcessSnapshot {
+                pid: 2,
+                name: "b".into(),
+                cpu_usage: 0.0,
+                memory_bytes: 0,
+            },
+        );
 
         let mut current: HashMap<i32, ProcessSnapshot> = HashMap::new();
-        current.insert(1, ProcessSnapshot { pid: 1, name: "a".into(), cpu_usage: 0.0, memory_bytes: 0 });
-        current.insert(2, ProcessSnapshot { pid: 2, name: "b".into(), cpu_usage: 0.0, memory_bytes: 0 });
-        current.insert(3, ProcessSnapshot { pid: 3, name: "c".into(), cpu_usage: 0.0, memory_bytes: 0 });
+        current.insert(
+            1,
+            ProcessSnapshot {
+                pid: 1,
+                name: "a".into(),
+                cpu_usage: 0.0,
+                memory_bytes: 0,
+            },
+        );
+        current.insert(
+            2,
+            ProcessSnapshot {
+                pid: 2,
+                name: "b".into(),
+                cpu_usage: 0.0,
+                memory_bytes: 0,
+            },
+        );
+        current.insert(
+            3,
+            ProcessSnapshot {
+                pid: 3,
+                name: "c".into(),
+                cpu_usage: 0.0,
+                memory_bytes: 0,
+            },
+        );
 
         // New processes = in current but not in prev
-        let new_pids: Vec<i32> = current.keys().filter(|pid| !prev.contains_key(pid)).copied().collect();
+        let new_pids: Vec<i32> = current
+            .keys()
+            .filter(|pid| !prev.contains_key(pid))
+            .copied()
+            .collect();
         assert_eq!(new_pids.len(), 1);
         assert_eq!(new_pids[0], 3);
     }
@@ -307,16 +351,60 @@ mod tests {
     fn test_exited_process_detection_logic() {
         // Simulate: prev has {1, 2, 3}, current has {1, 2} -> pid 3 exited
         let mut prev: HashMap<i32, ProcessSnapshot> = HashMap::new();
-        prev.insert(1, ProcessSnapshot { pid: 1, name: "a".into(), cpu_usage: 0.0, memory_bytes: 0 });
-        prev.insert(2, ProcessSnapshot { pid: 2, name: "b".into(), cpu_usage: 0.0, memory_bytes: 0 });
-        prev.insert(3, ProcessSnapshot { pid: 3, name: "c".into(), cpu_usage: 0.0, memory_bytes: 0 });
+        prev.insert(
+            1,
+            ProcessSnapshot {
+                pid: 1,
+                name: "a".into(),
+                cpu_usage: 0.0,
+                memory_bytes: 0,
+            },
+        );
+        prev.insert(
+            2,
+            ProcessSnapshot {
+                pid: 2,
+                name: "b".into(),
+                cpu_usage: 0.0,
+                memory_bytes: 0,
+            },
+        );
+        prev.insert(
+            3,
+            ProcessSnapshot {
+                pid: 3,
+                name: "c".into(),
+                cpu_usage: 0.0,
+                memory_bytes: 0,
+            },
+        );
 
         let mut current: HashMap<i32, ProcessSnapshot> = HashMap::new();
-        current.insert(1, ProcessSnapshot { pid: 1, name: "a".into(), cpu_usage: 0.0, memory_bytes: 0 });
-        current.insert(2, ProcessSnapshot { pid: 2, name: "b".into(), cpu_usage: 0.0, memory_bytes: 0 });
+        current.insert(
+            1,
+            ProcessSnapshot {
+                pid: 1,
+                name: "a".into(),
+                cpu_usage: 0.0,
+                memory_bytes: 0,
+            },
+        );
+        current.insert(
+            2,
+            ProcessSnapshot {
+                pid: 2,
+                name: "b".into(),
+                cpu_usage: 0.0,
+                memory_bytes: 0,
+            },
+        );
 
         // Exited processes = in prev but not in current
-        let exited_pids: Vec<i32> = prev.keys().filter(|pid| !current.contains_key(pid)).copied().collect();
+        let exited_pids: Vec<i32> = prev
+            .keys()
+            .filter(|pid| !current.contains_key(pid))
+            .copied()
+            .collect();
         assert_eq!(exited_pids.len(), 1);
         assert_eq!(exited_pids[0], 3);
     }
@@ -331,7 +419,11 @@ mod tests {
     #[test]
     fn test_event_type_values() {
         // Verify the three event types used by the process collector
-        let types = ["process_started", "process_exited", "process_resource_change"];
+        let types = [
+            "process_started",
+            "process_exited",
+            "process_resource_change",
+        ];
         for et in types {
             assert!(et.starts_with("process_"));
         }

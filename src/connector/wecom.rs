@@ -96,7 +96,11 @@ struct ExternalContactListResponse {
 
 /// Start the WeCom connector. Authenticates via API, then
 /// polls for received messages and forwards them as events.
-pub async fn start(config: WecomConfig, tx: EventTx, circuit_breaker: Option<CircuitBreaker>) -> Result<JoinHandle<()>> {
+pub async fn start(
+    config: WecomConfig,
+    tx: EventTx,
+    circuit_breaker: Option<CircuitBreaker>,
+) -> Result<JoinHandle<()>> {
     let http_client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
