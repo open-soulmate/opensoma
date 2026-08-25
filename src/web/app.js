@@ -112,21 +112,21 @@ const Router = {
 
         // Update page title
         const titles = {
-            dashboard: '仪表盘',
-            knowledge: '知识库',
-            graph: '知识图谱',
-            search: '搜索',
-            agents: 'Agent节点',
-            settings: '系统设置',
-            llm: 'LLM配置',
-            marketplace: '技能源',
-            'agent-sources': 'Agent源',
+            dashboard: 'Dashboard',
+            knowledge: 'Knowledge',
+            graph: 'Knowledge Graph',
+            search: 'Search',
+            agents: 'Agent Nodes',
+            settings: 'Settings',
+            llm: 'LLM Config',
+            marketplace: 'Skills',
+            'agent-sources': 'Agent Sources',
         };
         document.getElementById('page-title').textContent = titles[page] || page;
 
         // Load page content
         const container = document.getElementById('page-content');
-        container.innerHTML = '<div class="loading"><div class="spinner"></div>加载中...</div>';
+        container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
 
         try {
             if (this.pages[page]) {
@@ -137,7 +137,7 @@ const Router = {
             // Run page init if exists
             if (window[`init_${page}`]) window[`init_${page}`]();
         } catch (e) {
-            container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠</div><div class="empty-state-text">加载失败: ${e.message}</div></div>`;
+            container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠</div><div class="empty-state-text">Load failed: ${e.message}</div></div>`;
         }
     },
 
@@ -171,10 +171,10 @@ async function loadDashboardStats() {
             const statusEl = document.getElementById('header-status');
             const textEl = document.getElementById('sidebar-status-text');
 
-            statusEl.textContent = health.status === 'healthy' ? '正常' : health.status;
+            statusEl.textContent = health.status === 'healthy' ? 'OK' : health.status;
             statusEl.className = `status-value ${health.status === 'healthy' ? 'status-ok' : 'status-warn'}`;
 
-            textEl.textContent = health.status === 'healthy' ? 'Soul 运行中' : health.status;
+            textEl.textContent = health.status === 'healthy' ? 'Soul Running' : health.status;
         }
 
         if (version) {

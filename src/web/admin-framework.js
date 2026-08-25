@@ -1,13 +1,13 @@
 /**
  * OpenMate Admin Framework v1.0 — JavaScript
- * 三个软件共用：sidebar交互、tab切换、API、toast、工具函数
- * 用法: <script src="/admin-framework.js" defer></script>
+ * Shared by OpenMate/OpenSoul/OpenSoma：sidebar interaction、tab switching、API、toast、utility functions
+ * Usage: <script src="/admin-framework.js" defer></script>
  */
 ;(function() {
   'use strict';
 
   /* ══════════════════════════════════════════════════════
-     API 客户端
+     API Client
      ══════════════════════════════════════════════════════ */
   const API = {
     base: '',
@@ -43,7 +43,7 @@
   window.API = API;
 
   /* ══════════════════════════════════════════════════════
-     TOAST 通知
+     TOAST Notifications
      ══════════════════════════════════════════════════════ */
   const Toast = {
     container: null,
@@ -66,7 +66,7 @@
   window.Toast = Toast;
 
   /* ══════════════════════════════════════════════════════
-     SIDEBAR 交互
+     SIDEBAR Interaction
      ══════════════════════════════════════════════════════ */
   function initSidebar() {
     const sidebar = document.getElementById('sidebar');
@@ -84,13 +84,13 @@
     if (menuBtn) menuBtn.addEventListener('click', expand);
     if (overlay) overlay.addEventListener('click', collapse);
 
-    // 从localStorage恢复状态
+    // Restore state from localStorage
     if (localStorage.getItem('sidebar-expanded') === 'true') expand();
     sidebar.addEventListener('transitionend', () => {
       localStorage.setItem('sidebar-expanded', sidebar.classList.contains('expanded'));
     });
 
-    // 导航高亮
+    // Navigation highlight
     const navItems = sidebar.querySelectorAll('.nav-item');
     const currentHash = location.hash || navItems[0]?.getAttribute('href');
     navItems.forEach(item => {
@@ -98,10 +98,10 @@
       item.addEventListener('click', () => {
         navItems.forEach(n => n.classList.remove('active'));
         item.classList.add('active');
-        // 更新页面标题
+        // Update page title
         const title = document.getElementById('page-title');
         if (title) title.textContent = item.querySelector('.nav-label')?.textContent || '';
-        // 加载页面
+        // Load page
         const page = item.getAttribute('data-page');
         if (page) loadPage(page);
       });
@@ -109,7 +109,7 @@
   }
 
   /* ══════════════════════════════════════════════════════
-     TAB 切换
+     TAB Switching
      ══════════════════════════════════════════════════════ */
   window.initTabs = function(container) {
     const tabs = container.querySelectorAll('.tab');
@@ -126,14 +126,14 @@
   };
 
   /* ══════════════════════════════════════════════════════
-     PAGE LOADER — 子类覆盖
+     PAGE LOADER — subclass override
      ══════════════════════════════════════════════════════ */
   window.loadPage = window.loadPage || function(page) {
     console.log('[admin-framework] loadPage:', page);
   };
 
   /* ══════════════════════════════════════════════════════
-     工具函数
+     utility functions
      ══════════════════════════════════════════════════════ */
   window.formatUptime = function(seconds) {
     const h = Math.floor(seconds / 3600);
@@ -158,7 +158,7 @@
   };
 
   /* ══════════════════════════════════════════════════════
-     STATUS UPDATER — 自动刷新顶栏状态
+     STATUS UPDATER — auto-refresh top bar status
      ══════════════════════════════════════════════════════ */
   window.updateStatusBar = function(data) {
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -178,7 +178,7 @@
      ══════════════════════════════════════════════════════ */
   document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
-    // 自动初始化第一个tab
+    // Auto-init first tab
     const firstTab = document.querySelector('.tab');
     if (firstTab) firstTab.click();
   });

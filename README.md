@@ -1,4 +1,4 @@
-# OpenSoma — 分身引擎
+# OpenSoma — Twin Engine
 
 **Deploy Everywhere, Collect Everything.**
 

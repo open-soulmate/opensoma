@@ -1,6 +1,6 @@
 /**
- * Shared Sidebar Component v1.0 — JS交互
- * 三个软件共用：展开/折叠、active高亮、localStorage持久化
+ * Shared Sidebar Component v1.0 — JS Interaction
+ * Shared by OpenMate/OpenSoul/OpenSoma：expand/collapse、active highlight、localStorage persistence
  */
 ;(function() {
   'use strict';
@@ -29,7 +29,7 @@
       });
     }
 
-    // Active高亮
+    // Active highlight
     const items = sidebar.querySelectorAll('.shared-sidebar-item');
     items.forEach(function(item) {
       item.addEventListener('click', function() {

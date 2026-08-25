@@ -51,56 +51,56 @@
       <button class="shared-sidebar-toggle">◀</button>
     </div>
     <nav class="shared-sidebar-nav">
-      <!-- 核心 -->
+      <!-- Core -->
       <div>
-        <div class="shared-sidebar-group-label"><span>核心</span><div class="group-dash"></div></div>
+        <div class="shared-sidebar-group-label"><span>Core</span><div class="group-dash"></div></div>
         <a href="#dashboard" class="shared-sidebar-item active" data-page="dashboard">
           <span class="shared-sidebar-icon">⊞</span>
-          <span class="shared-sidebar-label">仪表盘</span>
+          <span class="shared-sidebar-label">Dashboard</span>
         </a>
       </div>
-      <!-- 数据 -->
+      <!-- Data -->
       <div>
-        <div class="shared-sidebar-group-label"><span>数据</span><div class="group-dash"></div></div>
+        <div class="shared-sidebar-group-label"><span>Data</span><div class="group-dash"></div></div>
         <a href="#connectors" class="shared-sidebar-item" data-page="connectors">
           <span class="shared-sidebar-icon">🔌</span>
-          <span class="shared-sidebar-label">连接器</span>
+          <span class="shared-sidebar-label">Connectors</span>
         </a>
         <a href="#collectors" class="shared-sidebar-item" data-page="collectors">
           <span class="shared-sidebar-icon">📡</span>
-          <span class="shared-sidebar-label">采集器</span>
+          <span class="shared-sidebar-label">Collectors</span>
         </a>
         <a href="#events" class="shared-sidebar-item" data-page="events">
           <span class="shared-sidebar-icon">📋</span>
-          <span class="shared-sidebar-label">事件</span>
+          <span class="shared-sidebar-label">Events</span>
         </a>
         <a href="#sync" class="shared-sidebar-item" data-page="sync">
           <span class="shared-sidebar-icon">🔄</span>
-          <span class="shared-sidebar-label">同步</span>
+          <span class="shared-sidebar-label">Sync</span>
         </a>
       </div>
-      <!-- 运维 -->
+      <!-- Operations -->
       <div>
-        <div class="shared-sidebar-group-label"><span>运维</span><div class="group-dash"></div></div>
+        <div class="shared-sidebar-group-label"><span>Operations</span><div class="group-dash"></div></div>
         <a href="#monitor" class="shared-sidebar-item" data-page="monitor">
           <span class="shared-sidebar-icon">📊</span>
-          <span class="shared-sidebar-label">监控</span>
+          <span class="shared-sidebar-label">Monitor</span>
         </a>
         <a href="#doctor" class="shared-sidebar-item" data-page="doctor">
           <span class="shared-sidebar-icon">🩺</span>
-          <span class="shared-sidebar-label">诊断</span>
+          <span class="shared-sidebar-label">Diagnostics</span>
         </a>
         <a href="#config" class="shared-sidebar-item" data-page="config">
           <span class="shared-sidebar-icon">⚙</span>
-          <span class="shared-sidebar-label">配置</span>
+          <span class="shared-sidebar-label">Config</span>
         </a>
         <a href="#plugins" class="shared-sidebar-item" data-page="plugins">
           <span class="shared-sidebar-icon">🧩</span>
-          <span class="shared-sidebar-label">插件</span>
+          <span class="shared-sidebar-label">Plugins</span>
         </a>
         <a href="#logs" class="shared-sidebar-item" data-page="logs">
           <span class="shared-sidebar-icon">📋</span>
-          <span class="shared-sidebar-label">日志</span>
+          <span class="shared-sidebar-label">Logs</span>
         </a>
       </div>
     </nav>
@@ -109,7 +109,7 @@
         <div class="shared-sidebar-avatar">S</div>
         <div class="shared-sidebar-user-info">
           <span class="shared-sidebar-user-name">System</span>
-          <span class="shared-sidebar-user-role" id="sidebar-status">Soma 节点</span>
+          <span class="shared-sidebar-user-role" id="sidebar-status">Soma Node</span>
         </div>
       </div>
     </div>
@@ -118,11 +118,11 @@
   <!-- Main -->
   <main>
     <header class="top-bar">
-      <h1 id="page-title" style="font-size:16px;font-weight:600;margin:0;">仪表盘</h1>
+      <h1 id="page-title" style="font-size:16px;font-weight:600;margin:0;">Dashboard</h1>
       <div class="top-bar-info">
-        <span>版本 <span class="monospace">0.1.0</span></span>
-        <span>运行时间 <span class="monospace" id="uptime">-</span></span>
-        <span>状态 <span class="monospace" id="header-status" style="color:#22c55e;">-</span></span>
+        <span>Version <span class="monospace">0.1.0</span></span>
+        <span>Uptime <span class="monospace" id="uptime">-</span></span>
+        <span>Status <span class="monospace" id="header-status" style="color:#22c55e;">-</span></span>
       </div>
     </header>
     <div class="page-content" id="page-content">
@@ -166,30 +166,30 @@
         <div class="stats-grid">
           <div class="stat-card">
             <div class="stat-value">${activeCount}</div>
-            <div class="stat-label">活跃连接器</div>
+            <div class="stat-label">Active Connectors</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${totalEvents.toLocaleString()}</div>
-            <div class="stat-label">已采集事件</div>
+            <div class="stat-label">Collected Events</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${syncedEvents.toLocaleString()}</div>
-            <div class="stat-label">已同步事件</div>
+            <div class="stat-label">Synced Events</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${pending.toLocaleString()}</div>
-            <div class="stat-label">待同步</div>
+            <div class="stat-label">Pending</div>
           </div>
         </div>
         <div class="card">
-          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">系统信息</h3>
+          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">System Info</h3>
           <table>
             <tbody>
-              <tr><td style="color:#71717a;width:120px;">节点 ID</td><td class="monospace">${status ? status.node_id : '-'}</td></tr>
-              <tr><td style="color:#71717a;">主机名</td><td class="monospace">${status ? status.hostname : '-'}</td></tr>
-              <tr><td style="color:#71717a;">IP 地址</td><td class="monospace">${status ? status.ip : '-'}</td></tr>
+              <tr><td style="color:#71717a;width:120px;">Node ID</td><td class="monospace">${status ? status.node_id : '-'}</td></tr>
+              <tr><td style="color:#71717a;">Hostname</td><td class="monospace">${status ? status.hostname : '-'}</td></tr>
+              <tr><td style="color:#71717a;">IP Address</td><td class="monospace">${status ? status.ip : '-'}</td></tr>
               <tr><td style="color:#71717a;">CPU</td><td class="monospace">${status ? status.cpu_percent.toFixed(1) + '%' : '-'}</td></tr>
-              <tr><td style="color:#71717a;">内存</td><td class="monospace">${status ? status.memory_used_mb + ' / ' + status.memory_total_mb + ' MB' : '-'}</td></tr>
+              <tr><td style="color:#71717a;">Memory</td><td class="monospace">${status ? status.memory_used_mb + ' / ' + status.memory_total_mb + ' MB' : '-'}</td></tr>
             </tbody>
           </table>
         </div>
@@ -212,9 +212,9 @@
       `).join('');
 
       return `
-        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">连接器管理</h2>
+        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">Connector Manager</h2>
         <table>
-          <thead><tr><th>名称</th><th>ID</th><th>状态</th><th>事件数</th><th>启用</th></tr></thead>
+          <thead><tr><th>Name</th><th>ID</th><th>Status</th><th>Events</th><th>Enabled</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       `;
@@ -232,9 +232,9 @@
       `).join('');
 
       return `
-        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">采集器状态</h2>
+        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">Collector Status</h2>
         <table>
-          <thead><tr><th>名称</th><th>ID</th><th>状态</th><th>事件数</th></tr></thead>
+          <thead><tr><th>Name</th><th>ID</th><th>Status</th><th>Events</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       `;
@@ -264,49 +264,49 @@
         <div class="stats-grid">
           <div class="stat-card">
             <div class="stat-value">${cacheStats ? cacheStats.total.toLocaleString() : '-'}</div>
-            <div class="stat-label">缓存总量</div>
+            <div class="stat-label">Total Cached</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${cacheStats ? cacheStats.uploaded.toLocaleString() : '-'}</div>
-            <div class="stat-label">已上传</div>
+            <div class="stat-label">Uploaded</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${cacheStats ? cacheStats.pending.toLocaleString() : '-'}</div>
-            <div class="stat-label">待上传</div>
+            <div class="stat-label">Pending Upload</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${cacheStats ? (cacheStats.cache_size_bytes / 1024 / 1024).toFixed(1) + ' MB' : '-'}</div>
-            <div class="stat-label">缓存大小</div>
+            <div class="stat-label">Cache Size</div>
           </div>
         </div>
         <div class="card">
-          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">同步引擎</h3>
+          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">Sync Engine</h3>
           <table>
             <tbody>
-              <tr><td style="color:#71717a;width:120px;">同步状态</td><td><span class="badge badge-ok">运行中</span></td></tr>
-              <tr><td style="color:#71717a;">批次大小</td><td class="monospace">${batchSize}</td></tr>
-              <tr><td style="color:#71717a;">上传间隔</td><td class="monospace">${uploadInterval}s</td></tr>
-              <tr><td style="color:#71717a;">最大重试</td><td class="monospace">${maxRetries}</td></tr>
-              <tr><td style="color:#71717a;">退避间隔</td><td class="monospace">${retryBackoff}ms</td></tr>
-              <tr><td style="color:#71717a;">缓存上限</td><td class="monospace">${cacheLimit} MB</td></tr>
-              <tr><td style="color:#71717a;">冲突策略</td><td class="monospace">${conflictStrategy}</td></tr>
-              <tr><td style="color:#71717a;">实时流</td><td><span class="badge ${streaming ? 'badge-ok' : 'badge-disabled'}">${streaming ? '已启用' : '已禁用'}</span></td></tr>
+              <tr><td style="color:#71717a;width:120px;">Sync Status</td><td><span class="badge badge-ok">Running</span></td></tr>
+              <tr><td style="color:#71717a;">Batch Size</td><td class="monospace">${batchSize}</td></tr>
+              <tr><td style="color:#71717a;">Upload Interval</td><td class="monospace">${uploadInterval}s</td></tr>
+              <tr><td style="color:#71717a;">Max Retries</td><td class="monospace">${maxRetries}</td></tr>
+              <tr><td style="color:#71717a;">Backoff</td><td class="monospace">${retryBackoff}ms</td></tr>
+              <tr><td style="color:#71717a;">Cache Limit</td><td class="monospace">${cacheLimit} MB</td></tr>
+              <tr><td style="color:#71717a;">Conflict Strategy</td><td class="monospace">${conflictStrategy}</td></tr>
+              <tr><td style="color:#71717a;">Streaming</td><td><span class="badge ${streaming ? 'badge-ok' : 'badge-disabled'}">${streaming ? 'Enabled' : 'Disabled'}</span></td></tr>
             </tbody>
           </table>
         </div>
         <div class="card">
-          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">处理管线</h3>
+          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">Pipeline</h3>
           <table>
             <tbody>
-              <tr><td style="color:#71717a;width:120px;">已处理</td><td class="monospace">${processed}</td></tr>
-              <tr><td style="color:#71717a;">已标准化</td><td class="monospace">${normalized}</td></tr>
-              <tr><td style="color:#71717a;">已分类</td><td class="monospace">${classified}</td></tr>
-              <tr><td style="color:#71717a;">已富化</td><td class="monospace">${enriched}</td></tr>
-              <tr><td style="color:#71717a;">已去重</td><td class="monospace">${deduped}</td></tr>
+              <tr><td style="color:#71717a;width:120px;">Processed</td><td class="monospace">${processed}</td></tr>
+              <tr><td style="color:#71717a;">Normalized</td><td class="monospace">${normalized}</td></tr>
+              <tr><td style="color:#71717a;">Classified</td><td class="monospace">${classified}</td></tr>
+              <tr><td style="color:#71717a;">Enriched</td><td class="monospace">${enriched}</td></tr>
+              <tr><td style="color:#71717a;">Deduped</td><td class="monospace">${deduped}</td></tr>
             </tbody>
           </table>
         </div>
-        <button class="btn" onclick="evictCache()">🗑 清理缓存</button>
+        <button class="btn" onclick="evictCache()">🗑 Evict Cache</button>
       `;
     }
 
@@ -328,44 +328,44 @@
       let netRows = networks.slice(0, 6).map(n => `<tr><td class="monospace">${n.name}</td><td>${(n.rx_bytes/1024/1024).toFixed(1)} MB</td><td>${(n.tx_bytes/1024/1024).toFixed(1)} MB</td></tr>`).join('');
 
       return `
-        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">系统监控</h2>
+        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">System Monitor</h2>
         <div class="stats-grid">
           <div class="stat-card">
             <div class="stat-value" style="color:#22c55e;">${status ? status.cpu_percent.toFixed(1) + '%' : '-'}</div>
-            <div class="stat-label">CPU 使用率 (${cpuCores} cores)</div>
+            <div class="stat-label">CPU Usage (${cpuCores} cores)</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${memPct}%</div>
-            <div class="stat-label">内存使用率 (${memAvail} MB 可用)</div>
+            <div class="stat-label">Memory Usage (${memAvail} MB Available)</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${connectors.filter(c => c.status === 'running').length} / ${connectors.length}</div>
-            <div class="stat-label">连接器在线</div>
+            <div class="stat-label">Connectors Online</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${formatUptime(status ? status.uptime_seconds : 0)}</div>
-            <div class="stat-label">运行时间</div>
+            <div class="stat-label">Uptime</div>
           </div>
         </div>
         <div class="card">
-          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">系统信息</h3>
+          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">System Info</h3>
           <table>
             <tbody>
-              <tr><td style="color:#71717a;width:120px;">操作系统</td><td class="monospace">${osName}</td></tr>
-              <tr><td style="color:#71717a;">内核</td><td class="monospace">${kernel}</td></tr>
+              <tr><td style="color:#71717a;width:120px;">OS</td><td class="monospace">${osName}</td></tr>
+              <tr><td style="color:#71717a;">Kernel</td><td class="monospace">${kernel}</td></tr>
               <tr><td style="color:#71717a;">CPU</td><td class="monospace">${cpuBrand} (${cpuCores} cores)</td></tr>
             </tbody>
           </table>
         </div>
-        ${diskRows ? '<div class="card"><h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">磁盘使用</h3><table><thead><tr><th>挂载点</th><th>总量</th><th>可用</th><th>文件系统</th></tr></thead><tbody>' + diskRows + '</tbody></table></div>' : ''}
-        ${netRows ? '<div class="card"><h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">网络接口</h3><table><thead><tr><th>接口</th><th>接收</th><th>发送</th></tr></thead><tbody>' + netRows + '</tbody></table></div>' : ''}
+        ${diskRows ? '<div class="card"><h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">Disk Usage</h3><table><thead><tr><th>Mount</th><th>Total</th><th>Available</th><th>Filesystem</th></tr></thead><tbody>' + diskRows + '</tbody></table></div>' : ''}
+        ${netRows ? '<div class="card"><h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">Network Interfaces</h3><table><thead><tr><th>Interface</th><th>RX</th><th>TX</th></tr></thead><tbody>' + netRows + '</tbody></table></div>' : ''}
         <div class="card">
-          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">最近事件</h3>
-          <div id="recent-events" style="font-size:13px;color:#71717a;">加载中...</div>
+          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">Recent Events</h3>
+          <div id="recent-events" style="font-size:13px;color:#71717a;">Loading...</div>
         </div>
         <div class="card">
-          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">Prometheus 指标</h3>
-          <p style="font-size:12px;color:#71717a;margin:0;">访问 <a href="/metrics" style="color:#7c3aed;">/metrics</a> 查看 Prometheus 格式指标</p>
+          <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;">Prometheus Metrics</h3>
+          <p style="font-size:12px;color:#71717a;margin:0;">Visit <a href="/metrics" style="color:#7c3aed;">/metrics</a> View Prometheus metrics in Prometheus format</p>
         </div>
       `;
     }
@@ -373,70 +373,70 @@
     async function renderConfig() {
       const cfg = await apiFetch('/config');
       if (!cfg || cfg.error) {
-        return `<div class="empty-state"><div class="icon">⚙</div><p>${cfg ? cfg.message || cfg.error : '无法加载配置'}</p></div>`;
+        return `<div class="empty-state"><div class="icon">⚙</div><p>${cfg ? cfg.message || cfg.error : 'Failed to load config'}</p></div>`;
       }
 
       const connectorRows = (cfg.connectors || []).map(c =>
-        `<tr><td style="font-weight:500;">${c.name}</td><td><span class="badge ${c.enabled ? 'badge-ok' : 'badge-disabled'}">${c.enabled ? '已启用' : '已禁用'}</span></td></tr>`
+        `<tr><td style="font-weight:500;">${c.name}</td><td><span class="badge ${c.enabled ? 'badge-ok' : 'badge-disabled'}">${c.enabled ? 'Enabled' : 'Disabled'}</span></td></tr>`
       ).join('');
 
       return `
-        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">运行配置</h2>
+        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">Runtime Configuration</h2>
         <div class="card">
-          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">守护进程</h3>
+          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">Daemon</h3>
           <table><tbody>
-            <tr><td style="color:#71717a;width:120px;">节点 ID</td><td class="monospace">${cfg.node_id}</td></tr>
-            <tr><td style="color:#71717a;">日志级别</td><td class="monospace">${cfg.log_level}</td></tr>
-            <tr><td style="color:#71717a;">数据目录</td><td class="monospace">${cfg.data_dir}</td></tr>
-            <tr><td style="color:#71717a;">状态端口</td><td class="monospace">${cfg.status_port}</td></tr>
+            <tr><td style="color:#71717a;width:120px;">Node ID</td><td class="monospace">${cfg.node_id}</td></tr>
+            <tr><td style="color:#71717a;">Log Level</td><td class="monospace">${cfg.log_level}</td></tr>
+            <tr><td style="color:#71717a;">Data Directory</td><td class="monospace">${cfg.data_dir}</td></tr>
+            <tr><td style="color:#71717a;">Status Port</td><td class="monospace">${cfg.status_port}</td></tr>
           </tbody></table>
         </div>
         <div class="card">
-          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">Soul 连接</h3>
+          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">Soul Connection</h3>
           <table><tbody>
-            <tr><td style="color:#71717a;width:120px;">端点</td><td class="monospace">${cfg.soul_endpoint}</td></tr>
-            <tr><td style="color:#71717a;">心跳间隔</td><td class="monospace">${cfg.heartbeat_interval}s</td></tr>
-            <tr><td style="color:#71717a;">连接超时</td><td class="monospace">${cfg.connect_timeout}s</td></tr>
+            <tr><td style="color:#71717a;width:120px;">Endpoint</td><td class="monospace">${cfg.soul_endpoint}</td></tr>
+            <tr><td style="color:#71717a;">Heartbeat</td><td class="monospace">${cfg.heartbeat_interval}s</td></tr>
+            <tr><td style="color:#71717a;">Connect Timeout</td><td class="monospace">${cfg.connect_timeout}s</td></tr>
           </tbody></table>
         </div>
         <div class="card">
-          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">采集器</h3>
+          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">Collectors</h3>
           <table><tbody>
-            <tr><td style="color:#71717a;width:120px;">监控目录</td><td class="monospace">${(cfg.watch_dirs || []).join(', ') || '(无)'}</td></tr>
-            <tr><td style="color:#71717a;">包含模式</td><td class="monospace">${(cfg.include_patterns || []).join(', ')}</td></tr>
-            <tr><td style="color:#71717a;">排除模式</td><td class="monospace">${(cfg.exclude_patterns || []).join(', ') || '(无)'}</td></tr>
-            <tr><td style="color:#71717a;">防抖</td><td class="monospace">${cfg.debounce_ms}ms</td></tr>
-            <tr><td style="color:#71717a;">进程轮询</td><td class="monospace">${cfg.process_interval_ms}ms</td></tr>
-            <tr><td style="color:#71717a;">网络轮询</td><td class="monospace">${cfg.network_interval_ms}ms</td></tr>
-            <tr><td style="color:#71717a;">剪贴板轮询</td><td class="monospace">${cfg.clipboard_interval_ms}ms</td></tr>
+            <tr><td style="color:#71717a;width:120px;">Watch Dirs</td><td class="monospace">${(cfg.watch_dirs || []).join(', ') || '(none)'}</td></tr>
+            <tr><td style="color:#71717a;">Include</td><td class="monospace">${(cfg.include_patterns || []).join(', ')}</td></tr>
+            <tr><td style="color:#71717a;">Exclude</td><td class="monospace">${(cfg.exclude_patterns || []).join(', ') || '(none)'}</td></tr>
+            <tr><td style="color:#71717a;">Debounce</td><td class="monospace">${cfg.debounce_ms}ms</td></tr>
+            <tr><td style="color:#71717a;">Process Poll</td><td class="monospace">${cfg.process_interval_ms}ms</td></tr>
+            <tr><td style="color:#71717a;">Network Poll</td><td class="monospace">${cfg.network_interval_ms}ms</td></tr>
+            <tr><td style="color:#71717a;">Clipboard Poll</td><td class="monospace">${cfg.clipboard_interval_ms}ms</td></tr>
           </tbody></table>
         </div>
         <div class="card">
-          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">同步设置</h3>
+          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">Sync Settings</h3>
           <table><tbody>
-            <tr><td style="color:#71717a;width:120px;">批次大小</td><td class="monospace">${cfg.sync_batch_size}</td></tr>
-            <tr><td style="color:#71717a;">上传间隔</td><td class="monospace">${cfg.sync_upload_interval}s</td></tr>
-            <tr><td style="color:#71717a;">最大重试</td><td class="monospace">${cfg.sync_max_retries}</td></tr>
-            <tr><td style="color:#71717a;">退避间隔</td><td class="monospace">${cfg.sync_retry_backoff_ms}ms</td></tr>
-            <tr><td style="color:#71717a;">缓存上限</td><td class="monospace">${cfg.sync_cache_size_mb} MB</td></tr>
+            <tr><td style="color:#71717a;width:120px;">Batch Size</td><td class="monospace">${cfg.sync_batch_size}</td></tr>
+            <tr><td style="color:#71717a;">Upload Interval</td><td class="monospace">${cfg.sync_upload_interval}s</td></tr>
+            <tr><td style="color:#71717a;">Max Retries</td><td class="monospace">${cfg.sync_max_retries}</td></tr>
+            <tr><td style="color:#71717a;">Backoff</td><td class="monospace">${cfg.sync_retry_backoff_ms}ms</td></tr>
+            <tr><td style="color:#71717a;">Cache Limit</td><td class="monospace">${cfg.sync_cache_size_mb} MB</td></tr>
           </tbody></table>
         </div>
-        ${connectorRows ? '<div class="card"><h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">连接器配置</h3><table><thead><tr><th>名称</th><th>状态</th></tr></thead><tbody>' + connectorRows + '</tbody></table></div>' : ''}
-        <p style="font-size:12px;color:#71717a;margin-top:12px;">配置通过 <code class="monospace">config.toml</code> 管理，支持热重载。密钥和令牌已脱敏。</p>
+        ${connectorRows ? '<div class="card"><h3 style="margin:0 0 16px;font-size:14px;font-weight:600;">Connector Config</h3><table><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody>' + connectorRows + '</tbody></table></div>' : ''}
+        <p style="font-size:12px;color:#71717a;margin-top:12px;">Config is <code class="monospace">config.toml</code> managed via config.toml (hot-reload). Secrets redacted.</p>
       `;
     }
 
     async function renderPlugins() {
       const data = await apiFetch('/plugins');
-      if (!data) return '<div class="empty-state"><div class="icon">🧩</div><p>无法加载插件信息</p></div>';
+      if (!data) return '<div class="empty-state"><div class="icon">🧩</div><p>Failed to load plugin info</p></div>';
 
       const plugins = data.plugins || [];
       const health = data.health || [];
 
       if (plugins.length === 0) {
         return `
-          <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">插件管理</h2>
-          <div class="empty-state"><div class="icon">🧩</div><p>暂无已注册插件</p></div>
+          <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">Plugin Manager</h2>
+          <div class="empty-state"><div class="icon">🧩</div><p>No plugins registered</p></div>
         `;
       }
 
@@ -459,20 +459,20 @@
       }).join('');
 
       return `
-        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">插件管理</h2>
+        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">Plugin Manager</h2>
         <div class="stats-grid">
           <div class="stat-card">
             <div class="stat-value">${data.total}</div>
-            <div class="stat-label">已注册插件</div>
+            <div class="stat-label">Registered Plugins</div>
           </div>
           <div class="stat-card">
             <div class="stat-value" style="color:#22c55e;">${data.active}</div>
-            <div class="stat-label">活跃插件</div>
+            <div class="stat-label">Active Plugins</div>
           </div>
         </div>
         <div class="card">
           <table>
-            <thead><tr><th>名称</th><th>ID</th><th>状态</th><th>版本</th><th>请求数</th><th>错误数</th></tr></thead>
+            <thead><tr><th>Name</th><th>ID</th><th>Status</th><th>Version</th><th>Requests</th><th>Errors</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -499,22 +499,22 @@
 
       if (events.length === 0) {
         return `
-          <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">事件浏览器</h2>
-          <div class="empty-state"><div class="icon">📋</div><p>暂无缓存事件</p></div>
+          <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">Event Browser</h2>
+          <div class="empty-state"><div class="icon">📋</div><p>No cached events</p></div>
         `;
       }
 
       return `
-        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">事件浏览器 <span style="font-weight:400;color:#71717a;">(${events.length} 条)</span></h2>
+        <h2 style="font-size:14px;font-weight:600;margin:0 0 16px;">Event Browser <span style="font-weight:400;color:#71717a;">(${events.length} events)</span></h2>
         <div class="card" style="padding:12px;">
           <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
-            <input id="event-search" type="text" placeholder="搜索事件内容..." style="flex:1;padding:6px 12px;border-radius:6px;border:1px solid #27272a;background:#18181b;color:#e4e4e7;font-size:13px;" />
-            <button class="btn btn-primary btn-sm" onclick="searchEvents()">🔍 搜索</button>
-            <button class="btn btn-sm" onclick="navigateToPage('events')">↻ 刷新</button>
+            <input id="event-search" type="text" placeholder="Search events..." style="flex:1;padding:6px 12px;border-radius:6px;border:1px solid #27272a;background:#18181b;color:#e4e4e7;font-size:13px;" />
+            <button class="btn btn-primary btn-sm" onclick="searchEvents()">🔍 Search</button>
+            <button class="btn btn-sm" onclick="navigateToPage('events')">↻ Refresh</button>
           </div>
           <div style="overflow-x:auto;">
             <table>
-              <thead><tr><th>时间</th><th>来源</th><th>类型</th><th>大小</th><th>ID</th><th>标签</th></tr></thead>
+              <thead><tr><th>Time</th><th>Source</th><th>Type</th><th>Size</th><th>ID</th><th>Tags</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>
@@ -531,7 +531,7 @@
       if (!tbody) return;
 
       if (events.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#71717a;padding:24px;">未找到匹配事件</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#71717a;padding:24px;">No matching events found</td></tr>';
         return;
       }
       tbody.innerHTML = events.map(e => {
@@ -554,10 +554,10 @@
         const resp = await fetch(API + '/page/doctor');
         if (resp.ok) {
           const data = await resp.json();
-          return data.html || '<div class="empty-state"><div class="icon">🩺</div><p>无法加载诊断页面</p></div>';
+          return data.html || '<div class="empty-state"><div class="icon">🩺</div><p>Failed to load diagnostics</p></div>';
         }
       } catch (e) { /* fallback */ }
-      return '<div class="empty-state"><div class="icon">🩺</div><p>诊断页面加载失败</p></div>';
+      return '<div class="empty-state"><div class="icon">🩺</div><p>Diagnostics page failed to load</p></div>';
     }
 
     async function toggleConnector(name, el) {
@@ -583,22 +583,22 @@
           body: JSON.stringify({ cutoff_hours: 24 })
         });
         if (resp.ok) {
-          alert('缓存清理请求已发送');
+          alert('Cache eviction request sent');
         }
-      } catch (e) { alert('操作失败: ' + e.message); }
+      } catch (e) { alert('Operation failed: ' + e.message); }
     }
 
     // ─── Page Router ────────────────────────────────────────
     const PAGES = {
-      'dashboard': { title: '仪表盘', render: renderDashboard },
-      'connectors': { title: '连接器', render: renderConnectors },
-      'collectors': { title: '采集器', render: renderCollectors },
-      'events': { title: '事件浏览器', render: renderEvents },
-      'sync': { title: '同步', render: renderSync },
-      'monitor': { title: '监控', render: renderMonitor },
-      'doctor': { title: '诊断', render: renderDoctor },
-      'config': { title: '配置', render: renderConfig },
-      'plugins': { title: '插件', render: renderPlugins },
+      'dashboard': { title: 'Dashboard', render: renderDashboard },
+      'connectors': { title: 'Connectors', render: renderConnectors },
+      'collectors': { title: 'Collectors', render: renderCollectors },
+      'events': { title: 'Event Browser', render: renderEvents },
+      'sync': { title: 'Sync', render: renderSync },
+      'monitor': { title: 'Monitor', render: renderMonitor },
+      'doctor': { title: 'Diagnostics', render: renderDoctor },
+      'config': { title: 'Config', render: renderConfig },
+      'plugins': { title: 'Plugins', render: renderPlugins },
     };
 
     async function navigateToPage(page) {
@@ -606,12 +606,12 @@
       const content = document.getElementById('page-content');
 
       if (!pageData) {
-        content.innerHTML = '<div class="empty-state"><div class="icon">🚧</div><p>页面未找到: ' + page + '</p></div>';
+        content.innerHTML = '<div class="empty-state"><div class="icon">🚧</div><p>Page not found: ' + page + '</p></div>';
         return;
       }
 
       document.getElementById('page-title').textContent = pageData.title;
-      content.innerHTML = '<div style="text-align:center;padding:40px;color:#71717a;">加载中...</div>';
+      content.innerHTML = '<div style="text-align:center;padding:40px;color:#71717a;">Loading...</div>';
 
       try {
         const html = await pageData.render();
@@ -622,7 +622,7 @@
           loadRecentEvents();
         }
       } catch (e) {
-        content.innerHTML = '<div class="empty-state"><p>加载失败: ' + e.message + '</p></div>';
+        content.innerHTML = '<div class="empty-state"><p>Load failed: ' + e.message + '</p></div>';
       }
     }
 
@@ -631,10 +631,10 @@
       if (!el) return;
       const data = await apiFetch('/events/recent?limit=10');
       if (!data || !data.events || data.events.length === 0) {
-        el.innerHTML = '<span>暂无最近事件</span>';
+        el.innerHTML = '<span>No recent events</span>';
         return;
       }
-      el.innerHTML = '<table><thead><tr><th>时间</th><th>来源</th><th>类型</th><th>大小</th></tr></thead><tbody>' +
+      el.innerHTML = '<table><thead><tr><th>Time</th><th>Source</th><th>Type</th><th>Size</th></tr></thead><tbody>' +
         data.events.map(e => '<tr><td>' + new Date(e.timestamp_ms).toLocaleString() + '</td><td class="monospace">' + e.source + '</td><td>' + e.event_type + '</td><td>' + e.payload_size + 'B</td></tr>').join('') +
         '</tbody></table>';
     }
