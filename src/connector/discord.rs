@@ -21,7 +21,7 @@ use crate::retry_async;
 /// - READ_MESSAGE_HISTORY permission
 /// - VIEW_CHANNEL permission
 ///
-/// Uses the Discord REST API v10 (https://discord.com/api/v10/).
+/// Uses the Discord REST API v10 (<https://discord.com/api/v10/>).
 pub struct DiscordConnector {
     config: DiscordConfig,
 }

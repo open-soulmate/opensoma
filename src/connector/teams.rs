@@ -22,7 +22,7 @@ use crate::retry_async;
 /// - Team.ReadBasic.All
 /// - Channel.ReadBasic.All
 ///
-/// Uses the Microsoft Graph API v1.0 (https://graph.microsoft.com/v1.0/).
+/// Uses the Microsoft Graph API v1.0 (<https://graph.microsoft.com/v1.0/>).
 ///
 /// Authentication uses the OAuth 2.0 client credentials flow with a client secret.
 pub struct TeamsConnector {
