@@ -279,7 +279,7 @@ impl CircuitBreakerRegistry {
     pub fn new() -> Self {
         let connectors = [
             "feishu", "dingtalk", "wecom", "rss", "email", "webhook", "github", "notion", "git",
-            "obsidian", "slack", "telegram", "discord",
+            "obsidian", "slack", "telegram", "discord", "teams",
         ];
         let mut breakers = std::collections::HashMap::new();
         for name in &connectors {
@@ -490,7 +490,7 @@ mod tests {
         assert!(registry.get("nonexistent").is_none());
 
         let snapshots = registry.snapshot_all().await;
-        assert_eq!(snapshots.len(), 13);
+        assert_eq!(snapshots.len(), 14);
     }
 
     #[tokio::test]
