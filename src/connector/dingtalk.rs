@@ -139,7 +139,7 @@ struct AttendanceResult {
     has_more: bool,
 }
 
-/// DingTalk work report (工作报告) item.
+/// DingTalk work report item.
 #[derive(Debug, Deserialize, Serialize)]
 struct WorkReport {
     #[serde(default)]
@@ -307,7 +307,7 @@ pub async fn start(config: DingtalkConfig, tx: EventTx, circuit_breaker: Option<
                         }
                     }
 
-                    // Poll work reports (工作报告)
+                    // Poll work reports
                     match fetch_work_reports(&http_client, &current_token).await {
                         Ok(reports) => {
                             debug!("Fetched {} DingTalk work reports", reports.len());

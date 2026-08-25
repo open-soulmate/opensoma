@@ -362,11 +362,11 @@ async fn api_connectors_handler(
     let toggle_state = state.connector_enabled.read().await.clone();
     let event_counts = state.connector_event_counts.read().await.clone();
     let all_connectors = [
-        ("feishu", "飞书"),
-        ("dingtalk", "钉钉"),
-        ("wecom", "企业微信"),
+        ("feishu", "Feishu"),
+        ("dingtalk", "DingTalk"),
+        ("wecom", "WeCom"),
         ("rss", "RSS"),
-        ("email", "邮件"),
+        ("email", "Email"),
         ("webhook", "Webhook"),
         ("github", "GitHub"),
         ("notion", "Notion"),
@@ -407,10 +407,10 @@ async fn api_collectors_handler(
     State(state): State<StatusServerState>,
 ) -> Json<Vec<ConnectorInfo>> {
     let collectors = [
-        ("file", "文件采集器"),
-        ("process", "进程采集器"),
-        ("network", "网络采集器"),
-        ("clipboard", "剪贴板采集器"),
+        ("file", "File Collector"),
+        ("process", "Process Collector"),
+        ("network", "Network Collector"),
+        ("clipboard", "Clipboard Collector"),
     ];
 
     let counts = state.collector_event_counts.read().await.clone();
@@ -923,7 +923,7 @@ async fn api_page_handler(
         "events" => build_events_page(&state).await,
         "logs" => build_logs_page(&state).await,
         _ => format!(
-            "<div class=\"text-center text-muted-foreground py-12\">页面未找到: {}</div>",
+            "<div class=\"text-center text-muted-foreground py-12\">Page not found: {}</div>",
             page
         ),
     };
@@ -1081,34 +1081,34 @@ async fn build_dashboard_page(state: &StatusServerState) -> String {
         r#"
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
   <div class="bg-card border border-border rounded-lg p-4">
-    <div class="text-muted-foreground text-xs mb-1">运行时间</div>
+    <div class="text-muted-foreground text-xs mb-1">Uptime</div>
     <div class="text-2xl font-bold text-foreground">{uptime}</div>
   </div>
   <div class="bg-card border border-border rounded-lg p-4">
-    <div class="text-muted-foreground text-xs mb-1">已采集事件</div>
+    <div class="text-muted-foreground text-xs mb-1">Events Collected</div>
     <div class="text-2xl font-bold text-primary">{collected}</div>
   </div>
   <div class="bg-card border border-border rounded-lg p-4">
-    <div class="text-muted-foreground text-xs mb-1">已同步事件</div>
+    <div class="text-muted-foreground text-xs mb-1">Events Synced</div>
     <div class="text-2xl font-bold text-green-500">{synced}</div>
   </div>
   <div class="bg-card border border-border rounded-lg p-4">
-    <div class="text-muted-foreground text-xs mb-1">活跃连接器</div>
+    <div class="text-muted-foreground text-xs mb-1">Active Connectors</div>
     <div class="text-2xl font-bold text-foreground">{active_count}</div>
   </div>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
   <div class="bg-card border border-border rounded-lg p-4">
-    <h3 class="text-sm font-semibold text-foreground mb-3">缓存状态</h3>
+    <h3 class="text-sm font-semibold text-foreground mb-3">Cache Status</h3>
     <div class="space-y-2 text-sm">
-      <div class="flex justify-between"><span class="text-muted-foreground">总计</span><span>{cache_total}</span></div>
-      <div class="flex justify-between"><span class="text-muted-foreground">已上传</span><span class="text-green-500">{cache_uploaded}</span></div>
-      <div class="flex justify-between"><span class="text-muted-foreground">待处理</span><span class="text-yellow-500">{cache_pending}</span></div>
-      <div class="flex justify-between"><span class="text-muted-foreground">缓存大小</span><span>{cache_size}</span></div>
+      <div class="flex justify-between"><span class="text-muted-foreground">Total</span><span>{cache_total}</span></div>
+      <div class="flex justify-between"><span class="text-muted-foreground">Uploaded</span><span class="text-green-500">{cache_uploaded}</span></div>
+      <div class="flex justify-between"><span class="text-muted-foreground">Pending</span><span class="text-yellow-500">{cache_pending}</span></div>
+      <div class="flex justify-between"><span class="text-muted-foreground">Cache Size</span><span>{cache_size}</span></div>
     </div>
   </div>
   <div class="bg-card border border-border rounded-lg p-4">
-    <h3 class="text-sm font-semibold text-foreground mb-3">活跃连接器</h3>
+    <h3 class="text-sm font-semibold text-foreground mb-3">Active Connectors</h3>
     <div class="space-y-1 text-sm">
       {connector_list}
     </div>
@@ -1123,7 +1123,7 @@ async fn build_dashboard_page(state: &StatusServerState) -> String {
         cache_pending = cache.pending,
         cache_size = format_bytes(cache.cache_size_bytes),
         connector_list = if connectors.is_empty() {
-            "<span class=\"text-muted-foreground\">无活跃连接器</span>".to_string()
+            "<span class=\"text-muted-foreground\">No active connectors</span>".to_string()
         } else {
             connectors.iter().map(|c| format!(
                 "<div class=\"flex items-center gap-2\"><span class=\"w-2 h-2 rounded-full bg-green-500\"></span>{}</div>",
@@ -1137,27 +1137,27 @@ async fn build_connectors_page(state: &StatusServerState) -> String {
     let active = state.connectors_active.read().await.clone();
     let event_counts = state.connector_event_counts.read().await.clone();
     let all_connectors = [
-        ("feishu", "飞书", "接收飞书机器人消息和文档变更"),
-        ("dingtalk", "钉钉", "钉钉审批、考勤、群消息采集"),
-        ("wecom", "企业微信", "企业微信应用消息和通讯录"),
-        ("rss", "RSS", "RSS/Atom Feed 定时拉取"),
-        ("email", "邮件", "IMAP 邮件轮询采集"),
-        ("webhook", "Webhook", "通用 Webhook HTTP 接收"),
-        ("github", "GitHub", "Issues/PR/Release 采集"),
-        ("notion", "Notion", "Notion 数据库同步"),
-        ("git", "Git", "Git 仓库轮询采集"),
-        ("obsidian", "Obsidian", "Obsidian Vault 文件监控"),
-        ("slack", "Slack", "Slack 频道消息和线程采集"),
-        ("telegram", "Telegram", "Telegram Bot 消息采集"),
-        ("discord", "Discord", "Discord 服务器消息和频道采集"),
-        ("teams", "Teams", "Microsoft Teams 团队消息和频道采集"),
+        ("feishu", "Feishu", "Receive Feishu bot messages and document changes"),
+        ("dingtalk", "DingTalk", "DingTalk approvals, attendance, and group messages"),
+        ("wecom", "WeCom", "WeCom application messages and contacts"),
+        ("rss", "RSS", "RSS/Atom feed polling"),
+        ("email", "Email", "IMAP email polling"),
+        ("webhook", "Webhook", "Generic Webhook HTTP receiver"),
+        ("github", "GitHub", "Issues/PR/Release collection"),
+        ("notion", "Notion", "Notion database sync"),
+        ("git", "Git", "Git repository polling"),
+        ("obsidian", "Obsidian", "Obsidian vault file monitoring"),
+        ("slack", "Slack", "Slack channel messages and threads"),
+        ("telegram", "Telegram", "Telegram bot message collection"),
+        ("discord", "Discord", "Discord server messages and channels"),
+        ("teams", "Teams", "Microsoft Teams messages and channels"),
     ];
 
     let cards: String = all_connectors.iter().map(|(id, name, desc)| {
         let is_active = active.contains(&id.to_string());
         let count = event_counts.get(*id).copied().unwrap_or(0);
         let status_color = if is_active { "bg-green-500" } else { "bg-gray-500" };
-        let status_text = if is_active { "运行中" } else { "未启用" };
+        let status_text = if is_active { "Running" } else { "Disabled" };
         format!(r#"
 <div class="bg-card border border-border rounded-lg p-4 flex items-start gap-4">
   <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-lg">🔌</div>
@@ -1168,7 +1168,7 @@ async fn build_connectors_page(state: &StatusServerState) -> String {
       <span class="text-xs text-muted-foreground">{status_text}</span>
     </div>
     <div class="text-sm text-muted-foreground mb-2">{desc}</div>
-    <div class="text-xs text-muted-foreground">事件数: {count}</div>
+    <div class="text-xs text-muted-foreground">Events: {count}</div>
   </div>
 </div>"#, name = name, status_color = status_color, status_text = status_text, desc = desc, count = count)
     }).collect::<Vec<_>>().join("");
@@ -1176,8 +1176,8 @@ async fn build_connectors_page(state: &StatusServerState) -> String {
     format!(
         r#"
 <div class="mb-4">
-  <h2 class="text-lg font-semibold text-foreground">连接器管理</h2>
-  <p class="text-sm text-muted-foreground">管理与外部服务的数据连接</p>
+  <h2 class="text-lg font-semibold text-foreground">Connector Management</h2>
+  <p class="text-sm text-muted-foreground">Manage data connections to external services</p>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">{cards}</div>"#,
         cards = cards
@@ -1188,23 +1188,23 @@ async fn build_collectors_page() -> String {
     let collectors = [
         (
             "file",
-            "文件采集器",
-            "监控文件系统变更，采集文件创建/修改/删除事件",
+            "File Collector",
+            "Monitor filesystem changes: file create/modify/delete events",
         ),
         (
             "process",
-            "进程采集器",
-            "监控系统进程，采集进程启动/退出事件",
+            "Process Collector",
+            "Monitor system processes: start/exit events",
         ),
         (
             "network",
-            "网络采集器",
-            "监控网络连接，采集 TCP/UDP 连接状态变更",
+            "Network Collector",
+            "Monitor network connections: TCP/UDP state changes",
         ),
         (
             "clipboard",
-            "剪贴板采集器",
-            "监控剪贴板内容变更，采集复制事件",
+            "Clipboard Collector",
+            "Monitor clipboard content changes",
         ),
     ];
 
@@ -1216,7 +1216,7 @@ async fn build_collectors_page() -> String {
     <div class="flex items-center gap-2 mb-1">
       <span class="font-semibold text-foreground">{name}</span>
       <span class="w-2 h-2 rounded-full bg-green-500"></span>
-      <span class="text-xs text-muted-foreground">运行中</span>
+      <span class="text-xs text-muted-foreground">Running</span>
     </div>
     <div class="text-sm text-muted-foreground">{desc}</div>
   </div>
@@ -1226,8 +1226,8 @@ async fn build_collectors_page() -> String {
     format!(
         r#"
 <div class="mb-4">
-  <h2 class="text-lg font-semibold text-foreground">采集器</h2>
-  <p class="text-sm text-muted-foreground">本地数据采集模块</p>
+  <h2 class="text-lg font-semibold text-foreground">Collectors</h2>
+  <p class="text-sm text-muted-foreground">Local data collection modules</p>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">{cards}</div>"#,
         cards = cards
@@ -1248,32 +1248,32 @@ async fn build_sync_page(state: &StatusServerState) -> String {
     format!(
         r#"
 <div class="mb-4">
-  <h2 class="text-lg font-semibold text-foreground">同步状态</h2>
-  <p class="text-sm text-muted-foreground">数据同步到 OpenSoul 的状态</p>
+  <h2 class="text-lg font-semibold text-foreground">Sync Status</h2>
+  <p class="text-sm text-muted-foreground">Data sync status to OpenSoul</p>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
   <div class="bg-card border border-border rounded-lg p-4">
-    <div class="text-muted-foreground text-xs mb-1">同步进度</div>
+    <div class="text-muted-foreground text-xs mb-1">Sync Progress</div>
     <div class="text-2xl font-bold text-primary">{sync_pct}%</div>
     <div class="w-full bg-background rounded-full h-2 mt-2">
       <div class="bg-primary rounded-full h-2" style="width: {sync_pct}%"></div>
     </div>
   </div>
   <div class="bg-card border border-border rounded-lg p-4">
-    <div class="text-muted-foreground text-xs mb-1">待同步</div>
+    <div class="text-muted-foreground text-xs mb-1">Pending Sync</div>
     <div class="text-2xl font-bold text-yellow-500">{pending}</div>
   </div>
   <div class="bg-card border border-border rounded-lg p-4">
-    <div class="text-muted-foreground text-xs mb-1">缓存大小</div>
+    <div class="text-muted-foreground text-xs mb-1">Cache Size</div>
     <div class="text-2xl font-bold text-foreground">{cache_size}</div>
   </div>
 </div>
 <div class="bg-card border border-border rounded-lg p-4">
-  <h3 class="text-sm font-semibold text-foreground mb-3">缓存详情</h3>
+  <h3 class="text-sm font-semibold text-foreground mb-3">Cache Details</h3>
   <div class="space-y-2 text-sm">
-    <div class="flex justify-between"><span class="text-muted-foreground">总条目</span><span>{total}</span></div>
-    <div class="flex justify-between"><span class="text-muted-foreground">已上传</span><span class="text-green-500">{uploaded}</span></div>
-    <div class="flex justify-between"><span class="text-muted-foreground">待处理</span><span class="text-yellow-500">{cache_pending}</span></div>
+    <div class="flex justify-between"><span class="text-muted-foreground">Total Entries</span><span>{total}</span></div>
+    <div class="flex justify-between"><span class="text-muted-foreground">Uploaded</span><span class="text-green-500">{uploaded}</span></div>
+    <div class="flex justify-between"><span class="text-muted-foreground">Pending</span><span class="text-yellow-500">{cache_pending}</span></div>
   </div>
 </div>"#,
         sync_pct = sync_pct,
@@ -1305,19 +1305,19 @@ async fn build_monitor_page(state: &StatusServerState) -> String {
     format!(
         r#"
 <div class="mb-4">
-  <h2 class="text-lg font-semibold text-foreground">系统监控</h2>
-  <p class="text-sm text-muted-foreground">系统资源和运行状态</p>
+  <h2 class="text-lg font-semibold text-foreground">System Monitor</h2>
+  <p class="text-sm text-muted-foreground">System resources and runtime status</p>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
   <div class="bg-card border border-border rounded-lg p-4">
-    <div class="text-muted-foreground text-xs mb-1">CPU 使用率</div>
+    <div class="text-muted-foreground text-xs mb-1">CPU Usage</div>
     <div class="text-2xl font-bold text-foreground">{cpu:.1}%</div>
     <div class="w-full bg-background rounded-full h-2 mt-2">
       <div class="bg-primary rounded-full h-2" style="width: {cpu:.0}%"></div>
     </div>
   </div>
   <div class="bg-card border border-border rounded-lg p-4">
-    <div class="text-muted-foreground text-xs mb-1">内存使用</div>
+    <div class="text-muted-foreground text-xs mb-1">Memory Usage</div>
     <div class="text-2xl font-bold text-foreground">{mem_used}MB / {mem_total}MB</div>
     <div class="w-full bg-background rounded-full h-2 mt-2">
       <div class="bg-green-500 rounded-full h-2" style="width: {mem_pct}%"></div>
@@ -1325,11 +1325,11 @@ async fn build_monitor_page(state: &StatusServerState) -> String {
   </div>
 </div>
 <div class="bg-card border border-border rounded-lg p-4">
-  <h3 class="text-sm font-semibold text-foreground mb-3">系统信息</h3>
+  <h3 class="text-sm font-semibold text-foreground mb-3">System Info</h3>
   <div class="space-y-2 text-sm">
-    <div class="flex justify-between"><span class="text-muted-foreground">主机名</span><span>{hostname}</span></div>
-    <div class="flex justify-between"><span class="text-muted-foreground">IP 地址</span><span>{ip}</span></div>
-    <div class="flex justify-between"><span class="text-muted-foreground">最后错误</span><span class="text-red-400">{last_error}</span></div>
+    <div class="flex justify-between"><span class="text-muted-foreground">Hostname</span><span>{hostname}</span></div>
+    <div class="flex justify-between"><span class="text-muted-foreground">IP Address</span><span>{ip}</span></div>
+    <div class="flex justify-between"><span class="text-muted-foreground">Last Error</span><span class="text-red-400">{last_error}</span></div>
   </div>
 </div>"#,
         cpu = cpu_percent,
@@ -1338,33 +1338,33 @@ async fn build_monitor_page(state: &StatusServerState) -> String {
         mem_pct = memory_pct,
         hostname = hostname,
         ip = ip,
-        last_error = last_error.unwrap_or_else(|| "无".to_string()),
+        last_error = last_error.unwrap_or_else(|| "None".to_string()),
     )
 }
 
 async fn build_config_page() -> String {
     r#"
 <div class="mb-4">
-  <h2 class="text-lg font-semibold text-foreground">配置</h2>
-  <p class="text-sm text-muted-foreground">OpenSoma 配置文件说明</p>
+  <h2 class="text-lg font-semibold text-foreground">Configuration</h2>
+  <p class="text-sm text-muted-foreground">OpenSoma configuration file reference</p>
 </div>
 <div class="bg-card border border-border rounded-lg p-4">
-  <h3 class="text-sm font-semibold text-foreground mb-3">配置文件</h3>
+  <h3 class="text-sm font-semibold text-foreground mb-3">Config File</h3>
   <div class="text-sm text-muted-foreground space-y-2">
-    <p>配置文件路径: <code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono">config.toml</code></p>
-    <p>启动时使用 <code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono">opensoma -c /path/to/config.toml</code> 指定配置文件</p>
-    <p>使用 <code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono">opensoma --init</code> 生成默认配置</p>
-    <p>使用 <code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono">opensoma --validate</code> 验证配置</p>
+    <p>Config file path: <code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono">config.toml</code></p>
+    <p>Specify config file at startup with <code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono">opensoma -c /path/to/config.toml</code></p>
+    <p>Use <code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono">opensoma --init</code> to generate default config</p>
+    <p>Use <code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono">opensoma --validate</code> to validate config</p>
   </div>
 </div>
 <div class="bg-card border border-border rounded-lg p-4 mt-4">
-  <h3 class="text-sm font-semibold text-foreground mb-3">环境变量覆盖</h3>
+  <h3 class="text-sm font-semibold text-foreground mb-3">Environment Variable Overrides</h3>
   <div class="text-sm text-muted-foreground space-y-1">
     <p><code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono text-xs">OPENSOMA_DAEMON_NODE_ID</code></p>
     <p><code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono text-xs">OPENSOMA_SOUL_ENDPOINT</code></p>
     <p><code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono text-xs">OPENSOMA_CONNECTOR_GITHUB_TOKEN</code></p>
     <p><code class="bg-background px-1.5 py-0.5 rounded text-primary font-mono text-xs">OPENSOMA_CONNECTOR_DINGTALK_APP_KEY</code></p>
-    <p class="text-xs mt-2">格式: <code>OPENSOMA_&lt;SECTION&gt;_&lt;FIELD&gt;</code> (大写)</p>
+    <p class="text-xs mt-2">Format: <code>OPENSOMA_&lt;SECTION&gt;_&lt;FIELD&gt;</code> (uppercase)</p>
   </div>
 </div>"#.to_string()
 }
@@ -1423,18 +1423,18 @@ async fn build_plugins_page(state: &StatusServerState) -> String {
         return String::from(
             "<div style=\"text-align:center;padding:48px 20px;color:#71717a;\">\
              <div style=\"font-size:40px;margin-bottom:12px;\">🧩</div>\
-             <p>暂无已注册插件</p></div>",
+             <p>No registered plugins</p></div>",
         );
     }
 
     format!(
-        "<h2 style=\"font-size:14px;font-weight:600;margin:0 0 16px;\">插件管理</h2>\
+        "<h2 style=\"font-size:14px;font-weight:600;margin:0 0 16px;\">Plugin Management</h2>\
          <div class=\"stats-grid\">\
-           <div class=\"stat-card\"><div class=\"stat-value\">{total}</div><div class=\"stat-label\">已注册插件</div></div>\
-           <div class=\"stat-card\"><div class=\"stat-value\" style=\"color:#22c55e;\">{active}</div><div class=\"stat-label\">活跃插件</div></div>\
+           <div class=\"stat-card\"><div class=\"stat-value\">{total}</div><div class=\"stat-label\">Registered Plugins</div></div>\
+           <div class=\"stat-card\"><div class=\"stat-value\" style=\"color:#22c55e;\">{active}</div><div class=\"stat-label\">Active Plugins</div></div>\
          </div>\
          <div class=\"card\"><table>\
-           <thead><tr><th>名称</th><th>ID</th><th>状态</th><th>版本</th><th>请求数</th><th>错误数</th></tr></thead>\
+           <thead><tr><th>Name</th><th>ID</th><th>Status</th><th>Version</th><th>Requests</th><th>Errors</th></tr></thead>\
            <tbody>{rows}</tbody></table></div>",
         total = total,
         active = active,
@@ -1527,8 +1527,8 @@ async fn build_doctor_page(state: &StatusServerState) -> String {
 
     format!(
         r#"<div class="mb-4">
-  <h2 class="text-lg font-semibold text-foreground">🩺 系统诊断</h2>
-  <p class="text-sm text-muted-foreground">运行时健康检查 — 自动刷新</p>
+  <h2 class="text-lg font-semibold text-foreground">🩺 System Diagnostics</h2>
+  <p class="text-sm text-muted-foreground">Runtime health checks — auto-refresh</p>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">{cards}</div>
 <script>setTimeout(() => location.reload(), 15000);</script>"#,
@@ -1573,27 +1573,27 @@ async fn build_events_page(state: &StatusServerState) -> String {
                 format!(
                     r#"<div class="overflow-x-auto"><table class="w-full text-sm">
                       <thead><tr class="border-b border-border">
-                        <th class="text-left p-2 text-muted-foreground font-medium">时间</th>
-                        <th class="text-left p-2 text-muted-foreground font-medium">来源</th>
-                        <th class="text-left p-2 text-muted-foreground font-medium">类型</th>
-                        <th class="text-left p-2 text-muted-foreground font-medium">大小</th>
-                        <th class="text-left p-2 text-muted-foreground font-medium">标签</th>
+                        <th class="text-left p-2 text-muted-foreground font-medium">Time</th>
+                        <th class="text-left p-2 text-muted-foreground font-medium">Source</th>
+                        <th class="text-left p-2 text-muted-foreground font-medium">Type</th>
+                        <th class="text-left p-2 text-muted-foreground font-medium">Size</th>
+                        <th class="text-left p-2 text-muted-foreground font-medium">Tags</th>
                       </tr></thead><tbody>{rows}</tbody></table></div>"#,
                     rows = rows
                 )
             }
             Ok(_) => r#"<div class="text-center py-12 text-muted-foreground">
-              <p class="text-4xl mb-3">📋</p><p>暂无缓存事件</p>
+              <p class="text-4xl mb-3">📋</p><p>No cached events</p>
             </div>"#.to_string(),
-            Err(e) => format!(r#"<div class="text-center py-12 text-destructive">加载失败: {e}</div>"#),
+            Err(e) => format!(r#"<div class="text-center py-12 text-destructive">Failed to load: {e}</div>"#),
         },
-        None => r#"<div class="text-center py-12 text-muted-foreground">缓存不可用</div>"#.to_string(),
+        None => r#"<div class="text-center py-12 text-muted-foreground">Cache unavailable</div>"#.to_string(),
     };
 
     format!(
         r#"<div class="mb-4">
-  <h2 class="text-lg font-semibold text-foreground">📋 事件浏览器</h2>
-  <p class="text-sm text-muted-foreground">最近 50 条缓存事件</p>
+  <h2 class="text-lg font-semibold text-foreground">📋 Event Browser</h2>
+  <p class="text-sm text-muted-foreground">Last 50 cached events</p>
 </div>
 {events_html}"#
     )
@@ -1766,7 +1766,7 @@ mod tests {
     fn test_connector_info_serialization() {
         let info = ConnectorInfo {
             id: "feishu".to_string(),
-            name: "飞书".to_string(),
+            name: "Feishu".to_string(),
             enabled: true,
             status: "running".to_string(),
             event_count: 100,
