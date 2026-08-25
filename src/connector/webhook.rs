@@ -411,7 +411,7 @@ mod tests {
     #[test]
     fn test_allowed_origins_matching() {
         // Simulate the origin check logic from webhook_handler
-        let allowed_origins = vec![
+        let allowed_origins = [
             "https://example.com".to_string(),
             "https://trusted.org".to_string(),
         ];

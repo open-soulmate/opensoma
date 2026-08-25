@@ -481,7 +481,7 @@ mod tests {
     #[test]
     fn test_batch_upload_body_format() {
         // Verify the batch upload JSON body structure
-        let events = vec![
+        let events = [
             soul::CollectedEvent {
                 id: "batch-1".to_string(),
                 source: "file".to_string(),
@@ -533,7 +533,7 @@ mod tests {
     fn test_batch_size_constant() {
         // Verify the batch size constant is reasonable
         const BATCH_SIZE: usize = 100;
-        assert!(BATCH_SIZE > 0);
-        assert!(BATCH_SIZE <= 500);
+        const _: () = assert!(BATCH_SIZE > 0);
+        const _: () = assert!(BATCH_SIZE <= 500);
     }
 }

@@ -749,7 +749,7 @@ mod tests {
     #[test]
     fn test_discord_channel_type_filtering() {
         // Verify channel type filtering logic: only type 0 (GUILD_TEXT) and 5 (GUILD_ANNOUNCEMENT) pass
-        let channels = vec![
+        let channels = [
             DiscordChannel { id: "1".to_string(), name: Some("general".to_string()), r#type: Some(0) },
             DiscordChannel { id: "2".to_string(), name: Some("voice-room".to_string()), r#type: Some(2) },
             DiscordChannel { id: "3".to_string(), name: Some("announcements".to_string()), r#type: Some(5) },
@@ -845,7 +845,7 @@ mod tests {
 
         let event = message_to_event(&msg, "guild_12");
         // Human messages should NOT have the "bot" tag
-        assert!(event.tags.get("bot").is_none());
+        assert!(!event.tags.contains_key("bot"));
     }
 
     #[test]
