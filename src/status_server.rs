@@ -73,6 +73,10 @@ pub struct StatusServerState {
     pub circuit_breakers: Option<crate::connector::circuit_breaker::CircuitBreakerRegistry>,
     /// Rate limiter registry for connector API rate monitoring.
     pub rate_limiters: Option<crate::connector::rate_limiter::RateLimiterRegistry>,
+    /// Per-collector event counts for monitoring (file, process, network, clipboard).
+    pub collector_event_counts: Arc<RwLock<HashMap<String, u64>>>,
+    /// Per-collector running status.
+    pub collector_running: Arc<RwLock<HashMap<String, bool>>>,
 }
 
 /// Snapshot of cache statistics for the status API.
@@ -394,9 +398,9 @@ async fn api_connectors_handler(
     Json(list)
 }
 
-/// /api/collectors — list collector status
+/// /api/collectors — list collector status with real event counts.
 async fn api_collectors_handler(
-    State(_state): State<StatusServerState>,
+    State(state): State<StatusServerState>,
 ) -> Json<Vec<ConnectorInfo>> {
     let collectors = [
         ("file", "文件采集器"),
@@ -405,14 +409,24 @@ async fn api_collectors_handler(
         ("clipboard", "剪贴板采集器"),
     ];
 
+    let counts = state.collector_event_counts.read().await.clone();
+    let running = state.collector_running.read().await.clone();
+
     let list: Vec<ConnectorInfo> = collectors
         .iter()
-        .map(|(id, name)| ConnectorInfo {
-            id: id.to_string(),
-            name: name.to_string(),
-            enabled: true,
-            status: "running".to_string(),
-            event_count: 0,
+        .map(|(id, name)| {
+            let is_running = running.get(*id).copied().unwrap_or(true);
+            ConnectorInfo {
+                id: id.to_string(),
+                name: name.to_string(),
+                enabled: true,
+                status: if is_running {
+                    "running".to_string()
+                } else {
+                    "stopped".to_string()
+                },
+                event_count: counts.get(*id).copied().unwrap_or(0),
+            }
         })
         .collect();
 
@@ -1687,6 +1701,8 @@ mod tests {
             config_snapshot: None,
             circuit_breakers: None,
             rate_limiters: None,
+            collector_event_counts: Arc::new(RwLock::new(HashMap::new())),
+            collector_running: Arc::new(RwLock::new(HashMap::new())),
         };
 
         Router::new()
@@ -2065,6 +2081,78 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_collectors_endpoint_shows_event_counts() {
+        use tower::ServiceExt;
+
+        let mut collector_counts = HashMap::new();
+        collector_counts.insert("file".to_string(), 42u64);
+        collector_counts.insert("process".to_string(), 15u64);
+        collector_counts.insert("network".to_string(), 0u64);
+        collector_counts.insert("clipboard".to_string(), 7u64);
+
+        let mut collector_running = HashMap::new();
+        collector_running.insert("file".to_string(), true);
+        collector_running.insert("process".to_string(), true);
+        collector_running.insert("network".to_string(), false);
+
+        let state = StatusServerState {
+            node_id: "test-collectors".to_string(),
+            start_time: std::time::Instant::now(),
+            events_collected: Arc::new(RwLock::new(0)),
+            events_synced: Arc::new(RwLock::new(0)),
+            connectors_active: Arc::new(RwLock::new(Vec::new())),
+            last_error: Arc::new(RwLock::new(None)),
+            connector_enabled: Arc::new(RwLock::new(HashMap::new())),
+            connector_event_counts: Arc::new(RwLock::new(HashMap::new())),
+            cache_stats: Arc::new(RwLock::new(CacheStatsSnapshot::default())),
+            cache: None,
+            pipeline_metrics: None,
+            health_checker: None,
+            plugin_registry: None,
+            config_snapshot: None,
+            circuit_breakers: None,
+            rate_limiters: None,
+            collector_event_counts: Arc::new(RwLock::new(collector_counts)),
+            collector_running: Arc::new(RwLock::new(collector_running)),
+        };
+
+        let app = build_router(state);
+
+        let req = axum::http::Request::builder()
+            .uri("/api/collectors")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let collectors: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(collectors.len(), 4);
+
+        // Verify event counts
+        let file_collector = collectors.iter().find(|c| c["id"] == "file").unwrap();
+        assert_eq!(file_collector["event_count"], 42);
+        assert_eq!(file_collector["status"], "running");
+
+        let process_collector = collectors.iter().find(|c| c["id"] == "process").unwrap();
+        assert_eq!(process_collector["event_count"], 15);
+        assert_eq!(process_collector["status"], "running");
+
+        let network_collector = collectors.iter().find(|c| c["id"] == "network").unwrap();
+        assert_eq!(network_collector["event_count"], 0);
+        assert_eq!(network_collector["status"], "stopped");
+
+        let clipboard_collector = collectors.iter().find(|c| c["id"] == "clipboard").unwrap();
+        assert_eq!(clipboard_collector["event_count"], 7);
+        assert_eq!(clipboard_collector["status"], "running"); // default is running
+    }
+
+    #[tokio::test]
     async fn test_connector_toggle_disable_removes_from_active() {
         use tower::ServiceExt;
 
@@ -2085,6 +2173,8 @@ mod tests {
             config_snapshot: None,
             circuit_breakers: None,
             rate_limiters: None,
+            collector_event_counts: Arc::new(RwLock::new(HashMap::new())),
+            collector_running: Arc::new(RwLock::new(HashMap::new())),
         };
 
         // Verify github is active before toggle
@@ -2132,6 +2222,8 @@ mod tests {
             config_snapshot: None,
             circuit_breakers: None,
             rate_limiters: None,
+            collector_event_counts: Arc::new(RwLock::new(HashMap::new())),
+            collector_running: Arc::new(RwLock::new(HashMap::new())),
         };
 
         let app = build_test_app_with_state(state);
@@ -2253,6 +2345,8 @@ mod tests {
             config_snapshot: None,
             circuit_breakers: None,
             rate_limiters: None,
+            collector_event_counts: Arc::new(RwLock::new(HashMap::new())),
+            collector_running: Arc::new(RwLock::new(HashMap::new())),
         };
         let app = build_router(state);
 
@@ -2293,6 +2387,8 @@ mod tests {
             config_snapshot: None,
             circuit_breakers: None,
             rate_limiters: None,
+            collector_event_counts: Arc::new(RwLock::new(HashMap::new())),
+            collector_running: Arc::new(RwLock::new(HashMap::new())),
         };
         let app = build_router(state);
 
