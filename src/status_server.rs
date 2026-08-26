@@ -489,8 +489,13 @@ async fn api_connector_events(
 
 /// Build the shared status response
 async fn build_status_response(state: &StatusServerState) -> Json<StatusResponse> {
-    let events_collected = *state.events_collected.read().await;
-    let events_synced = *state.events_synced.read().await;
+    // Use pipeline_metrics as the authoritative source for event counts
+    let (events_collected, events_synced) = if let Some(ref pm) = state.pipeline_metrics {
+        let snap = pm.snapshot();
+        (snap.events_collected, snap.events_synced)
+    } else {
+        (*state.events_collected.read().await, *state.events_synced.read().await)
+    };
     let connectors = state.connectors_active.read().await.clone();
     let last_error = state.last_error.read().await.clone();
 
@@ -525,8 +530,13 @@ async fn build_status_response(state: &StatusServerState) -> Json<StatusResponse
 /// Returns metrics in Prometheus text exposition format without requiring
 /// an external prometheus crate dependency.
 async fn metrics_handler(State(state): State<StatusServerState>) -> axum::response::Response {
-    let events_collected = *state.events_collected.read().await;
-    let events_synced = *state.events_synced.read().await;
+    // Use pipeline_metrics as the authoritative source for event counts
+    let (events_collected, events_synced) = if let Some(ref pm) = state.pipeline_metrics {
+        let snap = pm.snapshot();
+        (snap.events_collected, snap.events_synced)
+    } else {
+        (*state.events_collected.read().await, *state.events_synced.read().await)
+    };
     let connectors = state.connectors_active.read().await.clone();
     let uptime = state.start_time.elapsed().as_secs_f64();
     let event_counts = state.connector_event_counts.read().await.clone();

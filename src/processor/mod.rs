@@ -62,6 +62,7 @@ async fn run_pipeline(
     while let Some(mut event) = input.recv().await {
         let timer = metrics.as_ref().map(|m| m.start_process_timer());
         if let Some(ref m) = metrics {
+            m.inc_events_collected();
             m.inc_events_processed();
         }
 
