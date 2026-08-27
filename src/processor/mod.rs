@@ -69,11 +69,12 @@ async fn run_pipeline(
             m.inc_events_processed();
         }
 
-        // Track per-collector event counts for the status dashboard
+        // Track per-collector event counts for the status dashboard.
+        // Event sources are like "file:/path" or "process:123" — extract the prefix.
         if let Some(ref counts) = collector_event_counts {
-            let source = event.source.clone();
+            let source_key = event.source.split(':').next().unwrap_or(&event.source).to_string();
             let mut map = counts.write().await;
-            *map.entry(source).or_insert(0) += 1;
+            *map.entry(source_key).or_insert(0) += 1;
         }
 
         // Step 1: Normalize
