@@ -111,6 +111,11 @@ async fn main() -> Result<()> {
     )
     .await?;
 
+    // Shared per-collector event counts for status server dashboard
+    let collector_counts = std::sync::Arc::new(tokio::sync::RwLock::new(
+        std::collections::HashMap::new(),
+    ));
+
     // Start processor pipeline: raw_rx → normalize → classify → enrich → dedup → processed_tx
     let pipeline_metrics = metrics::PipelineMetrics::new();
     let processor_handle = if config.sense.enabled {
@@ -120,6 +125,7 @@ async fn main() -> Result<()> {
             &config.processor,
             &config.sense,
             Some(pipeline_metrics.clone()),
+            Some(collector_counts.clone()),
         )
     } else {
         processor::start_pipeline(
@@ -127,6 +133,7 @@ async fn main() -> Result<()> {
             processed_tx,
             &config.processor,
             Some(pipeline_metrics.clone()),
+            Some(collector_counts.clone()),
         )
     };
 
@@ -168,9 +175,7 @@ async fn main() -> Result<()> {
         config_snapshot: Some(status_server::ConfigSnapshot::from_config(&config)),
         circuit_breakers: Some(circuit_breaker_registry),
         rate_limiters: Some(crate::connector::rate_limiter::RateLimiterRegistry::new()),
-        collector_event_counts: std::sync::Arc::new(tokio::sync::RwLock::new(
-            std::collections::HashMap::new(),
-        )),
+        collector_event_counts: collector_counts.clone(),
         collector_running: std::sync::Arc::new(tokio::sync::RwLock::new(
             std::collections::HashMap::new(),
         )),

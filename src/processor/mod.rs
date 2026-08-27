@@ -16,11 +16,12 @@ pub fn start_pipeline(
     output_tx: EventTx,
     config: &ProcessorConfig,
     metrics: Option<crate::metrics::PipelineMetrics>,
+    collector_event_counts: Option<std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, u64>>>>,
 ) -> JoinHandle<()> {
     let config = config.clone();
 
     tokio::spawn(async move {
-        run_pipeline(raw_rx, output_tx, config, None, metrics).await;
+        run_pipeline(raw_rx, output_tx, config, None, metrics, collector_event_counts).await;
     })
 }
 
@@ -31,12 +32,13 @@ pub fn start_pipeline_with_sense(
     config: &ProcessorConfig,
     sense_config: &SenseConfig,
     metrics: Option<crate::metrics::PipelineMetrics>,
+    collector_event_counts: Option<std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, u64>>>>,
 ) -> JoinHandle<()> {
     let config = config.clone();
     let sense_config = sense_config.clone();
 
     tokio::spawn(async move {
-        run_pipeline(raw_rx, output_tx, config, Some(sense_config), metrics).await;
+        run_pipeline(raw_rx, output_tx, config, Some(sense_config), metrics, collector_event_counts).await;
     })
 }
 
@@ -47,6 +49,7 @@ async fn run_pipeline(
     config: ProcessorConfig,
     sense_config: Option<SenseConfig>,
     metrics: Option<crate::metrics::PipelineMetrics>,
+    collector_event_counts: Option<std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, u64>>>>,
 ) {
     let dedup = dedup::Deduplicator::new(config.dedup_window_secs);
     let sense_enabled = sense_config.as_ref().is_some_and(|s| s.enabled);
@@ -64,6 +67,13 @@ async fn run_pipeline(
         if let Some(ref m) = metrics {
             m.inc_events_collected();
             m.inc_events_processed();
+        }
+
+        // Track per-collector event counts for the status dashboard
+        if let Some(ref counts) = collector_event_counts {
+            let source = event.source.clone();
+            let mut map = counts.write().await;
+            *map.entry(source).or_insert(0) += 1;
         }
 
         // Step 1: Normalize
@@ -231,7 +241,7 @@ mod tests {
             enable_enrich: true,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config, None);
+        let handle = start_pipeline(input_rx, output_tx, &config, None, None);
 
         // Send a test event
         let event = make_test_event(
@@ -271,7 +281,7 @@ mod tests {
             enable_enrich: false,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config, None);
+        let handle = start_pipeline(input_rx, output_tx, &config, None, None);
 
         // Send the same event twice
         let event1 = make_test_event("evt-dup", "file_change", "file:/tmp/test.txt", "hello");
@@ -308,7 +318,7 @@ mod tests {
             enable_enrich: false,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config, None);
+        let handle = start_pipeline(input_rx, output_tx, &config, None, None);
 
         // Send an oversized event (50 bytes on a 10-byte limit = 5x, >2x → dropped)
         let event = make_test_event(
@@ -340,7 +350,7 @@ mod tests {
             enable_enrich: false,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config, None);
+        let handle = start_pipeline(input_rx, output_tx, &config, None, None);
 
         // Send a moderately oversized event (~30 bytes on 20-byte limit = 1.5x, <2x → truncated)
         let event = make_test_event("evt-med", "test", "test", "this payload is thirty bytes!!");
@@ -372,7 +382,7 @@ mod tests {
             enable_enrich: true,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config, None);
+        let handle = start_pipeline(input_rx, output_tx, &config, None, None);
 
         // Send an event with detectable content
         let event = make_test_event(
@@ -411,7 +421,7 @@ mod tests {
             enable_enrich: false,
         };
 
-        let handle = start_pipeline(input_rx, output_tx, &config, None);
+        let handle = start_pipeline(input_rx, output_tx, &config, None, None);
 
         // Send 5 distinct events
         for i in 0..5 {
@@ -569,7 +579,7 @@ mod tests {
             video: None,
         };
 
-        let handle = start_pipeline_with_sense(input_rx, output_tx, &config, &sense_config, None);
+        let handle = start_pipeline_with_sense(input_rx, output_tx, &config, &sense_config, None, None);
 
         let mut event = make_test_event("evt-media", "file_change", "file", "audio data");
         event
@@ -603,7 +613,7 @@ mod tests {
         };
 
         let metrics = crate::metrics::PipelineMetrics::new();
-        let handle = start_pipeline(input_rx, output_tx, &config, Some(metrics.clone()));
+        let handle = start_pipeline(input_rx, output_tx, &config, Some(metrics.clone()), None);
 
         // Send 3 distinct events (different payloads to avoid dedup)
         for i in 0..3 {
